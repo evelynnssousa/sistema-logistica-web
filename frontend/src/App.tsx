@@ -1,10 +1,34 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import './App.css'
 
 type Modulo = 'Visão geral' | 'Manutenção' | 'Frota' | 'Passagens aéreas'
 
 function App() {
   const [moduloAtivo, setModuloAtivo] = useState<Modulo>('Visão geral')
+
+  const [apiOnline, setApiOnline] = useState<boolean | null>(null)
+
+useEffect(() => {
+  let ativo = true
+
+  fetch('/api/health')
+    .then((resposta) => {
+      if (!resposta.ok) {
+        throw new Error('API indisponível')
+      }
+      return resposta.json()
+    })
+    .then((dados) => {
+      if (ativo) setApiOnline(dados.success === true)
+    })
+    .catch(() => {
+      if (ativo) setApiOnline(false)
+    })
+
+  return () => {
+    ativo = false
+  }
+}, [])
 
   const modulos: { nome: Modulo; icone: string }[] = [
     { nome: 'Visão geral', icone: '▦' },
@@ -69,8 +93,20 @@ function App() {
           </div>
           <div className="topbar-right">
             <span className="environment-badge">
-              <span className="status-dot" />
-              Ambiente de desenvolvimento
+              <span
+  className={`status-dot ${
+    apiOnline === true
+      ? 'online'
+      : apiOnline === false
+        ? 'offline'
+        : ''
+  }`}
+/>
+{apiOnline === null
+  ? 'Verificando conexão...'
+  : apiOnline
+    ? 'API conectada'
+    : 'API indisponível'}
             </span>
             <div className="topbar-avatar">U</div>
           </div>

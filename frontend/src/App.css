@@ -272,7 +272,13 @@ button:focus-visible {
   border-radius: 50%;
   background: #e6a23c;
 }
+.status-dot.online {
+  background: #299b61;
+}
 
+.status-dot.offline {
+  background: #d64545;
+}
 .page-content {
   width: 100%;
   max-width: 1500px;
