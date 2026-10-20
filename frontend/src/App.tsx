@@ -1,287 +1,189 @@
 import { useEffect, useState } from 'react'
+import { AppShell } from './components/AppShell'
+import { pathForRoute, routeFromPath, type AppRouteId, type AppScreenId } from './app/routes'
+import { AdminApprovalsPage } from './pages/AdminApprovalsPage'
+import { DashboardPage } from './pages/DashboardPage'
+import { LoginPage } from './pages/LoginPage'
+import { RegistrationPage } from './pages/RegistrationPage'
+import {
+  decideRegistration,
+  getCurrentSession,
+  getPendingRequests,
+  registerAccount,
+  signIn,
+  signOut,
+  type AuthUser,
+} from './services/auth'
+import { getApiHealth } from './services/api'
 import './App.css'
 
-type Modulo = 'Visão geral' | 'Manutenção' | 'Frota' | 'Passagens aéreas'
-
 function App() {
-  const [moduloAtivo, setModuloAtivo] = useState<Modulo>('Visão geral')
-
+  const [screen, setScreen] = useState<AppScreenId>(() => routeFromPath(window.location.pathname))
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [csrfToken, setCsrfToken] = useState('')
   const [apiOnline, setApiOnline] = useState<boolean | null>(null)
+  const [sessionChecked, setSessionChecked] = useState(false)
+  const [logoutBusy, setLogoutBusy] = useState(false)
+  const [logoutError, setLogoutError] = useState('')
+  const [authNotice, setAuthNotice] = useState('')
 
-useEffect(() => {
-  let ativo = true
-
-  fetch('/api/health')
-    .then((resposta) => {
-      if (!resposta.ok) {
-        throw new Error('API indisponível')
-      }
-      return resposta.json()
-    })
-    .then((dados) => {
-      if (ativo) setApiOnline(dados.success === true)
-    })
-    .catch(() => {
-      if (ativo) setApiOnline(false)
-    })
-
-  return () => {
-    ativo = false
+  const navigate = (nextScreen: AppScreenId) => {
+    const path = pathForRoute(nextScreen)
+    if (window.location.pathname !== path) window.history.pushState({}, '', path)
+    setScreen(nextScreen)
   }
-}, [])
 
-  const modulos: { nome: Modulo; icone: string }[] = [
-    { nome: 'Visão geral', icone: '▦' },
-    { nome: 'Manutenção', icone: '⚙' },
-    { nome: 'Frota', icone: '▣' },
-    { nome: 'Passagens aéreas', icone: '✈' },
-  ]
+  useEffect(() => {
+    let active = true
+    getApiHealth()
+      .then((online) => {
+        if (active) setApiOnline(online)
+      })
+      .catch(() => {
+        if (active) setApiOnline(false)
+      })
+
+    getCurrentSession()
+      .then((session) => {
+        if (active) {
+          setUser(session.user)
+          setCsrfToken(session.csrfToken)
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setUser(null)
+          setCsrfToken('')
+        }
+      })
+      .finally(() => {
+        if (active) setSessionChecked(true)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    const syncRoute = () => setScreen(routeFromPath(window.location.pathname))
+    window.addEventListener('popstate', syncRoute)
+    return () => window.removeEventListener('popstate', syncRoute)
+  }, [])
+
+  useEffect(() => {
+    if (!sessionChecked) return
+    const redirectTo = user
+      ? screen === 'login' || screen === 'register' || (screen === 'admin' && user.role !== 'admin')
+        ? '/'
+        : null
+      : screen !== 'register'
+        ? '/login'
+        : null
+    if (redirectTo && window.location.pathname !== redirectTo) {
+      window.history.replaceState({}, '', redirectTo)
+    }
+  }, [screen, sessionChecked, user])
+
+  async function handleSignIn(email: string, password: string) {
+    const session = await signIn(email, password)
+    setUser(session.user)
+    setCsrfToken(session.csrfToken)
+    setAuthNotice('')
+    navigate('overview')
+  }
+
+  async function handleRegister(input: {
+    fullName: string
+    email: string
+    sector: string
+    password: string
+    passwordConfirmation: string
+  }) {
+    const result = await registerAccount(input)
+    setAuthNotice(result.message)
+    navigate('login')
+    return result.message
+  }
+
+  async function handleLogout() {
+    setLogoutBusy(true)
+    setLogoutError('')
+    try {
+      await signOut(csrfToken)
+      setUser(null)
+      setCsrfToken('')
+      navigate('login')
+    } catch (error) {
+      setLogoutError(error instanceof Error ? error.message : 'Não foi possível encerrar a sessão.')
+    } finally {
+      setLogoutBusy(false)
+    }
+  }
+
+  if (!sessionChecked) {
+    return <main className="auth-loading" role="status">Verificando sessão...</main>
+  }
+
+  const effectiveScreen: AppScreenId = user
+    ? screen === 'login' || screen === 'register' || (screen === 'admin' && user.role !== 'admin')
+      ? 'overview'
+      : screen
+    : screen === 'register'
+      ? 'register'
+      : 'login'
+
+  if (!user) {
+    if (effectiveScreen === 'register') {
+      return <RegistrationPage onSubmit={handleRegister} onLogin={() => navigate('login')} />
+    }
+    return (
+      <>
+        {authNotice && <p className="auth-notice" role="status">{authNotice}</p>}
+        <LoginPage onSubmit={handleSignIn} onRegister={() => navigate('register')} />
+      </>
+    )
+  }
+
+  const accessibleRoutes: AppRouteId[] = user.role === 'admin'
+    ? ['overview', 'manutencao', 'frota', 'passagens-aereas']
+    : [
+        'overview',
+        ...(user.permissions.some((permission) => permission.startsWith('maintenance:')) ? ['manutencao' as const] : []),
+        ...(user.permissions.some((permission) => permission.startsWith('fleet:')) ? ['frota' as const] : []),
+        ...(user.permissions.some((permission) => permission.startsWith('flights:')) ? ['passagens-aereas' as const] : []),
+      ]
+  const visibleRoute: AppRouteId = accessibleRoutes.includes(screen as AppRouteId)
+    ? screen as AppRouteId
+    : 'overview'
 
   return (
-    <div className="app-layout">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-symbol">J</div>
-          <div className="brand-text">
-            <strong>GESTÃO DE SERVIÇOS</strong>
-            <span>LOGÍSTICA E MANUTENÇÃO</span>
-          </div>
-        </div>
-
-        <div className="menu-label">MENU PRINCIPAL</div>
-
-        <nav className="navigation">
-          {modulos.map((modulo) => (
-            <button
-              key={modulo.nome}
-              className={`nav-item ${
-                moduloAtivo === modulo.nome ? 'active' : ''
-              }`}
-              onClick={() => setModuloAtivo(modulo.nome)}
-            >
-              <span className="nav-icon">{modulo.icone}</span>
-              <span>{modulo.nome}</span>
-              {moduloAtivo === modulo.nome && (
-                <span className="active-indicator" />
-              )}
-            </button>
-          ))}
-        </nav>
-
-        <div className="sidebar-bottom">
-          <div className="help-card">
-            <span className="help-icon">i</span>
-            <strong>Precisa de ajuda?</strong>
-            <p>Consulte a equipe responsável pelo sistema.</p>
-          </div>
-          <div className="user-profile">
-            <div className="avatar">U</div>
-            <div className="user-info">
-              <strong>Usuário</strong>
-              <span>Ambiente de desenvolvimento</span>
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      <main className="main-content">
-        <header className="topbar">
-          <div className="breadcrumb">
-            <span>Início</span>
-            <span className="breadcrumb-separator">/</span>
-            <strong>{moduloAtivo}</strong>
-          </div>
-          <div className="topbar-right">
-            <span className="environment-badge">
-              <span
-  className={`status-dot ${
-    apiOnline === true
-      ? 'online'
-      : apiOnline === false
-        ? 'offline'
-        : ''
-  }`}
-/>
-{apiOnline === null
-  ? 'Verificando conexão...'
-  : apiOnline
-    ? 'API conectada'
-    : 'API indisponível'}
-            </span>
-            <div className="topbar-avatar">U</div>
-          </div>
-        </header>
-
-        <div className="page-content">
-          <section className="welcome-section">
-            <div>
-              <div className="eyebrow">JUCESP · GESTÃO OPERACIONAL</div>
-              <h1>
-                {moduloAtivo === 'Visão geral'
-                  ? 'Painel de controle'
-                  : moduloAtivo}
-              </h1>
-              <p>
-                Acompanhe as solicitações e os serviços em um só lugar.
-              </p>
-            </div>
-            <div className="date-label">
-              <span className="date-icon">▦</span>
-              <span>Visão geral do sistema</span>
-            </div>
-          </section>
-
-          {moduloAtivo === 'Visão geral' ? (
-            <>
-              <section className="stats-grid">
-                <article className="stat-card">
-                  <div className="stat-top">
-                    <span className="stat-icon blue">▤</span>
-                    <span className="stat-tag">GERAL</span>
-                  </div>
-                  <p className="stat-label">Total de solicitações</p>
-                  <div className="stat-value">—</div>
-                  <p className="stat-description">
-                    Aguardando integração com a base de dados
-                  </p>
-                </article>
-
-                <article className="stat-card">
-                  <div className="stat-top">
-                    <span className="stat-icon orange">◷</span>
-                    <span className="stat-tag">PENDÊNCIAS</span>
-                  </div>
-                  <p className="stat-label">Em andamento</p>
-                  <div className="stat-value">—</div>
-                  <p className="stat-description">
-                    Solicitações em processamento
-                  </p>
-                </article>
-
-                <article className="stat-card">
-                  <div className="stat-top">
-                    <span className="stat-icon green">✓</span>
-                    <span className="stat-tag">CONCLUÍDOS</span>
-                  </div>
-                  <p className="stat-label">Serviços concluídos</p>
-                  <div className="stat-value">—</div>
-                  <p className="stat-description">
-                    Serviços finalizados no sistema
-                  </p>
-                </article>
-
-                <article className="stat-card">
-                  <div className="stat-top">
-                    <span className="stat-icon purple">✈</span>
-                    <span className="stat-tag">VIAGENS</span>
-                  </div>
-                  <p className="stat-label">Passagens aéreas</p>
-                  <div className="stat-value">—</div>
-                  <p className="stat-description">
-                    Módulo independente em preparação
-                  </p>
-                </article>
-              </section>
-
-              <section className="section-heading">
-                <div>
-                  <h2>Módulos do sistema</h2>
-                  <p>Acesse a área que deseja consultar.</p>
-                </div>
-              </section>
-
-              <section className="modules-grid">
-                <button
-                  className="module-card"
-                  onClick={() => setModuloAtivo('Manutenção')}
-                >
-                  <div className="module-icon maintenance">⚙</div>
-                  <div className="module-card-content">
-                    <h3>Manutenção</h3>
-                    <p>
-                      Solicitações, agendamentos e acompanhamento dos serviços
-                      de manutenção.
-                    </p>
-                    <span className="module-link">
-                      Acessar módulo <span>→</span>
-                    </span>
-                  </div>
-                </button>
-
-                <button
-                  className="module-card"
-                  onClick={() => setModuloAtivo('Frota')}
-                >
-                  <div className="module-icon fleet">▣</div>
-                  <div className="module-card-content">
-                    <h3>Gestão de frota</h3>
-                    <p>
-                      Controle de solicitações, veículos, motoristas e
-                      agendamentos.
-                    </p>
-                    <span className="module-link">
-                      Acessar módulo <span>→</span>
-                    </span>
-                  </div>
-                </button>
-
-                <button
-                  className="module-card"
-                  onClick={() => setModuloAtivo('Passagens aéreas')}
-                >
-                  <div className="module-icon flights">✈</div>
-                  <div className="module-card-content">
-                    <h3>Passagens aéreas</h3>
-                    <p>
-                      Organização das solicitações de viagens e acompanhamento
-                      dos pedidos.
-                    </p>
-                    <span className="module-link">
-                      Acessar módulo <span>→</span>
-                    </span>
-                  </div>
-                </button>
-              </section>
-
-              <section className="notice-card">
-                <div className="notice-icon">i</div>
-                <div>
-                  <strong>Nova plataforma em desenvolvimento</strong>
-                  <p>
-                    Esta interface é a base visual da nova plataforma. Os
-                    indicadores serão preenchidos quando a integração com os
-                    dados for implementada e validada.
-                  </p>
-                </div>
-              </section>
-            </>
-          ) : (
-            <section className="placeholder-card">
-              <div className="placeholder-icon">
-                {modulos.find((item) => item.nome === moduloAtivo)?.icone}
-              </div>
-              <h2>Módulo de {moduloAtivo}</h2>
-              <p>
-                A estrutura visual está preparada. As funcionalidades serão
-                desenvolvidas por etapas e testadas antes da migração do
-                sistema atual.
-              </p>
-              <button
-                className="back-button"
-                onClick={() => setModuloAtivo('Visão geral')}
-              >
-                ← Voltar ao painel
-              </button>
-            </section>
-          )}
-
-          <footer className="page-footer">
-            <span>Sistema de Serviços de Logística e Manutenção</span>
-            <span>Nova plataforma · Versão inicial</span>
-          </footer>
-        </div>
-      </main>
-    </div>
+    <AppShell
+      activeRoute={effectiveScreen === 'admin' ? null : visibleRoute}
+      apiOnline={apiOnline}
+      user={user}
+      accessibleRoutes={accessibleRoutes}
+      pageLabel={effectiveScreen === 'admin' ? 'Administração' : undefined}
+      onNavigate={(route) => navigate(route)}
+      onOpenAdmin={() => navigate('admin')}
+      onLogout={() => void handleLogout()}
+      logoutBusy={logoutBusy}
+      actionError={logoutError}
+    >
+      {effectiveScreen === 'admin' && user.role === 'admin' ? (
+        <AdminApprovalsPage
+          csrfToken={csrfToken}
+          loadRequests={getPendingRequests}
+          decide={decideRegistration}
+        />
+      ) : (
+        <DashboardPage
+          activeRoute={visibleRoute}
+          onNavigate={(route) => navigate(route)}
+          accessibleRoutes={accessibleRoutes}
+        />
+      )}
+    </AppShell>
   )
 }
 
