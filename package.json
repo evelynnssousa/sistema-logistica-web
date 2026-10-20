@@ -7,9 +7,13 @@
     "doc": "docs"
   },
   "scripts": {
-  "dev:backend": "tsx watch backend/src/server.ts",
-  "build:backend": "tsc -p backend/tsconfig.json"
-},
+    "dev:backend": "tsx watch backend/src/server.ts",
+    "build:backend": "tsc -p backend/tsconfig.json",
+    "test:backend": "tsx --test backend/src/database/pool.test.ts backend/src/routes/health.test.ts backend/src/auth/password.test.ts backend/src/auth/session.test.ts backend/src/auth/cookies.test.ts backend/src/auth/identifiers.test.ts backend/src/middleware/authentication.test.ts backend/src/database/authPersistence.test.ts",
+    "test:backend:postgres:preflight": "tsx backend/src/database/postgresSchemaPreflight.ts",
+    "test:backend:postgres:docker-preflight": "tsx backend/src/database/postgresDockerPreflight.ts",
+    "test:backend:postgres": "tsx --test backend/src/database/postgresTestGuard.test.ts backend/src/database/postgresIntegration.test.ts"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/evelynnssousa/sistema-logistica-web.git"
@@ -23,15 +27,21 @@
   },
   "homepage": "https://github.com/evelynnssousa/sistema-logistica-web#readme",
   "dependencies": {
+    "argon2": "^0.45.1",
     "cors": "^2.8.6",
     "dotenv": "^18.0.7",
-    "express": "^5.3.0"
+    "express": "^5.3.0",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
+  },
+  "allowScripts": {
+    "argon2@0.45.1": true
   }
 }
