@@ -26,10 +26,9 @@ export class PasswordRecoveryRepository {
     return withTransaction(this.poolProvider(), async (client) => {
       const found = await client.query<RecoveryAccount>(
         `SELECT id::text AS id, email
-           FROM app_private.users
+           FROM public.auth_users
           WHERE lower(email) = $1
-            AND is_active = true
-            AND account_status = 'approved'
+            AND status = 'approved'
           LIMIT 1
           FOR UPDATE`,
         [email],
@@ -39,7 +38,7 @@ export class PasswordRecoveryRepository {
       if (!account) return null
 
       await client.query(
-        `UPDATE app_private.password_recovery_codes
+        `UPDATE public.password_recovery_codes
             SET consumed_at = COALESCE(consumed_at, now())
           WHERE user_id = $1
             AND consumed_at IS NULL`,
@@ -47,7 +46,7 @@ export class PasswordRecoveryRepository {
       )
 
       await client.query(
-        `INSERT INTO app_private.password_recovery_codes
+        `INSERT INTO public.password_recovery_codes
           (user_id, code_hash, expires_at)
          VALUES ($1, $2, now() + interval '10 minutes')`,
         [account.id, codeHash],
@@ -67,7 +66,7 @@ export class PasswordRecoveryRepository {
 
   async invalidateCodes(userId: string): Promise<void> {
     await this.poolProvider().query(
-      `UPDATE app_private.password_recovery_codes
+      `UPDATE public.password_recovery_codes
           SET consumed_at = COALESCE(consumed_at, now())
         WHERE user_id = $1
           AND consumed_at IS NULL`,
@@ -83,10 +82,9 @@ export class PasswordRecoveryRepository {
     return withTransaction(this.poolProvider(), async (client) => {
       const found = await client.query<RecoveryAccount>(
         `SELECT id::text AS id, email
-           FROM app_private.users
+           FROM public.auth_users
           WHERE lower(email) = $1
-            AND is_active = true
-            AND account_status = 'approved'
+            AND status = 'approved'
           LIMIT 1
           FOR UPDATE`,
         [input.email],
@@ -97,7 +95,7 @@ export class PasswordRecoveryRepository {
 
       const foundCode = await client.query<RecoveryCodeRow>(
         `SELECT id::text AS id, code_hash, expires_at, attempts
-           FROM app_private.password_recovery_codes
+           FROM public.password_recovery_codes
           WHERE user_id = $1
             AND consumed_at IS NULL
           ORDER BY created_at DESC
@@ -114,7 +112,7 @@ export class PasswordRecoveryRepository {
         recovery.attempts >= 5
       ) {
         await client.query(
-          `UPDATE app_private.password_recovery_codes
+          `UPDATE public.password_recovery_codes
               SET consumed_at = now()
             WHERE id = $1`,
           [recovery.id],
@@ -124,7 +122,7 @@ export class PasswordRecoveryRepository {
 
       if (!verifyPasswordRecoveryCode(input.code, recovery.code_hash)) {
         await client.query(
-          `UPDATE app_private.password_recovery_codes
+          `UPDATE public.password_recovery_codes
               SET attempts = LEAST(attempts + 1, 5),
                   consumed_at = CASE
                     WHEN attempts + 1 >= 5 THEN now()
@@ -137,27 +135,23 @@ export class PasswordRecoveryRepository {
       }
 
       await client.query(
-        `UPDATE app_private.password_recovery_codes
+        `UPDATE public.password_recovery_codes
             SET consumed_at = now()
           WHERE id = $1`,
         [recovery.id],
       )
 
       await client.query(
-        `UPDATE app_private.users
+        `UPDATE public.auth_users
             SET password_hash = $2,
-                updated_at = now(),
-                updated_by_user_id = NULL
+                updated_at = now()
           WHERE id = $1`,
         [account.id, input.passwordHash],
       )
 
       const revoked = await client.query<{ id: string }>(
-        `UPDATE app_private.auth_sessions
-            SET revoked_at = COALESCE(revoked_at, now()),
-                revoked_by_user_id = COALESCE(revoked_by_user_id, user_id)
+        `DELETE FROM public.auth_sessions
           WHERE user_id = $1
-            AND revoked_at IS NULL
           RETURNING id::text AS id`,
         [account.id],
       )

@@ -1,30 +1,27 @@
+import { createHash, randomBytes } from 'node:crypto'
 import type { Pool } from 'pg'
-import { isAuthRole } from '../auth/roles.js'
+import { isAuthRole, resolveDatabaseAuthRole } from '../auth/roles.js'
 import type { SessionStore, StoredSession } from '../auth/session.js'
 import { insertAuthAuditEvent } from './authAuditRepository.js'
 import { getDatabasePool } from './pool.js'
 import { withTransaction } from './withTransaction.js'
 
 type SessionRow = {
-  id: string
   token_hash: string
   user_id: string
   role: string
+  permissions: string[]
   issued_at: Date
   expires_at: Date
 }
 
-type RevokedSessionRow = {
-  id: string
-  user_id: string
-}
-
 function toStoredSession(row: SessionRow): StoredSession | null {
-  if (!isAuthRole(row.role)) return null
+  const role = resolveDatabaseAuthRole(row.role, row.permissions)
+  if (!role) return null
   return {
     tokenHash: row.token_hash,
     userId: row.user_id,
-    role: row.role,
+    role,
     issuedAt: row.issued_at.getTime(),
     expiresAt: row.expires_at.getTime(),
   }
@@ -45,25 +42,40 @@ export class PostgresSessionStore implements SessionStore {
     }
 
     await withTransaction(this.poolProvider(), async (client) => {
+      const account = await client.query<{ role: string; permissions: string[] }>(
+        `SELECT role, permissions
+           FROM public.auth_users
+          WHERE id = $1
+            AND status = 'approved'
+          FOR UPDATE`,
+        [session.userId],
+      )
+      const user = account.rows[0]
+      if (
+        !user ||
+        resolveDatabaseAuthRole(user.role, user.permissions) !== session.role
+      ) {
+        throw new Error('Usuário inativo ou identidade desatualizada.')
+      }
+
+      // A coluna é obrigatória no banco; a validação de CSRF ainda não está ativa.
+      const csrfTokenHash = createHash('sha256')
+        .update(randomBytes(32))
+        .digest('hex')
       const inserted = await client.query<{ id: string; user_id: string }>(
-          `INSERT INTO app_private.auth_sessions (token_hash, user_id, created_at, expires_at)
-         SELECT $1, u.id, $4, $5
-            FROM app_private.users u
-          WHERE u.id = $2
-            AND u.role = $3
-            AND u.is_active = true
-          FOR UPDATE
+        `INSERT INTO public.auth_sessions
+          (session_token_hash, csrf_token_hash, user_id, created_at, expires_at)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING id::text AS id, user_id::text AS user_id`,
         [
           session.tokenHash,
+          csrfTokenHash,
           session.userId,
-          session.role,
           new Date(session.issuedAt),
           new Date(session.expiresAt),
         ],
       )
       const row = inserted.rows[0]
-      if (!row) throw new Error('Usuário inativo ou identidade desatualizada.')
       await insertAuthAuditEvent(client, {
         actorUserId: row.user_id,
         actorKind: 'user',
@@ -79,18 +91,17 @@ export class PostgresSessionStore implements SessionStore {
 
     try {
       const result = await this.poolProvider().query<SessionRow>(
-        `SELECT s.id::text AS id,
-                s.token_hash,
+        `SELECT s.session_token_hash AS token_hash,
                 u.id::text AS user_id,
                 u.role,
+                u.permissions,
                 s.created_at AS issued_at,
                 s.expires_at
-           FROM app_private.auth_sessions s
-           JOIN app_private.users u ON u.id = s.user_id
-          WHERE s.token_hash = $1
-            AND s.revoked_at IS NULL
+           FROM public.auth_sessions s
+           JOIN public.auth_users u ON u.id = s.user_id
+          WHERE s.session_token_hash = $1
             AND s.expires_at > now()
-            AND u.is_active = true
+            AND u.status = 'approved'
           LIMIT 1`,
         [tokenHash],
       )
@@ -105,12 +116,9 @@ export class PostgresSessionStore implements SessionStore {
     if (!/^[0-9a-f]{64}$/.test(tokenHash)) return
 
     await withTransaction(this.poolProvider(), async (client) => {
-      const result = await client.query<RevokedSessionRow>(
-        `UPDATE app_private.auth_sessions
-            SET revoked_at = COALESCE(revoked_at, now()),
-                revoked_by_user_id = COALESCE(revoked_by_user_id, user_id)
-          WHERE token_hash = $1
-            AND revoked_at IS NULL
+      const result = await client.query<{ id: string; user_id: string }>(
+        `DELETE FROM public.auth_sessions
+          WHERE session_token_hash = $1
           RETURNING id::text AS id, user_id::text AS user_id`,
         [tokenHash],
       )

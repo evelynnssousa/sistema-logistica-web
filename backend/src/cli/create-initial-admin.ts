@@ -1,10 +1,10 @@
-
 import '../loadEnvironment.js'
 import { createInterface } from 'node:readline/promises'
 import { stdin, stdout } from 'node:process'
 import { getDatabasePool } from '../database/pool.js'
 import { hashPassword } from '../auth/password.js'
 import { insertAuthAuditEvent } from '../database/authAuditRepository.js'
+import { readHiddenPassword } from './readHiddenPassword.js'
 
 async function main() {
   const terminal = createInterface({ input: stdin, output: stdout })
@@ -17,18 +17,16 @@ async function main() {
     const email = (await terminal.question('E-mail institucional: '))
       .trim()
       .toLowerCase()
-    const username = (await terminal.question('Usuário para login: '))
-      .trim()
-      .toLowerCase()
+    const sector = (await terminal.question('Setor: ')).trim()
 
     // Fecha o readline antes de ativar a leitura segura da senha.
     terminal.close()
 
     // A senha não é exibida durante a digitação.
-    const password = await hiddenPassword('Senha (mínimo 12 caracteres): ')
-    const confirmation = await hiddenPassword('Confirme a senha: ')
+    const password = await readHiddenPassword('Senha (mínimo 12 caracteres): ')
+    const confirmation = await readHiddenPassword('Confirme a senha: ')
 
-    if (name.length < 2 || name.length > 160) {
+    if (name.length < 2 || name.length > 120) {
       throw new Error('Nome inválido.')
     }
 
@@ -36,8 +34,8 @@ async function main() {
       throw new Error('E-mail inválido.')
     }
 
-    if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(username)) {
-      throw new Error('Nome de usuário inválido.')
+    if (sector.length < 2 || sector.length > 120) {
+      throw new Error('Setor inválido.')
     }
 
     if (password.length < 12 || password.length > 512) {
@@ -54,12 +52,13 @@ async function main() {
     try {
       await client.query('BEGIN')
       await client.query(
-        'LOCK TABLE app_private.users IN EXCLUSIVE MODE',
+        'LOCK TABLE public.auth_users IN EXCLUSIVE MODE',
       )
 
+      // Só cria a primeira conta; os demais administradores são aprovados pelo sistema.
       const existing = await client.query(
-        `SELECT id FROM app_private.users
-          WHERE role = 'administrator' AND is_active = true
+        `SELECT id FROM public.auth_users
+          WHERE role = 'admin' AND status = 'approved'
           LIMIT 1`,
       )
 
@@ -70,11 +69,11 @@ async function main() {
       }
 
       const created = await client.query<{ id: string }>(
-        `INSERT INTO app_private.users
-          (name, email, username, password_hash, role, is_active)
-         VALUES ($1, $2, $3, $4, 'administrator', true)
+        `INSERT INTO public.auth_users
+          (full_name, email, sector, password_hash, status, role, permissions, decided_at)
+         VALUES ($1, $2, $3, $4, 'approved', 'admin', '{}', now())
          RETURNING id::text AS id`,
-        [name, email, username, passwordHash],
+        [name, email, sector, passwordHash],
       )
 
       await insertAuthAuditEvent(client, {
@@ -99,49 +98,6 @@ async function main() {
     terminal.close()
     await pool.end()
   }
-}
-
-async function hiddenPassword(prompt: string): Promise<string> {
-  if (!stdin.isTTY || !stdout.isTTY) {
-    throw new Error(
-      'Execute em um terminal interativo para digitar a senha com segurança.',
-    )
-  }
-
-  stdout.write(prompt)
-
-  let resolvePassword!: (value: string) => void
-  const promise = new Promise<string>((resolve) => {
-    resolvePassword = resolve
-  })
-  let value = ''
-
-  const onData = (chunk: Buffer) => {
-    for (const character of chunk.toString()) {
-      if (character === '\r' || character === '\n') {
-        stdin.off('data', onData)
-        stdin.setRawMode(false)
-        stdin.pause()
-        stdout.write('\n')
-        resolvePassword(value)
-      } else if (character === '\u0003') {
-        stdin.off('data', onData)
-        stdin.setRawMode(false)
-        stdin.pause()
-        resolvePassword('')
-      } else if (character === '\u007f' || character === '\b') {
-        value = value.slice(0, -1)
-      } else {
-        value += character
-      }
-    }
-  }
-
-  stdin.setRawMode(true)
-  stdin.resume()
-  stdin.on('data', onData)
-
-  return promise
 }
 
 main().catch((error) => {

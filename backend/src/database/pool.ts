@@ -43,6 +43,11 @@ export function getDatabaseConfiguration(
 
 let pool: Pool | undefined
 
+// Somente para os testes de integração, que usam um banco descartável local.
+export function setDatabasePoolForTests(testPool: Pool) {
+  pool = testPool
+}
+
 export function getDatabasePool(): Pool {
   if (!pool) {
     const configuration = getDatabaseConfiguration()

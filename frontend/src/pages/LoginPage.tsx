@@ -53,7 +53,7 @@ function LoginPage({ onLogin, onRegister, onRecoverPassword }: LoginPageProps) {
         </p>
 
         <form onSubmit={handleSubmit} className="login-form">
-          <label htmlFor="login-identifier">Usuário ou e-mail</label>
+          <label htmlFor="login-identifier">E-mail</label>
           <input
             id="login-identifier"
             type="text"

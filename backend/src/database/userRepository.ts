@@ -1,10 +1,14 @@
 import type { Pool, PoolClient } from 'pg'
-import { isAuthRole, normalizeAuthRole } from '../auth/roles.js'
+import {
+  databaseRoleFor,
+  isAuthRole,
+  resolveDatabaseAuthRole,
+} from '../auth/roles.js'
 import type { AuthRole, AuthenticatedIdentity } from '../auth/roles.js'
 import { normalizeLoginIdentifiers } from '../auth/identifiers.js'
 import { insertAuthAuditEvent } from './authAuditRepository.js'
 import { getDatabasePool } from './pool.js'
-import { withTransaction } from './withTransaction.js'
+import { DomainError, withTransaction } from './withTransaction.js'
 
 export type CreatePendingUserInput = {
   name: string
@@ -15,16 +19,15 @@ export type CreatePendingUserInput = {
 
 export type CreateUserInput = {
   name: string
-  email?: string | null
-  username?: string | null
+  email: string
+  sector: string
   passwordHash: string
   role: AuthRole
 }
 
 export type UpdateUserInput = {
   name: string
-  email?: string | null
-  username?: string | null
+  email: string
   role: AuthRole
   isActive: boolean
 }
@@ -32,8 +35,9 @@ export type UpdateUserInput = {
 export type UserAccount = {
   id: string
   name: string
-  email: string | null
-  username: string | null
+  email: string
+  // O banco real identifica contas somente por e-mail.
+  username: null
   role: AuthRole
   isActive: boolean
   createdAt: Date
@@ -42,24 +46,19 @@ export type UserAccount = {
 
 type UserRow = {
   id: string
-  name: string
-  email: string | null
-  username: string | null
-  role: string
-  is_active: boolean
+  full_name: string
+  email: string
+  role: string | null
+  permissions: string[]
+  status: string
   created_at: Date
   updated_at: Date
 }
 
-type LockedUserRow = {
-  id: string
-  role: string
-  is_active: boolean
-  account_status: string
-}
+const userColumns = `id::text AS id, full_name, email, role, permissions, status,
+                     created_at, updated_at`
 
-
-export class AccountAuthorizationError extends Error {
+export class AccountAuthorizationError extends DomainError {
   constructor() {
     super('Ação administrativa não autorizada.')
     this.name = 'AccountAuthorizationError'
@@ -71,17 +70,26 @@ function normalizeName(name: unknown) {
     throw new Error('Nome de usuário inválido.')
   }
   const normalized = name.trim()
-  if (!normalized || normalized.length > 160) {
+  if (normalized.length < 2 || normalized.length > 120) {
     throw new Error('Nome de usuário inválido.')
   }
   return normalized
 }
 
-function normalizeAccountIdentifiers(input: {
-  email?: string | null
-  username?: string | null
-}) {
-  return normalizeLoginIdentifiers(input)
+function normalizeSector(sector: unknown) {
+  const normalized = typeof sector === 'string' ? sector.trim() : ''
+  if (normalized.length < 2 || normalized.length > 120) {
+    throw new Error('Setor inválido.')
+  }
+  return normalized
+}
+
+function normalizeEmail(email: unknown) {
+  const normalized = normalizeLoginIdentifiers({
+    email: typeof email === 'string' ? email : null,
+  }).email
+  if (!normalized) throw new Error('E-mail inválido.')
+  return normalized
 }
 
 function assertAdministrator(actor: AuthenticatedIdentity) {
@@ -96,19 +104,18 @@ async function lockActiveAdministrator(
 ) {
   const result = await client.query<{ id: string }>(
     `SELECT id::text AS id
-      FROM app_private.users
+       FROM public.auth_users
       WHERE id = $1
-        AND role = 'administrator'
-        AND is_active = true
+        AND role = 'admin'
+        AND status = 'approved'
       FOR UPDATE`,
     [actorUserId],
   )
   if (result.rowCount !== 1) throw new AccountAuthorizationError()
 }
 
-
 function toUserAccount(row: UserRow): UserAccount {
-  const role = normalizeAuthRole(row.role)
+  const role = resolveDatabaseAuthRole(row.role, row.permissions)
 
   if (!role) {
     throw new Error('Papel de usuário persistido inválido.')
@@ -116,49 +123,27 @@ function toUserAccount(row: UserRow): UserAccount {
 
   return {
     id: row.id,
-    name: row.name,
+    name: row.full_name,
     email: row.email,
-    username: row.username,
+    username: null,
     role,
-    isActive: row.is_active,
+    isActive: row.status === 'approved',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
 }
-
 
 export class UserRepository {
   constructor(private readonly poolProvider: () => Pool = getDatabasePool) {}
 
   async findActiveById(id: string): Promise<UserAccount | null> {
     const result = await this.poolProvider().query<UserRow>(
-      `SELECT id::text AS id, name, email, username, role, is_active,
-              created_at, updated_at
-         FROM app_private.users
+      `SELECT ${userColumns}
+         FROM public.auth_users
         WHERE id = $1
-          AND is_active = true
+          AND status = 'approved'
         LIMIT 1`,
       [id],
-    )
-
-    return result.rows[0] ? toUserAccount(result.rows[0]) : null
-  }
-
-  async findActiveByLoginIdentifier(identifier: string): Promise<UserAccount | null> {
- const normalized = normalizeLoginIdentifiers(
-      identifier.includes('@')
-        ? { email: identifier }
-        : { username: identifier },
-    )
-    const result = await this.poolProvider().query<UserRow>(
-      `SELECT id::text AS id, name, email, username, role, is_active,
-              created_at, updated_at
-        FROM app_private.users
-        WHERE is_active = true
-          AND (($1::text IS NOT NULL AND lower(email) = $1)
-            OR ($2::text IS NOT NULL AND lower(username) = $2))
-        LIMIT 1`,
-      [normalized.email, normalized.username],
     )
 
     return result.rows[0] ? toUserAccount(result.rows[0]) : null
@@ -167,23 +152,18 @@ export class UserRepository {
   async findActiveForAuthentication(
     identifier: string,
   ): Promise<(UserAccount & { passwordHash: string }) | null> {
-    const normalized = normalizeLoginIdentifiers(
-      identifier.includes('@')
-        ? { email: identifier }
-        : { username: identifier },
-    )
+    const email = identifier.trim().toLowerCase()
+    if (!email.includes('@')) return null
 
     const result = await this.poolProvider().query<
       UserRow & { password_hash: string }
     >(
-      `SELECT id::text AS id, name, email, username, role, is_active,
-              created_at, updated_at, password_hash
-         FROM app_private.users
-        WHERE is_active = true
-          AND (($1::text IS NOT NULL AND lower(email) = $1)
-            OR ($2::text IS NOT NULL AND lower(username) = $2))
+      `SELECT ${userColumns}, password_hash
+         FROM public.auth_users
+        WHERE lower(email) = $1
+          AND status = 'approved'
         LIMIT 1`,
-      [normalized.email, normalized.username],
+      [email],
     )
 
     const row = result.rows[0]
@@ -199,19 +179,10 @@ export class UserRepository {
     input: CreatePendingUserInput,
   ): Promise<{ id: string; name: string; email: string; sector: string; status: 'pending'; createdAt: Date }> {
     const name = normalizeName(input.name)
-    const email = typeof input.email === 'string'
-      ? input.email.trim().toLowerCase()
-      : ''
-    const sector = typeof input.sector === 'string'
-      ? input.sector.trim()
-      : ''
+    const email = normalizeEmail(input.email)
+    const sector = normalizeSector(input.sector)
 
     if (
-      name.length > 120 ||
-      email.length > 254 ||
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
-      sector.length < 2 ||
-      sector.length > 120 ||
       typeof input.passwordHash !== 'string' ||
       !input.passwordHash.startsWith('$argon2id$')
     ) {
@@ -221,18 +192,15 @@ export class UserRepository {
     return withTransaction(this.poolProvider(), async (client) => {
       const result = await client.query<{
         id: string
-        name: string
+        full_name: string
         email: string
         sector: string
-        account_status: string
         created_at: Date
       }>(
-        `INSERT INTO app_private.users
-          (name, email, username, password_hash, role, is_active,
-           account_status, sector)
-         VALUES ($1, $2, NULL, $3, 'requester', false, 'pending', $4)
-         RETURNING id::text AS id, name, email, sector,
-                   account_status, created_at`,
+        `INSERT INTO public.auth_users
+          (full_name, email, password_hash, status, sector)
+         VALUES ($1, $2, $3, 'pending', $4)
+         RETURNING id::text AS id, full_name, email, sector, created_at`,
         [name, email, input.passwordHash, sector],
       )
 
@@ -248,7 +216,7 @@ export class UserRepository {
 
       return {
         id: account.id,
-        name: account.name,
+        name: account.full_name,
         email: account.email,
         sector: account.sector,
         status: 'pending',
@@ -263,7 +231,8 @@ export class UserRepository {
   ): Promise<UserAccount> {
     assertAdministrator(actor)
     const name = normalizeName(input.name)
-    const identifiers = normalizeAccountIdentifiers(input)
+    const email = normalizeEmail(input.email)
+    const sector = normalizeSector(input.sector)
     if (
       typeof input.passwordHash !== 'string' ||
       !input.passwordHash.startsWith('$argon2id$') ||
@@ -271,22 +240,23 @@ export class UserRepository {
     ) {
       throw new Error('Dados de conta inválidos.')
     }
+    const databaseRole = databaseRoleFor(input.role)
 
     return withTransaction(this.poolProvider(), async (client) => {
       await lockActiveAdministrator(client, actor.userId)
       const result = await client.query<UserRow>(
-        `INSERT INTO app_private.users
-          (name, email, username, password_hash, role, created_by_user_id,
-           updated_by_user_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $6)
-         RETURNING id::text AS id, name, email, username, role, is_active,
-                   created_at, updated_at`,
+        `INSERT INTO public.auth_users
+          (full_name, email, sector, password_hash, status, role, permissions,
+           decided_by, decided_at)
+         VALUES ($1, $2, $3, $4, 'approved', $5, $6, $7, now())
+         RETURNING ${userColumns}`,
         [
           name,
-          identifiers.email,
-          identifiers.username,
+          email,
+          sector,
           input.passwordHash,
-          input.role,
+          databaseRole.role,
+          databaseRole.permissions,
           actor.userId,
         ],
       )
@@ -297,6 +267,7 @@ export class UserRepository {
         subjectUserId: account.id,
         sessionId: null,
         eventType: 'user_created',
+        details: { role: account.role },
       })
       return account
     })
@@ -309,67 +280,70 @@ export class UserRepository {
   ): Promise<UserAccount> {
     assertAdministrator(actor)
     const name = normalizeName(input.name)
-    const identifiers = normalizeAccountIdentifiers(input)
+    const email = normalizeEmail(input.email)
     if (!isAuthRole(input.role) || typeof input.isActive !== 'boolean') {
       throw new Error('Dados de conta inválidos.')
     }
+    const databaseRole = databaseRoleFor(input.role)
 
     return withTransaction(this.poolProvider(), async (client) => {
       await lockActiveAdministrator(client, actor.userId)
-      const locked = await client.query<LockedUserRow>(
-        `SELECT id::text AS id, role, is_active, account_status
-  FROM app_private.users
- WHERE id = $1
- FOR UPDATE`,
+      const locked = await client.query<UserRow>(
+        `SELECT ${userColumns}
+           FROM public.auth_users
+          WHERE id = $1
+          FOR UPDATE`,
         [userId],
       )
       const previous = locked.rows[0]
-      if (!previous) throw new Error('Conta não encontrada.')
-      if (previous.account_status === 'pending') {
-  throw new Error(
-    'Cadastros pendentes só podem ser alterados pela aprovação ou rejeição administrativa.',
-  )
-}
-        if (
+      if (!previous) throw new DomainError('Conta não encontrada.')
+      if (previous.status === 'pending' || previous.status === 'rejected') {
+        throw new DomainError(
+          'Cadastros pendentes só podem ser alterados pela aprovação ou rejeição administrativa.',
+        )
+      }
+      // Um administrador não remove o próprio acesso. Como quem altera precisa ser
+      // administrador ativo, isso também garante que sempre reste ao menos um.
+      if (
         previous.id === actor.userId &&
         (input.role !== 'administrator' || !input.isActive)
       ) {
         throw new AccountAuthorizationError()
       }
 
+      const wasActive = previous.status === 'approved'
+      const previousRole = resolveDatabaseAuthRole(
+        previous.role,
+        previous.permissions,
+      )
+
       const result = await client.query<UserRow>(
-        `UPDATE app_private.users
-            SET name = $2,
+        `UPDATE public.auth_users
+            SET full_name = $2,
                 email = $3,
-                username = $4,
-                role = $5,
-                is_active = $6,
-                updated_at = now(),
-                updated_by_user_id = $7
+                role = $4,
+                permissions = $5,
+                status = $6,
+                updated_at = now()
           WHERE id = $1
-          RETURNING id::text AS id, name, email, username, role, is_active,
-                    created_at, updated_at`,
+          RETURNING ${userColumns}`,
         [
           userId,
           name,
-          identifiers.email,
-          identifiers.username,
-          input.role,
-          input.isActive,
-          actor.userId,
+          email,
+          databaseRole.role,
+          databaseRole.permissions,
+          input.isActive ? 'approved' : 'inactive',
         ],
       )
       const account = toUserAccount(result.rows[0])
 
-      if (previous.is_active !== input.isActive) {
+      if (wasActive && !input.isActive) {
         const revokedSessions = await client.query<{ id: string }>(
-          `UPDATE app_private.auth_sessions
-              SET revoked_at = COALESCE(revoked_at, now()),
-                  revoked_by_user_id = COALESCE(revoked_by_user_id, $2)
+          `DELETE FROM public.auth_sessions
             WHERE user_id = $1
-              AND revoked_at IS NULL
             RETURNING id::text AS id`,
-          [userId, actor.userId],
+          [userId],
         )
         for (const session of revokedSessions.rows) {
           await insertAuthAuditEvent(client, {
@@ -389,16 +363,17 @@ export class UserRepository {
         sessionId: null,
         eventType: 'user_updated',
       })
-      if (previous.role !== input.role) {
+      if (previousRole !== input.role) {
         await insertAuthAuditEvent(client, {
           actorUserId: actor.userId,
           actorKind: 'user',
           subjectUserId: userId,
           sessionId: null,
           eventType: 'role_changed',
+          details: { role: input.role },
         })
       }
-      if (previous.is_active !== input.isActive) {
+      if (wasActive !== input.isActive) {
         await insertAuthAuditEvent(client, {
           actorUserId: actor.userId,
           actorKind: 'user',
@@ -410,7 +385,8 @@ export class UserRepository {
       return account
     })
   }
-   async listPendingRegistrations(
+
+  async listPendingRegistrations(
     actor: AuthenticatedIdentity,
   ): Promise<Array<{
     id: string
@@ -426,27 +402,28 @@ export class UserRepository {
 
       const result = await client.query<{
         id: string
-        name: string
+        full_name: string
         email: string
         sector: string
         created_at: Date
       }>(
-        `SELECT id::text AS id, name, email, sector, created_at
-           FROM app_private.users
-          WHERE account_status = 'pending'
+        `SELECT id::text AS id, full_name, email, sector, created_at
+           FROM public.auth_users
+          WHERE status = 'pending'
           ORDER BY created_at ASC`,
       )
 
       return result.rows.map((row) => ({
         id: row.id,
-        name: row.name,
+        name: row.full_name,
         email: row.email,
         sector: row.sector,
         createdAt: row.created_at,
       }))
     })
   }
-    async decidePendingRegistration(
+
+  async decidePendingRegistration(
     actor: AuthenticatedIdentity,
     userId: string,
     decision: {
@@ -455,11 +432,11 @@ export class UserRepository {
     } | {
       action: 'reject'
     },
-  ): Promise<{ id: string; status: 'approved' | 'rejected'; role: AuthRole }> {
+  ): Promise<{ id: string; status: 'approved' | 'rejected'; role: AuthRole | null }> {
     assertAdministrator(actor)
 
-    if (!userId.trim()) {
-      throw new Error('Identificador de usuário inválido.')
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+      throw new DomainError('Identificador de usuário inválido.')
     }
 
     if (
@@ -467,19 +444,15 @@ export class UserRepository {
       decision.role !== 'requester' &&
       decision.role !== 'slm_operator'
     ) {
-      throw new Error('Perfil de aprovação inválido.')
+      throw new DomainError('Perfil de aprovação inválido.')
     }
 
     return withTransaction(this.poolProvider(), async (client) => {
       await lockActiveAdministrator(client, actor.userId)
 
-      const locked = await client.query<{
-        id: string
-        role: string
-        account_status: string
-      }>(
-        `SELECT id::text AS id, role, account_status
-           FROM app_private.users
+      const locked = await client.query<{ id: string; status: string }>(
+        `SELECT id::text AS id, status
+           FROM public.auth_users
           WHERE id = $1
           FOR UPDATE`,
         [userId],
@@ -488,32 +461,27 @@ export class UserRepository {
       const pending = locked.rows[0]
 
       if (!pending) {
-        throw new Error('Solicitação não encontrada.')
+        throw new DomainError('Solicitação não encontrada.')
       }
 
-      if (pending.account_status !== 'pending') {
-        throw new Error('Esta solicitação já foi decidida.')
+      if (pending.status !== 'pending') {
+        throw new DomainError('Esta solicitação já foi decidida.')
       }
 
       if (decision.action === 'approve') {
-        const updated = await client.query<{ id: string; role: string }>(
-          `UPDATE app_private.users
-              SET role = $2,
-                  is_active = true,
-                  account_status = 'approved',
-                  decided_by_user_id = $3,
-                  decided_at = now(),
-                  updated_by_user_id = $3,
-                  updated_at = now()
-            WHERE id = $1
-              AND account_status = 'pending'
-          RETURNING id::text AS id, role`,
-          [userId, decision.role, actor.userId],
-        )
+        const databaseRole = databaseRoleFor(decision.role)
 
-        if (updated.rowCount !== 1) {
-          throw new Error('Não foi possível aprovar esta solicitação.')
-        }
+        await client.query(
+          `UPDATE public.auth_users
+              SET status = 'approved',
+                  role = $2,
+                  permissions = $3,
+                  decided_by = $4,
+                  decided_at = now(),
+                  updated_at = now()
+            WHERE id = $1`,
+          [userId, databaseRole.role, databaseRole.permissions, actor.userId],
+        )
 
         await insertAuthAuditEvent(client, {
           actorUserId: actor.userId,
@@ -521,42 +489,23 @@ export class UserRepository {
           subjectUserId: userId,
           sessionId: null,
           eventType: 'registration_approved',
+          details: { role: decision.role },
         })
 
-        if (pending.role !== decision.role) {
-          await insertAuthAuditEvent(client, {
-            actorUserId: actor.userId,
-            actorKind: 'user',
-            subjectUserId: userId,
-            sessionId: null,
-            eventType: 'role_changed',
-          })
-        }
-
-        return {
-          id: updated.rows[0].id,
-          status: 'approved',
-          role: decision.role,
-        }
+        return { id: userId, status: 'approved', role: decision.role }
       }
 
-      const rejected = await client.query<{ id: string; role: string }>(
-        `UPDATE app_private.users
-            SET is_active = false,
-                account_status = 'rejected',
-                decided_by_user_id = $2,
+      await client.query(
+        `UPDATE public.auth_users
+            SET status = 'rejected',
+                role = NULL,
+                permissions = '{}',
+                decided_by = $2,
                 decided_at = now(),
-                updated_by_user_id = $2,
                 updated_at = now()
-          WHERE id = $1
-            AND account_status = 'pending'
-        RETURNING id::text AS id, role`,
+          WHERE id = $1`,
         [userId, actor.userId],
       )
-
-      if (rejected.rowCount !== 1) {
-        throw new Error('Não foi possível rejeitar esta solicitação.')
-      }
 
       await insertAuthAuditEvent(client, {
         actorUserId: actor.userId,
@@ -566,11 +515,7 @@ export class UserRepository {
         eventType: 'registration_rejected',
       })
 
-      return {
-        id: rejected.rows[0].id,
-        status: 'rejected',
-        role: pending.role as AuthRole,
-      }
+      return { id: userId, status: 'rejected', role: null }
     })
   }
 }

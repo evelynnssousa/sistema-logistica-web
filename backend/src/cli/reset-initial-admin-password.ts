@@ -1,58 +1,19 @@
-
+import '../loadEnvironment.js'
 import { createInterface } from 'node:readline/promises'
 import { stdin, stdout } from 'node:process'
 import { getDatabasePool } from '../database/pool.js'
 import { hashPassword } from '../auth/password.js'
-
-const adminId = 'cadc056e-eb7c-41b5-b88c-eef75192ade3'
-
-async function readHiddenPassword(prompt: string): Promise<string> {
-  if (!stdin.isTTY || !stdout.isTTY) {
-    throw new Error('Execute em um terminal interativo.')
-  }
-
-  stdout.write(prompt)
-
-  return new Promise((resolve, reject) => {
-    let value = ''
-
-    const cleanup = () => {
-      stdin.off('data', onData)
-      if (stdin.isRaw) stdin.setRawMode(false)
-      stdin.pause()
-    }
-
-    const onData = (chunk: Buffer) => {
-      for (const character of chunk.toString()) {
-        if (character === '\u0003') {
-          cleanup()
-          stdout.write('\n')
-          reject(new Error('Operação cancelada.'))
-          return
-        }
-
-        if (character === '\r' || character === '\n') {
-          cleanup()
-          stdout.write('\n')
-          resolve(value)
-          return
-        }
-
-        if (character === '\u007f' || character === '\b') {
-          value = value.slice(0, -1)
-        } else {
-          value += character
-        }
-      }
-    }
-
-    stdin.setRawMode(true)
-    stdin.resume()
-    stdin.on('data', onData)
-  })
-}
+import { insertAuthAuditEvent } from '../database/authAuditRepository.js'
+import { withTransaction } from '../database/withTransaction.js'
+import { readHiddenPassword } from './readHiddenPassword.js'
 
 async function main() {
+  const terminal = createInterface({ input: stdin, output: stdout })
+  const email = (await terminal.question('E-mail do administrador: '))
+    .trim()
+    .toLowerCase()
+  terminal.close()
+
   const password = await readHiddenPassword('Nova senha (mínimo 12 caracteres): ')
   const confirmation = await readHiddenPassword('Confirme a nova senha: ')
 
@@ -68,20 +29,38 @@ async function main() {
   const pool = getDatabasePool()
 
   try {
-    const result = await pool.query(
-      `UPDATE public.auth_users
-          SET password_hash = $1,
-              updated_at = now()
-        WHERE id = $2
-          AND status = 'approved'
-          AND role = 'admin'
-        RETURNING id`,
-      [passwordHash, adminId],
-    )
+    const changed = await withTransaction(pool, async (client) => {
+      const result = await client.query<{ id: string }>(
+        `UPDATE public.auth_users
+            SET password_hash = $1,
+                updated_at = now()
+          WHERE lower(email) = $2
+            AND status = 'approved'
+            AND role = 'admin'
+          RETURNING id::text AS id`,
+        [passwordHash, email],
+      )
+      const account = result.rows[0]
+      if (!account) return false
 
-    if (result.rowCount !== 1) {
+      // A troca de senha encerra as sessões abertas dessa conta.
+      await client.query('DELETE FROM public.auth_sessions WHERE user_id = $1', [
+        account.id,
+      ])
+      await insertAuthAuditEvent(client, {
+        actorUserId: null,
+        actorKind: 'emergency_operator',
+        actorReference: 'cli:reset-initial-admin-password',
+        subjectUserId: account.id,
+        sessionId: null,
+        eventType: 'administrator_recovered',
+      })
+      return true
+    })
+
+    if (!changed) {
       throw new Error(
-        'Nenhuma senha foi alterada: a conta não foi encontrada ou não está aprovada como admin.',
+        'Nenhuma senha foi alterada: não há administrador aprovado com esse e-mail.',
       )
     }
 
@@ -98,4 +77,3 @@ main().catch((error) => {
   )
   process.exitCode = 1
 })
-

@@ -83,8 +83,10 @@ authRouter.post('/auth/register', async (request, response) => {
       message: 'Solicitação enviada. Aguarde a aprovação de um administrador para acessar o sistema.',
     })
   } catch (error) {
-    const code = error && typeof error === 'object' && 'code' in error
-      ? String((error as { code?: unknown }).code)
+    // withTransaction preserva o erro do banco em "cause".
+    const databaseError = error instanceof Error ? error.cause : undefined
+    const code = databaseError && typeof databaseError === 'object' && 'code' in databaseError
+      ? String((databaseError as { code?: unknown }).code)
       : ''
 
     if (code === '23505') {

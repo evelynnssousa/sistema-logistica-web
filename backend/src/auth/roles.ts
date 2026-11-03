@@ -1,4 +1,3 @@
-
 export const authRoles = ['administrator', 'slm_operator', 'requester'] as const
 
 export type AuthRole = (typeof authRoles)[number]
@@ -8,24 +7,37 @@ export type AuthenticatedIdentity = {
   role: AuthRole
 }
 
+const moduleReadPermissions = [
+  'maintenance:read',
+  'fleet:read',
+  'flights:read',
+  'warehouse:read',
+]
+
+const moduleWritePermissions = [
+  'maintenance:write',
+  'fleet:write',
+  'flights:write',
+  'warehouse:write',
+]
+
 /**
- * Converte os perfis persistidos no banco para os perfis internos.
- * O perfil "admin" do banco existente corresponde a "administrator".
+ * Valores gravados no banco para cada perfil interno. O banco só conhece os
+ * papéis "admin" e "operator"; solicitante e operador SLM se distinguem pelas
+ * permissões. O CPF completo não é concedido por padrão.
  */
-export function normalizeAuthRole(value: unknown): AuthRole | null {
-  if (value === 'admin' || value === 'administrator') {
-    return 'administrator'
+export function databaseRoleFor(role: AuthRole): {
+  role: 'admin' | 'operator'
+  permissions: string[]
+} {
+  if (role === 'administrator') return { role: 'admin', permissions: [] }
+  if (role === 'slm_operator') {
+    return {
+      role: 'operator',
+      permissions: [...moduleReadPermissions, ...moduleWritePermissions],
+    }
   }
-
-  if (value === 'operator' || value === 'slm_operator') {
-    return 'slm_operator'
-  }
-
-  if (value === 'requester') {
-    return 'requester'
-  }
-
-  return null
+  return { role: 'operator', permissions: [...moduleReadPermissions] }
 }
 
 export function isAuthRole(value: unknown): value is AuthRole {

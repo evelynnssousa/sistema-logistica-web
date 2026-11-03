@@ -10,9 +10,7 @@
     "dev:backend": "tsx watch backend/src/server.ts",
     "build:backend": "tsc -p backend/tsconfig.json",
     "test:backend": "tsx --test backend/src/database/pool.test.ts backend/src/routes/health.test.ts backend/src/auth/password.test.ts backend/src/auth/passwordRecovery.test.ts backend/src/auth/roles.test.ts backend/src/auth/session.test.ts backend/src/auth/cookies.test.ts backend/src/auth/identifiers.test.ts backend/src/middleware/authentication.test.ts backend/src/database/authPersistence.test.ts",
-    "test:backend:postgres:preflight": "tsx backend/src/database/postgresSchemaPreflight.ts",
-    "test:backend:postgres:docker-preflight": "tsx backend/src/database/postgresDockerPreflight.ts",
-    "test:backend:postgres": "tsx --test backend/src/database/postgresTestGuard.test.ts backend/src/database/postgresIntegration.test.ts"
+    "test:backend:postgres": "tsx --test --test-force-exit backend/src/database/publicSchemaIntegration.test.ts"
   },
   "repository": {
     "type": "git",
