@@ -3,18 +3,22 @@ import { Router } from 'express'
 import { isAuthRole } from '../auth/roles.js'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
 import { UserRepository, AccountAuthorizationError } from '../database/userRepository.js'
-import { requireAuthentication } from '../middleware/requireAuthentication.js'
-import { requireAuthorization } from '../middleware/requireAuthorization.js'
-import { SessionService } from '../auth/session.js'
-import { PostgresSessionStore } from '../database/postgresSessionStore.js'
+import { requirePermission } from '../middleware/requirePermission.js'
+import { requireCsrf } from '../middleware/requireCsrf.js'
+import { requireAuth } from '../auth/sessionRuntime.js'
+import { describeError, logSecurityEvent } from '../security/logger.js'
 
 
 const router = Router()
 const users = new UserRepository()
-const sessions = new SessionService(new PostgresSessionStore())
 
-router.use(requireAuthentication(sessions))
-router.use(requireAuthorization('administrator'))
+// Limitado a este caminho: um router.use sem caminho alcançaria as rotas montadas depois.
+router.use(
+  '/admin/registrations',
+  requireAuth,
+  requirePermission('users:approve'),
+  requireCsrf,
+)
 
 function getIdentity(response: {
   locals: { authenticatedUser?: AuthenticatedIdentity }
@@ -65,6 +69,7 @@ function sendError(
     return
   }
 
+  logSecurityEvent('admin_registration_failed', describeError(error))
   response.status(503).json({
     success: false,
     message: 'Não foi possível concluir a operação neste momento.',

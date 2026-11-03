@@ -61,3 +61,9 @@ test('nenhum perfil recebe acesso ao CPF completo por padrão', () => {
     assert.equal(databaseRoleFor(role).permissions.includes('flights:cpf:read'), false)
   }
 })
+
+test('permissão isolada de CPF ou configurações não torna ninguém operador', () => {
+  assert.equal(resolveDatabaseAuthRole('operator', ['flights:cpf:read']), 'requester')
+  assert.equal(resolveDatabaseAuthRole('operator', ['settings:write']), 'requester')
+  assert.equal(resolveDatabaseAuthRole('operator', ['warehouse:write']), 'slm_operator')
+})

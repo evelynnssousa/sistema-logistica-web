@@ -31,6 +31,7 @@ function FleetPage() {
       columns={fleetColumns}
       emptyDescription="Os registros serão exibidos aqui após a integração com os dados reais."
       newRequestTo="/frota/nova"
+      createPermission="fleet:create"
     />
   )
 }

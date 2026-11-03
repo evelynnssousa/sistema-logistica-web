@@ -52,6 +52,9 @@ const asPool = (pool: FakePool) => pool as unknown as Pool
 const operator: AuthenticatedIdentity = {
   userId: 'operator-id',
   role: 'slm_operator',
+  permissions: [],
+  slmMember: false,
+  sector: 'CPC',
 }
 
 test('rejects non-administrators before opening a database transaction', async () => {
@@ -160,4 +163,26 @@ test('writes audit events in the format of the real audit table', async () => {
     origin: 'test',
     actorKind: 'user',
   })
+})
+
+test('records the result of audit events, success by default', async () => {
+  const pool = new FakePool()
+  const client = await pool.connect()
+  const event = {
+    actorUserId: null,
+    actorKind: 'system' as const,
+    subjectUserId: null,
+    sessionId: null,
+  }
+
+  await insertAuthAuditEvent(client as never, { ...event, eventType: 'session_created' })
+  await insertAuthAuditEvent(client as never, {
+    ...event,
+    eventType: 'login_failed',
+    result: 'failure',
+  })
+
+  assert.equal(pool.client.calls[0].values[5], 'success')
+  assert.equal(pool.client.calls[1].values[1], 'auth.login_failed')
+  assert.equal(pool.client.calls[1].values[5], 'failure')
 })

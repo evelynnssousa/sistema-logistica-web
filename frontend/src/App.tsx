@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import AuthGate from './auth/AuthGate'
-import { useAuthenticatedUser } from './auth/UserContext'
+import RequirePermission from './auth/RequirePermission'
 import AppLayout from './components/layout/AppLayout'
 import AirTravelPage from './pages/AirTravelPage'
 import CalendarPage from './pages/CalendarPage'
@@ -17,15 +17,12 @@ import SettingsPage from './pages/SettingsPage'
 import WarehousePortalPage from './pages/WarehousePortalPage'
 import './App.css'
 import PendingRegistrationsPage from './pages/PendingRegistrationsPage'
+import AuditPage from './pages/AuditPage'
+import UserDetailPage from './pages/UserDetailPage'
+import UsersPage from './pages/UsersPage'
 
-function AdministratorOnly({ children }: { children: React.ReactNode }) {
-  const user = useAuthenticatedUser()
-
-  if (user?.role !== 'administrator') {
-    return <Navigate to="/" replace />
-  }
-
-  return <>{children}</>
+function guarded(anyOf: string[], page: React.ReactNode) {
+  return <RequirePermission anyOf={anyOf}>{page}</RequirePermission>
 }
 
 function App() {
@@ -58,7 +55,11 @@ function App() {
       <Routes>
         <Route
           path="/portal/almoxarifado"
-          element={<WarehousePortalPage />}
+          element={
+            <AuthGate>
+              {guarded(['warehouse:read'], <WarehousePortalPage />)}
+            </AuthGate>
+          }
         />
 
         <Route
@@ -70,30 +71,20 @@ function App() {
           }
         >
           <Route index element={<DashboardPage />} />
-          <Route path="manutencao" element={<MaintenancePage />} />
-          <Route
-            path="manutencao/nova"
-            element={<MaintenanceRequestPage />}
-          />
-          <Route path="frota" element={<FleetPage />} />
-          <Route path="frota/nova" element={<FleetRequestPage />} />
-          <Route path="passagens-aereas" element={<AirTravelPage />} />
-          <Route
-            path="passagens-aereas/nova"
-            element={<AirTravelRequestPage />}
-          />
-          <Route path="almoxarifado" element={<InventoryPage />} />
-          <Route path="calendario" element={<CalendarPage />} />
-          <Route path="relatorios" element={<ReportsPage />} />
-          <Route path="configuracoes" element={<SettingsPage />} />
-          <Route
-  path="cadastros-pendentes"
-  element={
-    <AdministratorOnly>
-      <PendingRegistrationsPage />
-    </AdministratorOnly>
-  }
-/>
+          <Route path="manutencao" element={guarded(['maintenance:read'], <MaintenancePage />)} />
+          <Route path="manutencao/nova" element={guarded(['maintenance:create'], <MaintenanceRequestPage />)} />
+          <Route path="frota" element={guarded(['fleet:read'], <FleetPage />)} />
+          <Route path="frota/nova" element={guarded(['fleet:create'], <FleetRequestPage />)} />
+          <Route path="passagens-aereas" element={guarded(['flights:read'], <AirTravelPage />)} />
+          <Route path="passagens-aereas/nova" element={guarded(['flights:create'], <AirTravelRequestPage />)} />
+          <Route path="almoxarifado" element={guarded(['warehouse:read'], <InventoryPage />)} />
+          <Route path="calendario" element={guarded(['calendar:read'], <CalendarPage />)} />
+          <Route path="relatorios" element={guarded(['reports:read'], <ReportsPage />)} />
+          <Route path="configuracoes" element={guarded(['settings:read', 'settings:manage'], <SettingsPage />)} />
+          <Route path="cadastros-pendentes" element={guarded(['users:approve'], <PendingRegistrationsPage />)} />
+          <Route path="usuarios" element={guarded(['users:read'], <UsersPage />)} />
+          <Route path="usuarios/:userId" element={guarded(['users:read'], <UserDetailPage />)} />
+          <Route path="auditoria" element={guarded(['audit:read'], <AuditPage />)} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

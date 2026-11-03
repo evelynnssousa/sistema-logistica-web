@@ -29,6 +29,7 @@ function MaintenancePage() {
       columns={maintenanceColumns}
       emptyDescription="As solicitações aparecerão aqui quando a integração com os dados estiver disponível."
       newRequestTo="/manutencao/nova"
+      createPermission="maintenance:create"
     />
   )
 }

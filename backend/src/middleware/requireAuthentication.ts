@@ -34,7 +34,11 @@ export function requireAuthentication(
       response.locals.authenticatedUser = {
         userId: session.userId,
         role: session.role,
+        permissions: session.permissions,
+        slmMember: session.slmMember,
+        sector: session.sector,
       }
+      response.locals.csrfTokenHash = session.csrfTokenHash
       next()
     } catch {
       response.status(503).json({

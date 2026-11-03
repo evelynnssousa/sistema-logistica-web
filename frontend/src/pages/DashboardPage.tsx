@@ -1,9 +1,11 @@
 import { Link } from 'react-router-dom'
+import { useAuthenticatedUser } from '../auth/UserContext'
 import StatCard from '../components/StatCard'
 
 const moduleCards = [
   {
     path: '/manutencao',
+    permission: 'maintenance:read',
     className: 'maintenance',
     icon: '⚙',
     title: 'Manutenção',
@@ -12,6 +14,7 @@ const moduleCards = [
   },
   {
     path: '/frota',
+    permission: 'fleet:read',
     className: 'fleet',
     icon: '▣',
     title: 'Gestão de frota',
@@ -20,6 +23,7 @@ const moduleCards = [
   },
   {
     path: '/passagens-aereas',
+    permission: 'flights:read',
     className: 'flights',
     icon: '✈',
     title: 'Passagens aéreas',
@@ -29,6 +33,11 @@ const moduleCards = [
 ] as const
 
 function DashboardPage() {
+  const user = useAuthenticatedUser()
+  const visibleCards = moduleCards.filter((module) =>
+    user?.permissions.includes(module.permission),
+  )
+
   return (
     <div className="dashboard-page">
       <section className="welcome-section">
@@ -127,7 +136,7 @@ function DashboardPage() {
           </div>
         </div>
         <div className="modules-grid shortcuts-grid">
-          {moduleCards.map((module) => (
+          {visibleCards.map((module) => (
             <Link
               key={module.path}
               className="module-card"

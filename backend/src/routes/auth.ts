@@ -1,43 +1,56 @@
 
+import { createHash } from 'node:crypto'
 import { Router } from 'express'
+import type { Request, Response } from 'express'
 import {
   createClearedSessionCookie,
   createSessionCookie,
   readSessionToken,
 } from '../auth/cookies.js'
-import { hashPassword, verifyPassword } from '../auth/password.js'
-import { SessionService } from '../auth/session.js'
-import { PostgresSessionStore } from '../database/postgresSessionStore.js'
-import { UserRepository } from '../database/userRepository.js'
-import { requireAuthentication } from '../middleware/requireAuthentication.js'
-import { sendPasswordRecoveryCode } from '../auth/email.js'
 import {
-  generatePasswordRecoveryCode,
-  hashPasswordRecoveryCode,
-} from '../auth/passwordRecovery.js'
+  csrfHeaderName,
+  csrfTokenMatches,
+  deriveCsrfToken,
+} from '../auth/csrf.js'
+import {
+  hashPassword,
+  verifyPassword,
+  verifyPasswordAgainstDecoy,
+} from '../auth/password.js'
+import { processPasswordRecoveryRequest } from '../auth/passwordRecoveryService.js'
+import { isTestAccountBlocked } from '../auth/reservedTestEmails.js'
+import { requireAuth, sessions } from '../auth/sessionRuntime.js'
+import { recordAuthAuditEvent } from '../database/authAuditRepository.js'
 import { PasswordRecoveryRepository } from '../database/passwordRecoveryRepository.js'
+import { UserRepository } from '../database/userRepository.js'
+import { authRateLimits } from '../security/authRateLimits.js'
+import { describeError, logSecurityEvent } from '../security/logger.js'
+import type { RateLimitResult } from '../security/rateLimiter.js'
 
 const authRouter = Router()
 const users = new UserRepository()
 const passwordRecovery = new PasswordRecoveryRepository()
 
-const recoveryRateLimits = new Map<string, { count: number; resetAt: number }>()
-
-function allowRecoveryAttempt(key: string, maximum: number): boolean {
-  const now = Date.now()
-  const current = recoveryRateLimits.get(key)
-
-  if (!current || current.resetAt <= now) {
-    recoveryRateLimits.set(key, { count: 1, resetAt: now + 15 * 60 * 1000 })
-    return true
-  }
-
-  if (current.count >= maximum) return false
-  current.count += 1
-  return true
+function clientIp(request: Request) {
+  return request.ip || 'unknown'
 }
-const sessions = new SessionService(new PostgresSessionStore())
-const requireAuth = requireAuthentication(sessions)
+
+function sendTooManyRequests(
+  response: Response,
+  blocked: RateLimitResult,
+  message: string,
+) {
+  response.set('Retry-After', String(blocked.retryAfterSeconds))
+  response.status(429).json({ success: false, message })
+}
+
+// Permite correlacionar tentativas na auditoria sem gravar o e-mail digitado.
+function identifierFingerprint(identifier: string) {
+  return createHash('sha256')
+    .update(`slm:login:${identifier}`)
+    .digest('hex')
+    .slice(0, 32)
+}
 
 authRouter.post('/auth/register', async (request, response) => {
   const { fullName, name, email, sector, password, passwordConfirmation } =
@@ -69,6 +82,36 @@ authRouter.post('/auth/register', async (request, response) => {
     return
   }
 
+  if (isTestAccountBlocked(email)) {
+    response.status(400).json({
+      success: false,
+      message: 'Informe um e-mail institucional válido.',
+    })
+    return
+  }
+
+  // Vem antes do hash da senha, que é a etapa cara em memória e processamento.
+  const ipLimit = authRateLimits.registerIp.consume(clientIp(request))
+  const globalLimit = ipLimit.allowed
+    ? authRateLimits.registerGlobal.consume('global')
+    : ipLimit
+  if (!globalLimit.allowed) {
+    sendTooManyRequests(
+      response,
+      globalLimit,
+      'Muitas solicitações de cadastro. Aguarde antes de tentar novamente.',
+    )
+    return
+  }
+
+  // A resposta é a mesma para e-mails novos e já cadastrados.
+  const accepted = () =>
+    response.status(202).json({
+      success: true,
+      message:
+        'Solicitação recebida. Se este e-mail puder ser utilizado, o cadastro aguardará a aprovação de um administrador. Se você já tem uma conta, entre ou recupere sua senha.',
+    })
+
   try {
     const passwordHash = await hashPassword(password)
     await users.createPendingUser({
@@ -77,11 +120,7 @@ authRouter.post('/auth/register', async (request, response) => {
       sector: sector.trim(),
       passwordHash,
     })
-
-    response.status(202).json({
-      success: true,
-      message: 'Solicitação enviada. Aguarde a aprovação de um administrador para acessar o sistema.',
-    })
+    accepted()
   } catch (error) {
     // withTransaction preserva o erro do banco em "cause".
     const databaseError = error instanceof Error ? error.cause : undefined
@@ -89,14 +128,13 @@ authRouter.post('/auth/register', async (request, response) => {
       ? String((databaseError as { code?: unknown }).code)
       : ''
 
+    // Dois cadastros simultâneos com o mesmo e-mail: o segundo cai no índice único.
     if (code === '23505') {
-      response.status(409).json({
-        success: false,
-        message: 'Já existe uma conta cadastrada com esse e-mail.',
-      })
+      accepted()
       return
     }
 
+    logSecurityEvent('registration_failed', describeError(error))
     response.status(503).json({
       success: false,
       message: 'Não foi possível enviar a solicitação neste momento.',
@@ -117,30 +155,92 @@ authRouter.post('/auth/login', async (request, response) => {
   ) {
     response.status(400).json({
       success: false,
-      message: 'Informe o usuário e a senha.',
+      message: 'Informe o e-mail e a senha.',
     })
     return
   }
 
+  const normalizedIdentifier = identifier.trim().toLowerCase()
+  const ip = clientIp(request)
+  const pairKey = `${ip}|${normalizedIdentifier}`
+
+  // A tentativa é reservada antes da verificação, para que requisições simultâneas
+  // não ultrapassem o limite. O limite por IP só conta falhas, porque toda a
+  // instituição pode compartilhar o mesmo endereço.
+  const pairLimit = authRateLimits.loginPair.consume(pairKey)
+  const accountLimit = authRateLimits.loginAccount.consume(normalizedIdentifier)
+  const blocked = [
+    pairLimit,
+    accountLimit,
+    authRateLimits.loginIp.check(ip),
+  ].find((limit) => !limit.allowed)
+
+  if (blocked) {
+    sendTooManyRequests(
+      response,
+      blocked,
+      'Muitas tentativas de acesso. Aguarde alguns minutos antes de tentar novamente.',
+    )
+    return
+  }
+
   try {
-    const account = await users.findActiveForAuthentication(identifier.trim())
+    // Em banco remoto, conta de teste se comporta como inexistente.
+    const account = isTestAccountBlocked(normalizedIdentifier)
+      ? null
+      : await users.findActiveForAuthentication(identifier.trim())
+    const passwordMatches = account
+      ? await verifyPassword(password, account.passwordHash)
+      : await verifyPasswordAgainstDecoy(password)
 
     // Não revelar se o usuário existe ou se está inativo.
-    if (
-      !account ||
-      !(await verifyPassword(password, account.passwordHash))
-    ) {
+    if (!account || !passwordMatches) {
+      const limitReached = [
+        pairLimit,
+        accountLimit,
+        authRateLimits.loginIp.consume(ip),
+      ].some((limit) => limit.remaining === 0)
+
+      const fingerprint = identifierFingerprint(normalizedIdentifier)
+      logSecurityEvent('login_failed', { identifier: fingerprint })
+      await recordAuthAuditEvent({
+        actorUserId: null,
+        actorKind: 'system',
+        subjectUserId: account?.id ?? null,
+        sessionId: null,
+        eventType: 'login_failed',
+        result: 'failure',
+        details: { identifier: fingerprint, ip },
+      })
+
+      // Registrado uma vez, ao atingir o limite, para que um ataque não encha a tabela.
+      if (limitReached) {
+        logSecurityEvent('login_rate_limited', { identifier: fingerprint })
+        await recordAuthAuditEvent({
+          actorUserId: null,
+          actorKind: 'system',
+          subjectUserId: account?.id ?? null,
+          sessionId: null,
+          eventType: 'login_rate_limited',
+          result: 'denied',
+          details: { identifier: fingerprint, ip },
+        })
+      }
+
       response.status(401).json({
         success: false,
-        message: 'Usuário ou senha inválidos.',
+        message: 'E-mail ou senha inválidos.',
       })
       return
     }
 
-    const { token, expiresAt } = await sessions.issue({
+    const { token, expiresAt, csrfToken } = await sessions.issue({
       userId: account.id,
       role: account.role,
     })
+
+    authRateLimits.loginPair.reset(pairKey)
+    authRateLimits.loginAccount.reset(normalizedIdentifier)
 
     response.append(
       'Set-Cookie',
@@ -149,19 +249,23 @@ authRouter.post('/auth/login', async (request, response) => {
 
     response.json({
       success: true,
+      csrfToken,
       user: {
         id: account.id,
         name: account.name,
         email: account.email,
         username: account.username,
         role: account.role,
+        sector: account.sector,
+        permissions: account.permissions,
+        slmMember: account.slmMember,
       },
     })
-    } catch (error) {
-    console.error(
-      '[AUTH LOGIN] Falha interna:',
-      error instanceof Error ? error.message : 'Erro desconhecido',
-    )
+  } catch (error) {
+    // Indisponibilidade do banco não conta como tentativa do usuário.
+    authRateLimits.loginPair.release(pairKey)
+    authRateLimits.loginAccount.release(normalizedIdentifier)
+    logSecurityEvent('login_error', describeError(error))
 
     response.status(503).json({
       success: false,
@@ -171,13 +275,14 @@ authRouter.post('/auth/login', async (request, response) => {
 })
 
 
-authRouter.get('/auth/me', requireAuth, async (_request, response) => {
+authRouter.get('/auth/me', requireAuth, async (request, response) => {
   const identity = response.locals.authenticatedUser
 
   try {
     const account = await users.findActiveById(identity.userId)
+    const sessionToken = readSessionToken(request.headers.cookie)
 
-    if (!account) {
+    if (!account || !sessionToken) {
       response.status(401).json({
         success: false,
         message: 'Autenticação necessária.',
@@ -187,12 +292,16 @@ authRouter.get('/auth/me', requireAuth, async (_request, response) => {
 
     response.json({
       success: true,
+      csrfToken: deriveCsrfToken(sessionToken),
       user: {
         id: account.id,
         name: account.name,
         email: account.email,
         username: account.username,
         role: account.role,
+        sector: account.sector,
+        permissions: account.permissions,
+        slmMember: account.slmMember,
       },
     })
   } catch {
@@ -208,8 +317,23 @@ authRouter.post('/auth/logout', async (request, response) => {
   const token = readSessionToken(request.headers.cookie)
 
   try {
-    if (token) {
-      await sessions.revoke(token)
+    // Sessão já encerrada não oferece risco: basta limpar o cookie.
+    const session = token ? await sessions.resolve(token) : null
+
+    if (session) {
+      if (
+        !csrfTokenMatches(request.get(csrfHeaderName), session.csrfTokenHash)
+      ) {
+        logSecurityEvent('csrf_rejected', { method: request.method })
+        response.status(403).json({
+          success: false,
+          code: 'CSRF_INVALID',
+          message: 'Não foi possível validar sua sessão. Atualize a página e tente novamente.',
+        })
+        return
+      }
+
+      await sessions.revoke(token as string)
     }
 
     response.append('Set-Cookie', createClearedSessionCookie())
@@ -240,46 +364,28 @@ authRouter.post('/auth/password-recovery/request', async (request, response) => 
     return
   }
 
-  const ip = request.ip || 'unknown'
-  if (
-    !allowRecoveryAttempt(`request:ip:${ip}`, 10) ||
-    !allowRecoveryAttempt(`request:email:${email}`, 3)
-  ) {
-    response.status(429).json({
-      success: false,
-      message: 'Muitas solicitações. Aguarde alguns minutos antes de tentar novamente.',
-    })
+  const ipLimit = authRateLimits.recoveryRequestIp.consume(clientIp(request))
+  const emailLimit = ipLimit.allowed
+    ? authRateLimits.recoveryRequestEmail.consume(email)
+    : ipLimit
+  if (!emailLimit.allowed) {
+    sendTooManyRequests(
+      response,
+      emailLimit,
+      'Muitas solicitações. Aguarde alguns minutos antes de tentar novamente.',
+    )
     return
   }
 
-  // A mesma resposta é devolvida para e-mails cadastrados e não cadastrados.
-  const genericMessage =
-    'Se houver uma conta ativa associada a esse e-mail, você receberá instruções para recuperar a senha.'
+  // A mesma resposta é devolvida para e-mails cadastrados e não cadastrados,
+  // e antes do processamento, para que o tempo de resposta também não os diferencie.
+  response.status(202).json({
+    success: true,
+    message:
+      'Se houver uma conta ativa associada a esse e-mail, você receberá instruções para recuperar a senha.',
+  })
 
-  try {
-    const code = generatePasswordRecoveryCode()
-    const codeHash = hashPasswordRecoveryCode(code)
-    const account = await passwordRecovery.createCode(email, codeHash)
-
-    if (account) {
-      try {
-        await sendPasswordRecoveryCode(account.email, code)
-      } catch {
-        // Não expor detalhes do serviço de e-mail nem deixar o código utilizável.
-        await passwordRecovery.invalidateCodes(account.id).catch(() => undefined)
-      }
-    }
-
-    response.status(202).json({
-      success: true,
-      message: genericMessage,
-    })
-  } catch {
-    response.status(202).json({
-      success: true,
-      message: genericMessage,
-    })
-  }
+  void processPasswordRecoveryRequest(email)
 })
 
 authRouter.post('/auth/password-recovery/reset', async (request, response) => {
@@ -310,12 +416,17 @@ authRouter.post('/auth/password-recovery/reset', async (request, response) => {
     return
   }
 
-  const ip = request.ip || 'unknown'
-  if (!allowRecoveryAttempt(`reset:ip:${ip}`, 20)) {
-    response.status(429).json({
-      success: false,
-      message: 'Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.',
-    })
+  const ip = clientIp(request)
+  const ipLimit = authRateLimits.recoveryResetIp.consume(ip)
+  const emailLimit = ipLimit.allowed
+    ? authRateLimits.recoveryResetEmail.consume(email)
+    : ipLimit
+  if (!emailLimit.allowed) {
+    sendTooManyRequests(
+      response,
+      emailLimit,
+      'Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.',
+    )
     return
   }
 
@@ -335,11 +446,16 @@ authRouter.post('/auth/password-recovery/reset', async (request, response) => {
       return
     }
 
+    authRateLimits.recoveryResetEmail.reset(email)
+    authRateLimits.loginPair.reset(`${ip}|${email}`)
+    authRateLimits.loginAccount.reset(email)
+
     response.json({
       success: true,
       message: 'Senha alterada com sucesso. Entre com sua nova senha.',
     })
-  } catch {
+  } catch (error) {
+    logSecurityEvent('password_reset_failed', describeError(error))
     response.status(503).json({
       success: false,
       message: 'Não foi possível redefinir a senha neste momento.',

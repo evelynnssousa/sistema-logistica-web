@@ -1,5 +1,5 @@
 import argon2 from 'argon2'
-import { scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
+import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
 
 const argon2idHashPattern =
   /^\$argon2id\$v=\d+\$[^$]+\$[A-Za-z0-9+/]+\$[A-Za-z0-9+/]+$/
@@ -21,6 +21,21 @@ export async function hashPassword(password: string): Promise<string> {
     timeCost: 2,
     parallelism: 1,
   })
+}
+
+let decoyHash: Promise<string> | undefined
+
+/**
+ * Faz o mesmo trabalho de uma verificação real quando a conta não existe, para
+ * que o tempo de resposta do login não revele quais e-mails estão cadastrados.
+ * Sempre devolve false.
+ */
+export async function verifyPasswordAgainstDecoy(
+  password: string,
+): Promise<false> {
+  decoyHash ??= hashPassword(randomBytes(32).toString('hex'))
+  await verifyPassword(password, await decoyHash)
+  return false
 }
 
 function verifyScryptPassword(

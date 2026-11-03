@@ -1,5 +1,9 @@
 import type { Pool } from 'pg'
-import { verifyPasswordRecoveryCode } from '../auth/passwordRecovery.js'
+import {
+  PASSWORD_RECOVERY_MAX_ATTEMPTS,
+  PASSWORD_RECOVERY_TTL_MS,
+  verifyPasswordRecoveryCode,
+} from '../auth/passwordRecovery.js'
 import { insertAuthAuditEvent } from './authAuditRepository.js'
 import { getDatabasePool } from './pool.js'
 import { withTransaction } from './withTransaction.js'
@@ -48,8 +52,8 @@ export class PasswordRecoveryRepository {
       await client.query(
         `INSERT INTO public.password_recovery_codes
           (user_id, code_hash, expires_at)
-         VALUES ($1, $2, now() + interval '10 minutes')`,
-        [account.id, codeHash],
+         VALUES ($1, $2, now() + ($3::double precision * interval '1 millisecond'))`,
+        [account.id, codeHash, PASSWORD_RECOVERY_TTL_MS],
       )
 
       await insertAuthAuditEvent(client, {
@@ -109,7 +113,7 @@ export class PasswordRecoveryRepository {
 
       if (
         recovery.expires_at.getTime() <= Date.now() ||
-        recovery.attempts >= 5
+        recovery.attempts >= PASSWORD_RECOVERY_MAX_ATTEMPTS
       ) {
         await client.query(
           `UPDATE public.password_recovery_codes
@@ -123,14 +127,22 @@ export class PasswordRecoveryRepository {
       if (!verifyPasswordRecoveryCode(input.code, recovery.code_hash)) {
         await client.query(
           `UPDATE public.password_recovery_codes
-              SET attempts = LEAST(attempts + 1, 5),
+              SET attempts = LEAST(attempts + 1, $2),
                   consumed_at = CASE
-                    WHEN attempts + 1 >= 5 THEN now()
+                    WHEN attempts + 1 >= $2 THEN now()
                     ELSE consumed_at
                   END
             WHERE id = $1`,
-          [recovery.id],
+          [recovery.id, PASSWORD_RECOVERY_MAX_ATTEMPTS],
         )
+        await insertAuthAuditEvent(client, {
+          actorUserId: null,
+          actorKind: 'system',
+          subjectUserId: account.id,
+          sessionId: null,
+          eventType: 'password_recovery_failed',
+          result: 'failure',
+        })
         return false
       }
 

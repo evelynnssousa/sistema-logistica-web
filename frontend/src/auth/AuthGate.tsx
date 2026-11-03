@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
+import { accessRefusedEvent } from './apiClient'
 import {
   getCurrentUser,
+  logout,
   type AuthenticatedUser,
 } from './auth'
 import LoginPage from '../pages/LoginPage'
 import RegistrationPage from '../pages/RegistrationPage'
 import PasswordRecoveryPage from '../pages/PasswordRecoveryPage'
-import { UserContext } from './UserContext'
+import { LogoutContext, UserContext } from './UserContext'
 
 type AuthGateProps = {
   children: React.ReactNode
@@ -33,9 +36,66 @@ function AuthGate({ children }: AuthGateProps) {
     }
   }, [])
 
+  // Primeira verificação: "checking" já começa verdadeiro e os estados só mudam
+  // quando a resposta chega, e não durante o efeito.
   useEffect(() => {
-    void refreshSession()
-  }, [refreshSession])
+    let active = true
+
+    getCurrentUser()
+      .then((currentUser) => {
+        if (active) setUser(currentUser)
+      })
+      .catch(() => {
+        if (active) setUnavailable(true)
+      })
+      .finally(() => {
+        if (active) setChecking(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  // Mantém menus e rotas alinhados às permissões atuais, que podem mudar durante a
+  // sessão. Se a conta foi desativada, volta para o login.
+  const { pathname } = useLocation()
+  const firstPath = useRef(true)
+
+  useEffect(() => {
+    let active = true
+
+    const refresh = () => {
+      getCurrentUser()
+        .then((currentUser) => {
+          if (active) setUser(currentUser)
+        })
+        .catch(() => {
+          // Falha momentânea: o backend continua validando cada requisição.
+        })
+    }
+
+    if (firstPath.current) {
+      firstPath.current = false
+    } else {
+      refresh()
+    }
+
+    window.addEventListener('focus', refresh)
+    window.addEventListener(accessRefusedEvent, refresh)
+    return () => {
+      active = false
+      window.removeEventListener('focus', refresh)
+      window.removeEventListener(accessRefusedEvent, refresh)
+    }
+  }, [pathname])
+
+  // Só considera a saída concluída depois de o backend encerrar a sessão.
+  const handleLogout = useCallback(async () => {
+    await logout()
+    setUser(null)
+    setAuthView('login')
+  }, [])
 
   if (checking) {
     return (
@@ -88,7 +148,9 @@ function AuthGate({ children }: AuthGateProps) {
 
   return (
     <UserContext.Provider value={user}>
-      {children}
+      <LogoutContext.Provider value={handleLogout}>
+        {children}
+      </LogoutContext.Provider>
     </UserContext.Provider>
   )
 }

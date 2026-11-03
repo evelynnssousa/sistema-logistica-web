@@ -5,13 +5,22 @@ import { test } from 'node:test'
 import type { ResolvedSession } from '../auth/session.js'
 import { requireAuthentication } from './requireAuthentication.js'
 import type { SessionResolver } from './requireAuthentication.js'
+import {
+  requireAnyPermission,
+  requirePermission,
+  requireSlmMember,
+} from './requirePermission.js'
 import { requireAuthorization } from './requireAuthorization.js'
 
 const token = 'x'.repeat(43)
 const operatorSession: ResolvedSession = {
   userId: 'trusted-user-from-session-store',
   role: 'slm_operator',
+  permissions: ['maintenance:read'],
+  slmMember: true,
+  sector: 'CPC',
   expiresAt: Date.now() + 60_000,
+  csrfTokenHash: 'c'.repeat(64),
 }
 
 async function startTestServer(sessions: SessionResolver) {
@@ -75,6 +84,9 @@ test('requires a server-resolved session and checks authorization separately', a
     assert.deepEqual(await operatorResponse.json(), {
       userId: 'trusted-user-from-session-store',
       role: 'slm_operator',
+      permissions: ['maintenance:read'],
+      slmMember: true,
+      sector: 'CPC',
     })
   } finally {
     await server.close()
@@ -100,5 +112,53 @@ test('does not expose session-store errors to HTTP clients', async () => {
     })
   } finally {
     await server.close()
+  }
+})
+
+test('requirePermission separa autenticação de autorização e exige a permissão exata', async () => {
+  const app = express()
+  const auth = requireAuthentication({
+    resolve: async (receivedToken) =>
+      receivedToken === token ? operatorSession : null,
+  })
+  app.get('/com', auth, requirePermission('maintenance:read'), (_request, response) => {
+    response.json({ success: true })
+  })
+  app.get('/sem', auth, requirePermission('users:read'), (_request, response) => {
+    response.json({ success: true })
+  })
+  app.get(
+    '/qualquer',
+    auth,
+    requireAnyPermission('users:read', 'maintenance:read'),
+    (_request, response) => {
+      response.json({ success: true })
+    },
+  )
+  app.get('/slm', auth, requireSlmMember, (_request, response) => {
+    response.json({ success: true })
+  })
+  app.get('/sem-sessao', requirePermission('maintenance:read'), (_request, response) => {
+    response.json({ success: true })
+  })
+
+  const server = app.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const address = server.address()
+  if (!address || typeof address === 'string') throw new Error('Sem endereço.')
+  const get = (path: string, withCookie = true) =>
+    fetch(`http://127.0.0.1:${address.port}${path}`, {
+      headers: withCookie ? { Cookie: `slm_session=${token}` } : {},
+    })
+
+  try {
+    assert.equal((await get('/com')).status, 200)
+    assert.equal((await get('/sem')).status, 403)
+    assert.equal((await get('/qualquer')).status, 200)
+    assert.equal((await get('/slm')).status, 200)
+    assert.equal((await get('/com', false)).status, 401)
+    assert.equal((await get('/sem-sessao')).status, 401)
+  } finally {
+    await new Promise((done) => server.close(done))
   }
 })

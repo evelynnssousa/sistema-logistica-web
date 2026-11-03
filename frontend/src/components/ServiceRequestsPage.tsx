@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useHasPermission } from '../auth/UserContext'
 
 type ServiceRequestsPageProps = {
   pageTitle: string
@@ -13,6 +14,7 @@ type ServiceRequestsPageProps = {
   statusFilterStyle?: 'select' | 'tabs'
   emptyActionLabel?: string
   newRequestTo?: string
+  createPermission?: string
 }
 
 function ServiceRequestsPage({
@@ -27,7 +29,10 @@ function ServiceRequestsPage({
   statusFilterStyle = 'select',
   emptyActionLabel,
   newRequestTo,
+  createPermission,
 }: ServiceRequestsPageProps) {
+  const canCreate = useHasPermission(createPermission ?? '')
+  const hidesCreateAction = Boolean(createPermission) && !canCreate
   const [searchTerm, setSearchTerm] = useState('')
   const [status, setStatus] = useState(
     statusFilterStyle === 'tabs' ? 'Todos' : statusOptions[0],
@@ -42,7 +47,7 @@ function ServiceRequestsPage({
           <p>{pageDescription}</p>
         </div>
         <div className="maintenance-action">
-          {newRequestTo ? (
+          {hidesCreateAction ? null : newRequestTo ? (
             <Link className="maintenance-primary-button" to={newRequestTo}>
               <span aria-hidden="true">+</span>
               Nova solicitação

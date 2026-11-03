@@ -1,29 +1,40 @@
-import { createHash, randomBytes } from 'node:crypto'
 import type { Pool } from 'pg'
-import { isAuthRole, resolveDatabaseAuthRole } from '../auth/roles.js'
-import type { SessionStore, StoredSession } from '../auth/session.js'
+import { isAuthRole } from '../auth/roles.js'
+import type {
+  SessionEndReason,
+  SessionStore,
+  StoredSession,
+} from '../auth/session.js'
+import { accessSql, isAccessSchemaMigrated, resolveAccess } from './accessSchema.js'
+import type { AccessRow } from './accessSchema.js'
 import { insertAuthAuditEvent } from './authAuditRepository.js'
 import { getDatabasePool } from './pool.js'
 import { withTransaction } from './withTransaction.js'
 
-type SessionRow = {
+type SessionRow = AccessRow & {
   token_hash: string
+  csrf_token_hash: string
   user_id: string
-  role: string
-  permissions: string[]
+  sector: string
   issued_at: Date
   expires_at: Date
+  last_seen_at: Date
 }
 
 function toStoredSession(row: SessionRow): StoredSession | null {
-  const role = resolveDatabaseAuthRole(row.role, row.permissions)
-  if (!role) return null
+  const access = resolveAccess(row)
+  if (!access) return null
   return {
     tokenHash: row.token_hash,
+    csrfTokenHash: row.csrf_token_hash,
     userId: row.user_id,
-    role,
+    role: access.role,
+    permissions: access.permissions,
+    slmMember: access.slmMember,
+    sector: row.sector,
     issuedAt: row.issued_at.getTime(),
     expiresAt: row.expires_at.getTime(),
+    lastSeenAt: row.last_seen_at.getTime(),
   }
 }
 
@@ -33,46 +44,44 @@ export class PostgresSessionStore implements SessionStore {
   async save(session: StoredSession): Promise<void> {
     if (
       !/^[0-9a-f]{64}$/.test(session.tokenHash) ||
+      !/^[0-9a-f]{64}$/.test(session.csrfTokenHash) ||
       !isAuthRole(session.role) ||
       !session.userId.trim() ||
       !Number.isFinite(session.issuedAt) ||
-      !Number.isFinite(session.expiresAt)
+      !Number.isFinite(session.expiresAt) ||
+      !Number.isFinite(session.lastSeenAt)
     ) {
       throw new Error('Sessão inválida.')
     }
 
     await withTransaction(this.poolProvider(), async (client) => {
-      const account = await client.query<{ role: string; permissions: string[] }>(
-        `SELECT role, permissions
-           FROM public.auth_users
-          WHERE id = $1
-            AND status = 'approved'
-          FOR UPDATE`,
+      const sql = accessSql(await isAccessSchemaMigrated(client))
+      const account = await client.query<AccessRow>(
+        `SELECT ${sql.columns}
+           FROM public.auth_users u
+           ${sql.join}
+          WHERE u.id = $1
+            AND u.status = 'approved'
+          FOR UPDATE OF u`,
         [session.userId],
       )
       const user = account.rows[0]
-      if (
-        !user ||
-        resolveDatabaseAuthRole(user.role, user.permissions) !== session.role
-      ) {
+      if (!user || resolveAccess(user)?.role !== session.role) {
         throw new Error('Usuário inativo ou identidade desatualizada.')
       }
 
-      // A coluna é obrigatória no banco; a validação de CSRF ainda não está ativa.
-      const csrfTokenHash = createHash('sha256')
-        .update(randomBytes(32))
-        .digest('hex')
       const inserted = await client.query<{ id: string; user_id: string }>(
         `INSERT INTO public.auth_sessions
-          (session_token_hash, csrf_token_hash, user_id, created_at, expires_at)
-         VALUES ($1, $2, $3, $4, $5)
+          (session_token_hash, csrf_token_hash, user_id, created_at, expires_at, last_seen_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING id::text AS id, user_id::text AS user_id`,
         [
           session.tokenHash,
-          csrfTokenHash,
+          session.csrfTokenHash,
           session.userId,
           new Date(session.issuedAt),
           new Date(session.expiresAt),
+          new Date(session.lastSeenAt),
         ],
       )
       const row = inserted.rows[0]
@@ -90,15 +99,20 @@ export class PostgresSessionStore implements SessionStore {
     if (!/^[0-9a-f]{64}$/.test(tokenHash)) return null
 
     try {
-      const result = await this.poolProvider().query<SessionRow>(
+      const pool = this.poolProvider()
+      const sql = accessSql(await isAccessSchemaMigrated(pool))
+      const result = await pool.query<SessionRow>(
         `SELECT s.session_token_hash AS token_hash,
+                s.csrf_token_hash,
                 u.id::text AS user_id,
-                u.role,
-                u.permissions,
+                u.sector,
+                ${sql.columns},
                 s.created_at AS issued_at,
-                s.expires_at
+                s.expires_at,
+                s.last_seen_at
            FROM public.auth_sessions s
            JOIN public.auth_users u ON u.id = s.user_id
+           ${sql.join}
           WHERE s.session_token_hash = $1
             AND s.expires_at > now()
             AND u.status = 'approved'
@@ -112,7 +126,10 @@ export class PostgresSessionStore implements SessionStore {
     }
   }
 
-  async deleteByTokenHash(tokenHash: string): Promise<void> {
+  async deleteByTokenHash(
+    tokenHash: string,
+    reason: SessionEndReason = 'logout',
+  ): Promise<void> {
     if (!/^[0-9a-f]{64}$/.test(tokenHash)) return
 
     await withTransaction(this.poolProvider(), async (client) => {
@@ -126,12 +143,33 @@ export class PostgresSessionStore implements SessionStore {
       if (!revoked) return
 
       await insertAuthAuditEvent(client, {
-        actorUserId: revoked.user_id,
-        actorKind: 'user',
+        actorUserId: reason === 'logout' ? revoked.user_id : null,
+        actorKind: reason === 'logout' ? 'user' : 'system',
         subjectUserId: revoked.user_id,
         sessionId: revoked.id,
         eventType: 'session_revoked',
+        details: { reason },
       })
     })
+  }
+
+  async touch(tokenHash: string, lastSeenAt: number): Promise<void> {
+    await this.poolProvider().query(
+      `UPDATE public.auth_sessions
+          SET last_seen_at = $2
+        WHERE session_token_hash = $1`,
+      [tokenHash, new Date(lastSeenAt)],
+    )
+  }
+
+  // Remove apenas sessões. Os eventos de auditoria não dependem delas e permanecem.
+  async deleteExpired(idleCutoff: number): Promise<number> {
+    const result = await this.poolProvider().query(
+      `DELETE FROM public.auth_sessions
+        WHERE expires_at <= now()
+           OR last_seen_at <= $1`,
+      [new Date(idleCutoff)],
+    )
+    return result.rowCount ?? 0
   }
 }

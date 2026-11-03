@@ -11,6 +11,7 @@ import type {
   CatalogCategory,
   CatalogOption,
 } from '../app/maintenanceCatalog'
+import { useHasPermission } from '../auth/UserContext'
 import FormCustomizationSection from '../components/FormCustomizationSection'
 
 const settingsSections: {
@@ -248,6 +249,7 @@ function SettingsPage() {
     getMaintenanceCatalogSnapshot,
   )
   const catalogUnavailable = snapshot.error !== null
+  const canManage = useHasPermission('settings:manage')
 
   return (
     <div className="admin-module-page settings-page">
@@ -277,7 +279,14 @@ function SettingsPage() {
         </div>
       )}
 
-      <FormCustomizationSection />
+      {canManage ? (
+        <FormCustomizationSection />
+      ) : (
+        <div className="settings-guidance" role="note">
+          <span aria-hidden="true">i</span>
+          <p>Seu acesso a esta página é somente de consulta.</p>
+        </div>
+      )}
 
       <section className="settings-grid" aria-label="Listas padronizadas">
         {settingsSections.map((section) => (
@@ -285,7 +294,7 @@ function SettingsPage() {
             key={section.category}
             {...section}
             options={snapshot.options[section.category]}
-            disabled={catalogUnavailable}
+            disabled={catalogUnavailable || !canManage}
           />
         ))}
       </section>

@@ -1,5 +1,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
+import { apiRequest } from '../auth/apiClient'
+import { useAuthenticatedUser } from '../auth/UserContext'
 
 type PendingRegistration = {
   id: string
@@ -17,49 +19,16 @@ type PendingResponse = {
   registrations?: PendingRegistration[]
 }
 
-async function registrationRequest(
+function registrationRequest(
   path: string,
   options: RequestInit = {},
 ): Promise<PendingResponse> {
-  const response = await fetch(`/api/admin/registrations${path}`, {
-    ...options,
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  })
-
-  let data: PendingResponse | null = null
-
-  try {
-    data = (await response.json()) as PendingResponse
-  } catch {
-    // A resposta pode estar vazia ou não conter JSON válido.
-  }
-
-  if (!response.ok || !data?.success) {
-    let message = data?.message
-
-    if (!message && response.status === 401) {
-      message = 'Sua sessão expirou. Entre novamente no sistema.'
-    } else if (!message && response.status === 403) {
-      message = 'Você não tem permissão para realizar esta ação.'
-    } else if (!message && response.status === 404) {
-      message = 'O cadastro solicitado não foi encontrado.'
-    } else if (!message && response.status === 409) {
-      message = 'Este cadastro já foi decidido. Atualize a lista.'
-    } else if (!message) {
-      message = 'Não foi possível comunicar com o servidor. Tente novamente.'
-    }
-
-    throw new Error(message)
-  }
-
-  return data
+  return apiRequest<PendingResponse>(`/admin/registrations${path}`, options)
 }
 
 function PendingRegistrationsPage() {
+  const currentUser = useAuthenticatedUser()
+  const canAssignAnyProfile = currentUser?.role === 'administrator'
   const [registrations, setRegistrations] = useState<PendingRegistration[]>([])
   const [selectedRoles, setSelectedRoles] = useState<Record<string, ApprovalRole>>({})
   const [loading, setLoading] = useState(true)
@@ -81,9 +50,28 @@ function PendingRegistrationsPage() {
     }
   }, [])
 
+  // Primeira carga: "loading" já começa verdadeiro e os estados só mudam quando a
+  // resposta chega, e não durante o efeito.
   useEffect(() => {
-    void loadRegistrations()
-  }, [loadRegistrations])
+    let active = true
+
+    registrationRequest('/pending')
+      .then((data) => {
+        if (active) setRegistrations(data.registrations ?? [])
+      })
+      .catch((err: unknown) => {
+        if (active) {
+          setError(err instanceof Error ? err.message : 'Erro ao carregar os cadastros.')
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   async function decideRegistration(
     registration: PendingRegistration,
@@ -191,8 +179,12 @@ function PendingRegistrationsPage() {
                       disabled={processingId === registration.id}
                     >
                       <option value="requester">Solicitante</option>
-                      <option value="slm_operator">Operador SLM</option>
-                      <option value="administrator">Administrador</option>
+                      {canAssignAnyProfile && (
+                        <>
+                          <option value="slm_operator">Operador SLM</option>
+                          <option value="administrator">Administrador</option>
+                        </>
+                      )}
                     </select>
                   </td>
                   <td>

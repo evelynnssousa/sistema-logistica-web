@@ -1,6 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import logoJucesp from '../../assets/logoJucespNovo.png'
 import { getNavigationForUser } from '../../app/navigation'
+import { roleLabels } from '../../app/roleLabels'
 import { useAuthenticatedUser } from '../../auth/UserContext'
 
 function Sidebar() {
@@ -65,11 +66,8 @@ function Sidebar() {
           <div className="user-info">
             <strong>{user?.name || 'Usuário'}</strong>
             <span>
-              {user?.role === 'administrator'
-                ? 'Administrador'
-                : user?.role === 'slm_operator'
-                  ? 'Operador SLM'
-                  : 'Solicitante'}
+              {user ? roleLabels[user.role] : ''}
+              {user?.slmMember && user.role !== 'slm_operator' ? ' · Equipe SLM' : ''}
             </span>
           </div>
         </div>

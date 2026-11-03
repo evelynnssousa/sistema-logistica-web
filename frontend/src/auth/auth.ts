@@ -1,37 +1,29 @@
+import { ApiError, apiRequest, setCsrfToken } from './apiClient'
+
 export type AuthenticatedUser = {
   id: string
   name: string
   email: string | null
   username: string | null
   role: 'administrator' | 'slm_operator' | 'requester'
+  sector?: string
+  permissions: string[]
+  slmMember: boolean
 }
 
 type AuthResponse = {
   success: boolean
   message?: string
+  code?: string
+  csrfToken?: string
   user?: AuthenticatedUser
 }
 
-async function authRequest(
+function authRequest(
   path: string,
   options: RequestInit = {},
 ): Promise<AuthResponse> {
-  const response = await fetch(`/api/auth/${path}`, {
-    ...options,
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  })
-
-  const data = (await response.json()) as AuthResponse
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.message || 'Não foi possível realizar a operação.')
-  }
-
-  return data
+  return apiRequest<AuthResponse>(`/auth/${path}`, options)
 }
 
 export async function login(
@@ -70,10 +62,8 @@ export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
     const data = await authRequest('me')
     return data.user ?? null
   } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message === 'Autenticação necessária.'
-    ) {
+    if (error instanceof ApiError && error.status === 401) {
+      setCsrfToken(null)
       return null
     }
 
@@ -83,6 +73,7 @@ export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
 
 export async function logout(): Promise<void> {
   await authRequest('logout', { method: 'POST' })
+  setCsrfToken(null)
 }
 
 

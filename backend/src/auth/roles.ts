@@ -1,10 +1,19 @@
+import type { Permission } from './permissions.js'
+
 export const authRoles = ['administrator', 'slm_operator', 'requester'] as const
 
 export type AuthRole = (typeof authRoles)[number]
 
-export type AuthenticatedIdentity = {
+export type SessionIdentity = {
   userId: string
   role: AuthRole
+}
+
+/** Resolvida no servidor a cada requisição, para que alterações valham na hora. */
+export type AuthenticatedIdentity = SessionIdentity & {
+  permissions: readonly Permission[]
+  slmMember: boolean
+  sector: string
 }
 
 const moduleReadPermissions = [
@@ -84,13 +93,8 @@ export function resolveDatabaseAuthRole(
     return null
   }
 
-  const hasPrivilegedPermission = permissions.some(
-    (permission) =>
-      permission.endsWith(':write') ||
-      permission === 'flights:cpf:read',
-  )
-
-  return hasPrivilegedPermission
+  // Uma permissão isolada, como a de CPF ou configurações, não torna ninguém operador.
+  return permissions.some((permission) => moduleWritePermissions.includes(permission))
     ? 'slm_operator'
     : 'requester'
 }

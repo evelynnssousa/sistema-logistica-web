@@ -15,6 +15,14 @@ function getEmailConfiguration(
   return { apiKey, from }
 }
 
+export function isEmailConfigured(
+  environment: NodeJS.ProcessEnv = process.env,
+) {
+  return Boolean(
+    environment.RESEND_API_KEY?.trim() && environment.RESEND_FROM?.trim(),
+  )
+}
+
 export async function sendPasswordRecoveryCode(
   recipient: string,
   code: string,

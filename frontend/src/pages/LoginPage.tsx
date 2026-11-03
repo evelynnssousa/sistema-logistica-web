@@ -56,11 +56,12 @@ function LoginPage({ onLogin, onRegister, onRecoverPassword }: LoginPageProps) {
           <label htmlFor="login-identifier">E-mail</label>
           <input
             id="login-identifier"
-            type="text"
+            type="email"
             autoComplete="username"
             value={identifier}
             onChange={(event) => setIdentifier(event.target.value)}
-            placeholder="Digite seu usuário ou e-mail"
+            placeholder="Digite seu e-mail"
+            maxLength={254}
             required
             disabled={loading}
           />

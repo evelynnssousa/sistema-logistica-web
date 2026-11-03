@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { scryptSync } from 'node:crypto'
 import { test } from 'node:test'
-import { hashPassword, verifyPassword } from './password.js'
+import { hashPassword, verifyPassword, verifyPasswordAgainstDecoy } from './password.js'
 
 test('hashes passwords with Argon2id and verifies only the matching password', async () => {
   const password = 'local-test-password'
@@ -32,4 +32,9 @@ test('verifies scrypt hashes written by the previous version of the system', asy
 
   assert.equal(await verifyPassword('local-test-password', stored), true)
   assert.equal(await verifyPassword('different-password', stored), false)
+})
+
+test('the decoy check does the work of a real verification and never succeeds', async () => {
+  assert.equal(await verifyPasswordAgainstDecoy('qualquer-senha-longa'), false)
+  assert.equal(await verifyPasswordAgainstDecoy(''), false)
 })

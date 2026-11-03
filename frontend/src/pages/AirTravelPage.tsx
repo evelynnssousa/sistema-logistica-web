@@ -33,6 +33,7 @@ function AirTravelPage() {
       statusFilterStyle="tabs"
       emptyActionLabel="Visualizar"
       newRequestTo="/passagens-aereas/nova"
+      createPermission="flights:create"
     />
   )
 }

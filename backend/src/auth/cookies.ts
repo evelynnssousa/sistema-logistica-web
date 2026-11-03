@@ -19,12 +19,21 @@ export function readSessionToken(cookieHeader: string | undefined): string | nul
     : null
 }
 
+// Em produção é sempre Secure. Fora dela, COOKIE_SECURE=true liga o atributo
+// em ambientes de desenvolvimento servidos por HTTPS, como o Codespaces.
+function usesSecureCookie(environment: NodeJS.ProcessEnv) {
+  return (
+    environment.NODE_ENV === 'production' ||
+    environment.COOKIE_SECURE?.trim() === 'true'
+  )
+}
+
 function cookieSecurityAttributes(environment: NodeJS.ProcessEnv) {
   return [
     'Path=/',
     'HttpOnly',
-    'SameSite=Lax',
-    ...(environment.NODE_ENV === 'production' ? ['Secure'] : []),
+    'SameSite=Strict',
+    ...(usesSecureCookie(environment) ? ['Secure'] : []),
   ]
 }
 
