@@ -1,9 +1,12 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import logoJucesp from '../../assets/logoJucespNovo.png'
-import { navigationItems } from '../../app/navigation'
+import { getNavigationForUser } from '../../app/navigation'
+import { useAuthenticatedUser } from '../../auth/UserContext'
 
 function Sidebar() {
   const { pathname } = useLocation()
+  const user = useAuthenticatedUser()
+  const visibleItems = user ? getNavigationForUser(user) : []
   const currentPath = pathname.replace(/\/+$/, '') || '/'
 
   return (
@@ -21,7 +24,7 @@ function Sidebar() {
       <div className="menu-label">MENU PRINCIPAL</div>
 
       <nav className="navigation" aria-label="Navegação principal">
-        {navigationItems.map((item) => {
+        {visibleItems.map((item) => {
           const isActive =
             currentPath === item.path ||
             (item.path !== '/' && currentPath.startsWith(`${item.path}/`))
@@ -57,11 +60,17 @@ function Sidebar() {
         </div>
         <div className="user-profile">
           <div className="avatar" aria-hidden="true">
-            U
+            {(user?.name || 'U').trim().charAt(0).toUpperCase()}
           </div>
           <div className="user-info">
-            <strong>Usuário</strong>
-            <span>Ambiente de desenvolvimento</span>
+            <strong>{user?.name || 'Usuário'}</strong>
+            <span>
+              {user?.role === 'administrator'
+                ? 'Administrador'
+                : user?.role === 'slm_operator'
+                  ? 'Operador SLM'
+                  : 'Solicitante'}
+            </span>
           </div>
         </div>
       </div>

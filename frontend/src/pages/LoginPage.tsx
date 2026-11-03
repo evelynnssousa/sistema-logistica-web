@@ -5,9 +5,11 @@ import '../App.css'
 
 type LoginPageProps = {
   onLogin: () => Promise<void>
+  onRegister: () => void
+  onRecoverPassword: () => void
 }
 
-function LoginPage({ onLogin }: LoginPageProps) {
+function LoginPage({ onLogin, onRegister, onRecoverPassword }: LoginPageProps) {
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -63,6 +65,17 @@ function LoginPage({ onLogin }: LoginPageProps) {
             disabled={loading}
           />
 
+          <div className="recovery-link-row">
+            <button
+              className="recovery-link"
+              type="button"
+              onClick={onRecoverPassword}
+              disabled={loading}
+            >
+              Esqueci minha senha
+            </button>
+          </div>
+
           <label htmlFor="login-password">Senha</label>
           <input
             id="login-password"
@@ -89,6 +102,17 @@ function LoginPage({ onLogin }: LoginPageProps) {
             {loading ? 'Entrando...' : 'Entrar no sistema'}
           </button>
         </form>
+
+        <p className="login-register-link">
+          Ainda não tem uma conta?{' '}
+          <button
+            type="button"
+            onClick={onRegister}
+            disabled={loading}
+          >
+            Crie aqui
+          </button>
+        </p>
 
         <p className="login-footer">
           Acesso restrito a usuários autorizados.

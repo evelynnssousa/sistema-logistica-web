@@ -4182,3 +4182,72 @@ body,
   margin-right: auto;
   object-position: center;
 }
+
+.login-register-link {
+  margin: 18px 0 0;
+  text-align: center;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.login-register-link button {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #034EA2;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.login-register-link button:hover {
+  text-decoration: underline;
+}
+
+.login-register-link button:focus-visible {
+  outline: 2px solid #034EA2;
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+
+/* Recuperação de senha — estilos adicionais */
+.recovery-link-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: -4px 0 8px;
+}
+
+.recovery-link {
+  border: 0;
+  padding: 4px 0;
+  background: transparent;
+  color: #034EA2;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.recovery-link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.recovery-link:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.recovery-resend {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.recovery-success {
+  margin: 8px 0;
+  color: #176b3a;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}

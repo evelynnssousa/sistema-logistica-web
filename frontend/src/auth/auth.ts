@@ -3,7 +3,7 @@ export type AuthenticatedUser = {
   name: string
   email: string | null
   username: string | null
-  role: 'administrator' | 'slm_operator'
+  role: 'administrator' | 'slm_operator' | 'requester'
 }
 
 type AuthResponse = {
@@ -50,6 +50,21 @@ export async function login(
   return data.user
 }
 
+export async function register(input: {
+  fullName: string
+  email: string
+  sector: string
+  password: string
+  passwordConfirmation: string
+}): Promise<string> {
+  const data = await authRequest('register', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+
+  return data.message || 'Solicitação enviada para aprovação.'
+}
+
 export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
   try {
     const data = await authRequest('me')
@@ -68,4 +83,26 @@ export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
 
 export async function logout(): Promise<void> {
   await authRequest('logout', { method: 'POST' })
+}
+
+
+export async function requestPasswordRecovery(email: string): Promise<string> {
+  const data = await authRequest('password-recovery/request', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+  return data.message || 'Se houver uma conta ativa associada a esse e-mail, você receberá instruções.'
+}
+
+export async function resetPassword(input: {
+  email: string
+  code: string
+  password: string
+  passwordConfirmation: string
+}): Promise<string> {
+  const data = await authRequest('password-recovery/reset', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+  return data.message || 'Senha alterada com sucesso.'
 }

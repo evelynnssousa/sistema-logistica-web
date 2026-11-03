@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Navigate, useLocation } from 'react-router-dom'
 import {
   getCurrentUser,
   type AuthenticatedUser,
 } from './auth'
 import LoginPage from '../pages/LoginPage'
+import RegistrationPage from '../pages/RegistrationPage'
+import PasswordRecoveryPage from '../pages/PasswordRecoveryPage'
+import { UserContext } from './UserContext'
 
 type AuthGateProps = {
   children: React.ReactNode
@@ -14,7 +16,7 @@ function AuthGate({ children }: AuthGateProps) {
   const [user, setUser] = useState<AuthenticatedUser | null>(null)
   const [checking, setChecking] = useState(true)
   const [unavailable, setUnavailable] = useState(false)
-  const location = useLocation()
+  const [authView, setAuthView] = useState<'login' | 'register' | 'recovery'>('login')
 
   const refreshSession = useCallback(async () => {
     setChecking(true)
@@ -57,20 +59,38 @@ function AuthGate({ children }: AuthGateProps) {
   }
 
   if (!user) {
+    if (authView === 'register') {
+      return (
+        <RegistrationPage
+          onBackToLogin={() => setAuthView('login')}
+        />
+      )
+    }
+
+    if (authView === 'recovery') {
+      return (
+        <PasswordRecoveryPage
+          onBackToLogin={() => setAuthView('login')}
+        />
+      )
+    }
+
     return (
       <LoginPage
         onLogin={async () => {
           await refreshSession()
         }}
+        onRegister={() => setAuthView('register')}
+        onRecoverPassword={() => setAuthView('recovery')}
       />
     )
   }
 
-  if (user.role !== 'administrator' && user.role !== 'slm_operator') {
-    return <Navigate to="/" replace state={{ from: location }} />
-  }
-
-  return <>{children}</>
+  return (
+    <UserContext.Provider value={user}>
+      {children}
+    </UserContext.Provider>
+  )
 }
 
 export default AuthGate
