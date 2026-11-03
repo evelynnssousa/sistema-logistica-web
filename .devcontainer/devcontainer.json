@@ -1,0 +1,8 @@
+{
+  "name": "Sistema de Logística e Manutenção",
+  "forwardPorts": [5173, 3000],
+  "portsAttributes": {
+    "5173": { "label": "Sistema (tela)", "onAutoForward": "notify" },
+    "3000": { "label": "API", "onAutoForward": "silent" }
+  }
+}
