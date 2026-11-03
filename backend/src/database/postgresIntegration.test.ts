@@ -61,15 +61,18 @@ class RoleScopedPool {
     return scopedClient as unknown as PoolClient
   }
 
-  async query(text: string, values?: unknown[]) {
-    const client = await this.connect()
-    try {
-      return await client.query(text, values)
-    } finally {
-      client.release()
-      await this.drain()
-    }
+  async query<T extends import('pg').QueryResultRow = import('pg').QueryResultRow>(
+  text: string,
+  values?: unknown[],
+) {
+  const client = await this.connect()
+  try {
+    return await client.query<T>(text, values)
+  } finally {
+    client.release()
+    await this.drain()
   }
+}
 
   async drain() {
     await Promise.all([...this.pendingReleases])
