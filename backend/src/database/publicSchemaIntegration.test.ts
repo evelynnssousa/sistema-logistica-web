@@ -11,6 +11,7 @@ import { hashPasswordRecoveryCode } from '../auth/passwordRecovery.js'
 import { sessionCookieName } from '../auth/cookies.js'
 import { setDatabasePoolForTests } from './pool.js'
 import { PasswordRecoveryRepository } from './passwordRecoveryRepository.js'
+import { AccountAuthorizationError, UserRepository } from './userRepository.js'
 
 // Roda contra uma cópia vazia do esquema real, em um PostgreSQL descartável.
 // Ver backend/database/POSTGRES_INTEGRATION_TESTS.md.
@@ -315,4 +316,111 @@ test('recuperação ignora contas não aprovadas', async () => {
   process.env.PASSWORD_RESET_PEPPER = 'pepper-de-teste'
   const recovery = new PasswordRecoveryRepository(() => pool)
   assert.equal(await recovery.createCode(email, hashPasswordRecoveryCode('123456')), null)
+})
+
+test('um administrador aprova outro, e os dois atuam ao mesmo tempo', async () => {
+  const email = 'segundo-admin@example.gov.br'
+  await register(email)
+  const first = await login('admin@example.gov.br')
+  const id = await pendingId(email, first.cookie)
+
+  const approved = await api(`/admin/registrations/${id}/approve`, {
+    method: 'POST',
+    cookie: first.cookie,
+    body: { role: 'administrator' },
+  })
+  assert.equal(approved.status, 200)
+
+  const second = await login(email)
+  assert.equal(second.body.user.role, 'administrator')
+
+  // O segundo administrador decide um cadastro, com o primeiro ainda ativo.
+  const other = 'aprovado-pelo-segundo@example.gov.br'
+  await register(other)
+  const otherId = await pendingId(other, second.cookie)
+  const decided = await api(`/admin/registrations/${otherId}/approve`, {
+    method: 'POST',
+    cookie: second.cookie,
+    body: { role: 'requester' },
+  })
+  assert.equal(decided.status, 200)
+  assert.equal((await api('/auth/me', { cookie: first.cookie })).status, 200)
+
+  const { rows } = await pool.query<{ decided_by: string }>(
+    'SELECT decided_by::text AS decided_by FROM public.auth_users WHERE id = $1',
+    [otherId],
+  )
+  assert.equal(rows[0].decided_by, id)
+
+  const audit = await pool.query<{ role: string }>(
+    `SELECT details->>'role' AS role FROM public.auth_audit_events
+      WHERE target_user_id = $1 AND action = 'registration.approve'`,
+    [id],
+  )
+  assert.equal(audit.rows[0].role, 'administrator')
+})
+
+test('perfil de aprovação desconhecido é recusado', async () => {
+  const email = 'perfil-invalido@example.gov.br'
+  await register(email)
+  const admin = await login('admin@example.gov.br')
+  const id = await pendingId(email, admin.cookie)
+
+  const response = await api(`/admin/registrations/${id}/approve`, {
+    method: 'POST',
+    cookie: admin.cookie,
+    body: { role: 'admin' },
+  })
+  assert.equal(response.status, 400)
+})
+
+test('administrador não remove o próprio acesso, então sempre resta um ativo', async () => {
+  const users = new UserRepository(() => pool)
+  const account = (await users.findActiveById(adminId))!
+  const actor = { userId: adminId, role: 'administrator' as const }
+
+  await assert.rejects(
+    () =>
+      users.updateUser(actor, adminId, {
+        name: account.name,
+        email: account.email,
+        role: 'requester',
+        isActive: true,
+      }),
+    AccountAuthorizationError,
+  )
+  await assert.rejects(
+    () =>
+      users.updateUser(actor, adminId, {
+        name: account.name,
+        email: account.email,
+        role: 'administrator',
+        isActive: false,
+      }),
+    AccountAuthorizationError,
+  )
+  assert.equal((await login('admin@example.gov.br')).status, 200)
+})
+
+test('um administrador pode desativar outro, e as sessões dele terminam', async () => {
+  const email = 'admin-desativado@example.gov.br'
+  await register(email)
+  const first = await login('admin@example.gov.br')
+  const id = await pendingId(email, first.cookie)
+  await api(`/admin/registrations/${id}/approve`, {
+    method: 'POST',
+    cookie: first.cookie,
+    body: { role: 'administrator' },
+  })
+  const target = await login(email)
+
+  await new UserRepository(() => pool).updateUser(
+    { userId: adminId, role: 'administrator' },
+    id,
+    { name: 'Pessoa de Teste', email, role: 'administrator', isActive: false },
+  )
+
+  assert.equal((await api('/auth/me', { cookie: target.cookie })).status, 401)
+  assert.equal((await login(email)).status, 401)
+  assert.equal((await login('admin@example.gov.br')).status, 200)
 })

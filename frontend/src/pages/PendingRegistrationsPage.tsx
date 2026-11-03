@@ -9,6 +9,8 @@ type PendingRegistration = {
   createdAt: string
 }
 
+type ApprovalRole = 'requester' | 'slm_operator' | 'administrator'
+
 type PendingResponse = {
   success: boolean
   message?: string
@@ -59,7 +61,7 @@ async function registrationRequest(
 
 function PendingRegistrationsPage() {
   const [registrations, setRegistrations] = useState<PendingRegistration[]>([])
-  const [selectedRoles, setSelectedRoles] = useState<Record<string, 'requester' | 'slm_operator'>>({})
+  const [selectedRoles, setSelectedRoles] = useState<Record<string, ApprovalRole>>({})
   const [loading, setLoading] = useState(true)
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -87,8 +89,13 @@ function PendingRegistrationsPage() {
     registration: PendingRegistration,
     action: 'approve' | 'reject',
   ) {
+    const approvesAdministrator =
+      action === 'approve' &&
+      selectedRoles[registration.id] === 'administrator'
     const confirmation =
-      action === 'approve'
+      approvesAdministrator
+        ? `Aprovar ${registration.name} como ADMINISTRADOR? Essa pessoa poderá aprovar cadastros, inclusive de outros administradores.`
+        : action === 'approve'
         ? `Aprovar o cadastro de ${registration.name}?`
         : `Rejeitar o cadastro de ${registration.name}?`
 
@@ -178,13 +185,14 @@ function PendingRegistrationsPage() {
                       onChange={(event) =>
                         setSelectedRoles((current) => ({
                           ...current,
-                          [registration.id]: event.target.value as 'requester' | 'slm_operator',
+                          [registration.id]: event.target.value as ApprovalRole,
                         }))
                       }
                       disabled={processingId === registration.id}
                     >
                       <option value="requester">Solicitante</option>
                       <option value="slm_operator">Operador SLM</option>
+                      <option value="administrator">Administrador</option>
                     </select>
                   </td>
                   <td>

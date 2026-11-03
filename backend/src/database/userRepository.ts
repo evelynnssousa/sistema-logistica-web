@@ -428,7 +428,7 @@ export class UserRepository {
     userId: string,
     decision: {
       action: 'approve'
-      role: 'requester' | 'slm_operator'
+      role: AuthRole
     } | {
       action: 'reject'
     },
@@ -439,11 +439,7 @@ export class UserRepository {
       throw new DomainError('Identificador de usuário inválido.')
     }
 
-    if (
-      decision.action === 'approve' &&
-      decision.role !== 'requester' &&
-      decision.role !== 'slm_operator'
-    ) {
+    if (decision.action === 'approve' && !isAuthRole(decision.role)) {
       throw new DomainError('Perfil de aprovação inválido.')
     }
 

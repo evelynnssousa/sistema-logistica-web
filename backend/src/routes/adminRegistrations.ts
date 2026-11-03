@@ -1,5 +1,6 @@
 
 import { Router } from 'express'
+import { isAuthRole } from '../auth/roles.js'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
 import { UserRepository, AccountAuthorizationError } from '../database/userRepository.js'
 import { requireAuthentication } from '../middleware/requireAuthentication.js'
@@ -85,7 +86,7 @@ router.get('/admin/registrations/pending', async (_request, response) => {
 router.post('/admin/registrations/:userId/approve', async (request, response) => {
   const { role } = request.body ?? {}
 
-  if (role !== 'requester' && role !== 'slm_operator') {
+  if (!isAuthRole(role)) {
     response.status(400).json({
       success: false,
       message: 'Selecione um perfil válido para a aprovação.',
