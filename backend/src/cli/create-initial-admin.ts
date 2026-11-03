@@ -142,3 +142,11 @@ async function hiddenPassword(prompt: string): Promise<string> {
 
   return promise
 }
+
+main().catch((error) => {
+  console.error(
+    'Falha ao criar o administrador:',
+    error instanceof Error ? error.message : 'Erro desconhecido',
+  )
+  process.exitCode = 1
+})
