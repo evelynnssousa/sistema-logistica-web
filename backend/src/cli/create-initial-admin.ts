@@ -1,4 +1,5 @@
 
+import '../loadEnvironment.js'
 import { createInterface } from 'node:readline/promises'
 import { stdin, stdout } from 'node:process'
 import { getDatabasePool } from '../database/pool.js'
