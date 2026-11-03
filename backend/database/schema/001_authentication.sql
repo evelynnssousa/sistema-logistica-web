@@ -8,7 +8,7 @@ CREATE TABLE app_private.users (
   password_hash text NOT NULL
     CHECK (password_hash LIKE '$argon2id$%'),
   role text NOT NULL
-    CHECK (role IN ('administrator', 'slm_operator')),
+    CHECK (role IN ('administrator', 'slm_operator', 'requester')),
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -76,7 +76,8 @@ CREATE TABLE app_private.auth_audit_events (
     'password_changed',
     'session_created',
     'session_revoked',
-    'administrator_recovered'
+    'administrator_recovered',
+    'initial_administrator_created'
   )),
   occurred_at timestamptz NOT NULL DEFAULT now(),
   request_id uuid,
