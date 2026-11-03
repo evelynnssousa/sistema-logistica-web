@@ -1,7 +1,14 @@
 import argon2 from 'argon2'
+import { scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
 
 const argon2idHashPattern =
   /^\$argon2id\$v=\d+\$[^$]+\$[A-Za-z0-9+/]+\$[A-Za-z0-9+/]+$/
+
+// Formato gravado pela versão anterior do sistema no banco real:
+// scrypt$N$r$p$saltHex$chaveHex. Aceito apenas na verificação; senhas novas usam Argon2id.
+const scryptHashPattern =
+  /^scrypt\$(\d+)\$(\d+)\$(\d+)\$([0-9a-f]{32})\$([0-9a-f]{128})$/
+const scryptMaxMemory = 64 * 1024 * 1024
 
 export async function hashPassword(password: string): Promise<string> {
   if (typeof password !== 'string' || password.length === 0) {
@@ -16,6 +23,31 @@ export async function hashPassword(password: string): Promise<string> {
   })
 }
 
+function verifyScryptPassword(
+  password: string,
+  match: RegExpExecArray,
+): Promise<boolean> {
+  const [, cost, blockSize, parallelization, saltHex, keyHex] = match
+  const expected = Buffer.from(keyHex, 'hex')
+
+  return new Promise((resolve) => {
+    scryptCallback(
+      password,
+      Buffer.from(saltHex, 'hex'),
+      expected.length,
+      {
+        N: Number(cost),
+        r: Number(blockSize),
+        p: Number(parallelization),
+        maxmem: scryptMaxMemory,
+      },
+      (error, derivedKey) => {
+        resolve(!error && timingSafeEqual(derivedKey, expected))
+      },
+    )
+  })
+}
+
 export async function verifyPassword(
   password: string,
   encodedHash: string,
@@ -23,13 +55,16 @@ export async function verifyPassword(
   if (
     typeof password !== 'string' ||
     password.length === 0 ||
-    typeof encodedHash !== 'string' ||
-    !argon2idHashPattern.test(encodedHash)
+    typeof encodedHash !== 'string'
   ) {
     return false
   }
 
   try {
+    const scryptMatch = scryptHashPattern.exec(encodedHash)
+    if (scryptMatch) return await verifyScryptPassword(password, scryptMatch)
+
+    if (!argon2idHashPattern.test(encodedHash)) return false
     return await argon2.verify(encodedHash, password)
   } catch {
     return false
