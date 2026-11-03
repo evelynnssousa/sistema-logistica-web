@@ -12,6 +12,14 @@ export type AuthAuditEventType =
   | 'session_created'
   | 'session_revoked'
   | 'administrator_recovered'
+  | 'initial_administrator_created'
+  | 'registration_submitted'
+  | 'registration_approved'
+  | 'registration_rejected'
+  | 'account_blocked'
+  | 'permissions_changed'
+  | 'password_recovery_completed'
+  | 'password_recovery_requested'
 
 export type AuthAuditEvent = {
   actorUserId: string | null

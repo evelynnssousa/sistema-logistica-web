@@ -1,10 +1,17 @@
 import type { Pool, PoolClient } from 'pg'
-import { isAuthRole } from '../auth/roles.js'
+import { isAuthRole, normalizeAuthRole } from '../auth/roles.js'
 import type { AuthRole, AuthenticatedIdentity } from '../auth/roles.js'
 import { normalizeLoginIdentifiers } from '../auth/identifiers.js'
 import { insertAuthAuditEvent } from './authAuditRepository.js'
 import { getDatabasePool } from './pool.js'
 import { withTransaction } from './withTransaction.js'
+
+export type CreatePendingUserInput = {
+  name: string
+  email: string
+  sector: string
+  passwordHash: string
+}
 
 export type CreateUserInput = {
   name: string
@@ -48,7 +55,9 @@ type LockedUserRow = {
   id: string
   role: string
   is_active: boolean
+  account_status: string
 }
+
 
 export class AccountAuthorizationError extends Error {
   constructor() {
@@ -97,16 +106,20 @@ async function lockActiveAdministrator(
   if (result.rowCount !== 1) throw new AccountAuthorizationError()
 }
 
+
 function toUserAccount(row: UserRow): UserAccount {
-  if (!isAuthRole(row.role)) {
+  const role = normalizeAuthRole(row.role)
+
+  if (!role) {
     throw new Error('Papel de usuário persistido inválido.')
   }
+
   return {
     id: row.id,
     name: row.name,
     email: row.email,
     username: row.username,
-    role: row.role,
+    role,
     isActive: row.is_active,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -182,6 +195,68 @@ export class UserRepository {
     }
   }
 
+  async createPendingUser(
+    input: CreatePendingUserInput,
+  ): Promise<{ id: string; name: string; email: string; sector: string; status: 'pending'; createdAt: Date }> {
+    const name = normalizeName(input.name)
+    const email = typeof input.email === 'string'
+      ? input.email.trim().toLowerCase()
+      : ''
+    const sector = typeof input.sector === 'string'
+      ? input.sector.trim()
+      : ''
+
+    if (
+      name.length > 120 ||
+      email.length > 254 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+      sector.length < 2 ||
+      sector.length > 120 ||
+      typeof input.passwordHash !== 'string' ||
+      !input.passwordHash.startsWith('$argon2id$')
+    ) {
+      throw new Error('Dados de cadastro inválidos.')
+    }
+
+    return withTransaction(this.poolProvider(), async (client) => {
+      const result = await client.query<{
+        id: string
+        name: string
+        email: string
+        sector: string
+        account_status: string
+        created_at: Date
+      }>(
+        `INSERT INTO app_private.users
+          (name, email, username, password_hash, role, is_active,
+           account_status, sector)
+         VALUES ($1, $2, NULL, $3, 'requester', false, 'pending', $4)
+         RETURNING id::text AS id, name, email, sector,
+                   account_status, created_at`,
+        [name, email, input.passwordHash, sector],
+      )
+
+      const account = result.rows[0]
+
+      await insertAuthAuditEvent(client, {
+        actorUserId: null,
+        actorKind: 'system',
+        subjectUserId: account.id,
+        sessionId: null,
+        eventType: 'registration_submitted',
+      })
+
+      return {
+        id: account.id,
+        name: account.name,
+        email: account.email,
+        sector: account.sector,
+        status: 'pending',
+        createdAt: account.created_at,
+      }
+    })
+  }
+
   async createUser(
     actor: AuthenticatedIdentity,
     input: CreateUserInput,
@@ -242,15 +317,20 @@ export class UserRepository {
     return withTransaction(this.poolProvider(), async (client) => {
       await lockActiveAdministrator(client, actor.userId)
       const locked = await client.query<LockedUserRow>(
-        `SELECT id::text AS id, role, is_active
-           FROM app_private.users
-          WHERE id = $1
-          FOR UPDATE`,
+        `SELECT id::text AS id, role, is_active, account_status
+  FROM app_private.users
+ WHERE id = $1
+ FOR UPDATE`,
         [userId],
       )
       const previous = locked.rows[0]
       if (!previous) throw new Error('Conta não encontrada.')
-      if (
+      if (previous.account_status === 'pending') {
+  throw new Error(
+    'Cadastros pendentes só podem ser alterados pela aprovação ou rejeição administrativa.',
+  )
+}
+        if (
         previous.id === actor.userId &&
         (input.role !== 'administrator' || !input.isActive)
       ) {
@@ -328,6 +408,169 @@ export class UserRepository {
         })
       }
       return account
+    })
+  }
+   async listPendingRegistrations(
+    actor: AuthenticatedIdentity,
+  ): Promise<Array<{
+    id: string
+    name: string
+    email: string
+    sector: string
+    createdAt: Date
+  }>> {
+    assertAdministrator(actor)
+
+    return withTransaction(this.poolProvider(), async (client) => {
+      await lockActiveAdministrator(client, actor.userId)
+
+      const result = await client.query<{
+        id: string
+        name: string
+        email: string
+        sector: string
+        created_at: Date
+      }>(
+        `SELECT id::text AS id, name, email, sector, created_at
+           FROM app_private.users
+          WHERE account_status = 'pending'
+          ORDER BY created_at ASC`,
+      )
+
+      return result.rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        sector: row.sector,
+        createdAt: row.created_at,
+      }))
+    })
+  }
+    async decidePendingRegistration(
+    actor: AuthenticatedIdentity,
+    userId: string,
+    decision: {
+      action: 'approve'
+      role: 'requester' | 'slm_operator'
+    } | {
+      action: 'reject'
+    },
+  ): Promise<{ id: string; status: 'approved' | 'rejected'; role: AuthRole }> {
+    assertAdministrator(actor)
+
+    if (!userId.trim()) {
+      throw new Error('Identificador de usuário inválido.')
+    }
+
+    if (
+      decision.action === 'approve' &&
+      decision.role !== 'requester' &&
+      decision.role !== 'slm_operator'
+    ) {
+      throw new Error('Perfil de aprovação inválido.')
+    }
+
+    return withTransaction(this.poolProvider(), async (client) => {
+      await lockActiveAdministrator(client, actor.userId)
+
+      const locked = await client.query<{
+        id: string
+        role: string
+        account_status: string
+      }>(
+        `SELECT id::text AS id, role, account_status
+           FROM app_private.users
+          WHERE id = $1
+          FOR UPDATE`,
+        [userId],
+      )
+
+      const pending = locked.rows[0]
+
+      if (!pending) {
+        throw new Error('Solicitação não encontrada.')
+      }
+
+      if (pending.account_status !== 'pending') {
+        throw new Error('Esta solicitação já foi decidida.')
+      }
+
+      if (decision.action === 'approve') {
+        const updated = await client.query<{ id: string; role: string }>(
+          `UPDATE app_private.users
+              SET role = $2,
+                  is_active = true,
+                  account_status = 'approved',
+                  decided_by_user_id = $3,
+                  decided_at = now(),
+                  updated_by_user_id = $3,
+                  updated_at = now()
+            WHERE id = $1
+              AND account_status = 'pending'
+          RETURNING id::text AS id, role`,
+          [userId, decision.role, actor.userId],
+        )
+
+        if (updated.rowCount !== 1) {
+          throw new Error('Não foi possível aprovar esta solicitação.')
+        }
+
+        await insertAuthAuditEvent(client, {
+          actorUserId: actor.userId,
+          actorKind: 'user',
+          subjectUserId: userId,
+          sessionId: null,
+          eventType: 'registration_approved',
+        })
+
+        if (pending.role !== decision.role) {
+          await insertAuthAuditEvent(client, {
+            actorUserId: actor.userId,
+            actorKind: 'user',
+            subjectUserId: userId,
+            sessionId: null,
+            eventType: 'role_changed',
+          })
+        }
+
+        return {
+          id: updated.rows[0].id,
+          status: 'approved',
+          role: decision.role,
+        }
+      }
+
+      const rejected = await client.query<{ id: string; role: string }>(
+        `UPDATE app_private.users
+            SET is_active = false,
+                account_status = 'rejected',
+                decided_by_user_id = $2,
+                decided_at = now(),
+                updated_by_user_id = $2,
+                updated_at = now()
+          WHERE id = $1
+            AND account_status = 'pending'
+        RETURNING id::text AS id, role`,
+        [userId, actor.userId],
+      )
+
+      if (rejected.rowCount !== 1) {
+        throw new Error('Não foi possível rejeitar esta solicitação.')
+      }
+
+      await insertAuthAuditEvent(client, {
+        actorUserId: actor.userId,
+        actorKind: 'user',
+        subjectUserId: userId,
+        sessionId: null,
+        eventType: 'registration_rejected',
+      })
+
+      return {
+        id: rejected.rows[0].id,
+        status: 'rejected',
+        role: pending.role as AuthRole,
+      }
     })
   }
 }

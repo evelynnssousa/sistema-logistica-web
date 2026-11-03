@@ -520,3 +520,186 @@ test('declares the active-session index as non-unique and audit retention as 365
   assert.doesNotMatch(schema, /CHECK\s*\([^)]*now\(\)/is)
   assert.equal(authAuditRetentionDays, 365)
 })
+test('lists pending registrations only after verifying an administrator', async () => {
+  const pool = new FakePool((text) => {
+    if (
+      text.includes('SELECT id::text AS id') &&
+      text.includes("role = 'administrator'")
+    ) {
+      return { rows: [{ id: administrator.userId }], rowCount: 1 }
+    }
+
+    if (
+      text.includes('FROM app_private.users') &&
+      text.includes("account_status = 'pending'")
+    ) {
+      return {
+        rows: [
+          {
+            id: 'pending-user-id',
+            name: 'Pessoa Solicitante',
+            email: 'pessoa@example.gov.br',
+            sector: 'CPC',
+            created_at: new Date('2026-10-20T12:00:00Z'),
+          },
+        ],
+        rowCount: 1,
+      }
+    }
+
+    return emptyResult()
+  })
+
+  const registrations = await new UserRepository(
+    poolProvider(pool),
+  ).listPendingRegistrations(administrator)
+
+  assert.equal(registrations.length, 1)
+  assert.equal(registrations[0].id, 'pending-user-id')
+  assert.equal(registrations[0].sector, 'CPC')
+  assert.equal(
+    pool.client.calls.some((call) => call.text === 'COMMIT'),
+    true,
+  )
+})
+
+test('does not allow non-administrators to list or decide pending registrations', async () => {
+  const pool = new FakePool()
+  const operator: AuthenticatedIdentity = {
+    userId: 'operator-id',
+    role: 'slm_operator',
+  }
+  const users = new UserRepository(poolProvider(pool))
+
+  await assert.rejects(
+    () => users.listPendingRegistrations(operator),
+    AccountAuthorizationError,
+  )
+
+  await assert.rejects(
+    () =>
+      users.decidePendingRegistration(operator, 'pending-user-id', {
+        action: 'reject',
+      }),
+    AccountAuthorizationError,
+  )
+
+  assert.equal(pool.connectCount, 0)
+})
+
+test('approves a pending registration with the selected SLM operator role and audits the decision', async () => {
+  const pool = new FakePool((text) => {
+    if (
+      text.includes('SELECT id::text AS id') &&
+      text.includes("role = 'administrator'")
+    ) {
+      return { rows: [{ id: administrator.userId }], rowCount: 1 }
+    }
+
+    if (
+      text.includes('FROM app_private.users') &&
+      text.includes('FOR UPDATE') &&
+      text.includes('account_status')
+    ) {
+      return {
+        rows: [
+          {
+            id: 'pending-user-id',
+            role: 'requester',
+            account_status: 'pending',
+          },
+        ],
+        rowCount: 1,
+      }
+    }
+
+    if (text.includes('UPDATE app_private.users')) {
+      return {
+        rows: [{ id: 'pending-user-id', role: 'slm_operator' }],
+        rowCount: 1,
+      }
+    }
+
+    return emptyResult()
+  })
+
+  const result = await new UserRepository(
+    poolProvider(pool),
+  ).decidePendingRegistration(administrator, 'pending-user-id', {
+    action: 'approve',
+    role: 'slm_operator',
+  })
+
+  assert.equal(result.id, 'pending-user-id')
+  assert.equal(result.status, 'approved')
+  assert.equal(result.role, 'slm_operator')
+
+  const calls = pool.client.calls
+  assert.equal(
+    calls.some(
+      (call) =>
+        call.text.includes('INSERT INTO app_private.auth_audit_events') &&
+        call.values[5] === 'registration_approved',
+    ),
+    true,
+  )
+  assert.equal(calls.some((call) => call.text === 'COMMIT'), true)
+  assert.equal(pool.client.releaseCount, 1)
+})
+
+test('rejects a pending registration and records an audit event', async () => {
+  const pool = new FakePool((text) => {
+    if (
+      text.includes('SELECT id::text AS id') &&
+      text.includes("role = 'administrator'")
+    ) {
+      return { rows: [{ id: administrator.userId }], rowCount: 1 }
+    }
+
+    if (
+      text.includes('FROM app_private.users') &&
+      text.includes('FOR UPDATE') &&
+      text.includes('account_status')
+    ) {
+      return {
+        rows: [
+          {
+            id: 'pending-user-id',
+            role: 'requester',
+            account_status: 'pending',
+          },
+        ],
+        rowCount: 1,
+      }
+    }
+
+    if (text.includes('UPDATE app_private.users')) {
+      return {
+        rows: [{ id: 'pending-user-id', role: 'requester' }],
+        rowCount: 1,
+      }
+    }
+
+    return emptyResult()
+  })
+
+  const result = await new UserRepository(
+    poolProvider(pool),
+  ).decidePendingRegistration(administrator, 'pending-user-id', {
+    action: 'reject',
+  })
+
+  assert.equal(result.id, 'pending-user-id')
+  assert.equal(result.status, 'rejected')
+
+  assert.equal(
+    pool.client.calls.some(
+      (call) =>
+        call.text.includes('INSERT INTO app_private.auth_audit_events') &&
+        call.values[5] === 'registration_rejected',
+    ),
+    true,
+  )
+  assert.equal(pool.client.calls.some((call) => call.text === 'COMMIT'), true)
+  assert.equal(pool.client.releaseCount, 1)
+})
