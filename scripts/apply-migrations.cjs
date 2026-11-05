@@ -7,7 +7,11 @@
  *       Só confere, em transação somente leitura: mostra o que falta e o que impediria aplicar.
  *
  *   node scripts/apply-migrations.cjs --aplicar --confirmar=APLICAR-MIGRACOES
- *       Gera um backup, testa a restauração e só então aplica. Exige Docker.
+ *       Primeira etapa: gera um backup, testa a restauração e para, sem aplicar. Exige Docker.
+ *
+ *   node scripts/apply-migrations.cjs --aplicar --confirmar=APLICAR-MIGRACOES --backup=<arquivo.dump>
+ *       Segunda etapa, depois de guardar a cópia fora do Codespace: confere o arquivo e os dados
+ *       e aplica. Recusa se o arquivo mudou ou se os dados do banco mudaram desde o backup.
  *
  * --sem-backup vale só para banco local. Em teste, banco remoto é sempre recusado.
  * Cada migração tem a própria transação: um erro desfaz só aquela, e as anteriores permanecem.
@@ -18,9 +22,11 @@
  *   2  a aplicação começou e falhou: as anteriores permanecem, e as seguintes não rodaram
  *   3  todas aplicadas, e a conferência final encontrou um problema
  *   4  todas aplicadas, e a conferência final não conseguiu terminar
+ *   5  primeira etapa concluída: backup pronto, nada aplicado, falta a segunda etapa
  */
 const { spawnSync } = require('node:child_process')
-const { readFileSync } = require('node:fs')
+const { createHash } = require('node:crypto')
+const { existsSync, readFileSync, writeFileSync } = require('node:fs')
 const { resolve } = require('node:path')
 
 const projectRoot = resolve(__dirname, '..')
@@ -133,6 +139,43 @@ async function blockers(client, pending) {
   return found
 }
 
+const sha256 = (content) => createHash('sha256').update(content).digest('hex')
+const manifestOf = (file) => `${file}.manifesto.json`
+
+/**
+ * Resume os dados de public em um só valor: colunas e o conteúdo de cada linha de cada tabela.
+ * Só leitura, em uma fotografia única do banco. Muda com qualquer linha criada, alterada ou apagada.
+ */
+async function dataFingerprint(client) {
+  await client.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+  try {
+    // O texto de datas não pode depender da configuração da sessão.
+    await client.query(`SET LOCAL TimeZone TO 'UTC'; SET LOCAL DateStyle TO 'ISO, YMD'; SET LOCAL IntervalStyle TO 'postgres'`)
+    const columns = await client.query(
+      `SELECT table_name, column_name, data_type FROM information_schema.columns
+        WHERE table_schema = 'public' ORDER BY table_name, ordinal_position`,
+    )
+    const parts = [JSON.stringify(columns.rows)]
+    const tables = await client.query(
+      `SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relkind = 'r' ORDER BY c.relname`,
+    )
+    for (const { relname } of tables.rows) {
+      const name = relname.replaceAll('"', '""')
+      const row = (await client.query(
+        `SELECT count(*)::text AS total, coalesce(md5(string_agg(line, '' ORDER BY line)), '') AS content
+           FROM (SELECT md5(t::text) AS line FROM public."${name}" t) AS lines`,
+      )).rows[0]
+      parts.push(`${relname}:${row.total}:${row.content}`)
+    }
+    await client.query('COMMIT')
+    return sha256(parts.join('\n'))
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined)
+    throw error
+  }
+}
+
 async function counts(client) {
   const result = await client.query(
     `SELECT (SELECT count(*)::int FROM public.auth_users) AS contas,
@@ -207,10 +250,12 @@ async function verify(client, applied, before) {
   return problems
 }
 
-function backupFirst() {
+function createVerifiedBackup() {
   const environment = { ...process.env }
+  // Só os testes escolhem outra pasta, para não misturar cópias fictícias com as reais.
+  const destination = isTestRun && process.env.SLM_BACKUP_DIR ? ['--out', process.env.SLM_BACKUP_DIR] : []
   console.log('Gerando o backup...')
-  const backup = spawnSync(process.execPath, [resolve(projectRoot, 'scripts/backup-database.cjs')], { cwd: projectRoot, env: environment, encoding: 'utf8' })
+  const backup = spawnSync(process.execPath, [resolve(projectRoot, 'scripts/backup-database.cjs'), ...destination], { cwd: projectRoot, env: environment, encoding: 'utf8' })
   if (backup.status !== 0) throw new Error('O backup falhou. Nada foi aplicado.')
   const file = /Arquivo:\s+(.+)/.exec(backup.stdout)?.[1]?.trim()
   if (!file) throw new Error('Não foi possível identificar o backup. Nada foi aplicado.')
@@ -219,21 +264,64 @@ function backupFirst() {
   const restored = spawnSync(process.execPath, [resolve(projectRoot, 'scripts/verify-backup.cjs'), file], { cwd: projectRoot, env: { PATH: process.env.PATH, HOME: process.env.HOME }, encoding: 'utf8' })
   if (restored.status !== 0) throw new Error('O teste de restauração falhou. Nada foi aplicado.')
   console.log('Restauração aprovada.')
+  return file
+}
+
+/** Primeira etapa: a cópia só é registrada se os dados não mudaram enquanto ela era gerada. */
+async function prepareBackup(client, databaseId) {
+  const before = await dataFingerprint(client)
+  const file = createVerifiedBackup()
+  const after = await dataFingerprint(client)
+  if (before !== after) {
+    throw new Error('Os dados mudaram enquanto o backup era gerado. Pare o uso do sistema e gere outro. Nada foi aplicado.')
+  }
+  writeFileSync(
+    manifestOf(file),
+    `${JSON.stringify({ criadoEm: new Date().toISOString(), banco: databaseId, sha256: sha256(readFileSync(file)), dados: after }, null, 2)}\n`,
+    { mode: 0o600 },
+  )
+  console.log('')
+  console.log('Backup pronto. NADA FOI APLICADO.')
+  console.log(`Arquivo: ${file}`)
+  console.log(`SHA-256: ${sha256(readFileSync(file))}`)
+  console.log('Guarde uma cópia cifrada fora do Codespace e confira o SHA-256 no destino. Depois, aplique com:')
+  console.log(`  node scripts/apply-migrations.cjs --aplicar --confirmar=${confirmation} --backup=${file}`)
+  console.log('Mantenha o sistema parado até lá: qualquer dado novo faz a aplicação recusar esta cópia.')
+}
+
+/** Segunda etapa: o SHA-256 prova que o arquivo é o mesmo; a impressão dos dados, que o banco também é. */
+async function checkBackup(client, file, databaseId) {
+  if (!existsSync(file)) throw new Error('O arquivo de backup não foi encontrado. Nada foi aplicado.')
+  if (!existsSync(manifestOf(file))) {
+    throw new Error('Este backup não tem o registro da primeira etapa. Gere outro. Nada foi aplicado.')
+  }
+  const manifest = JSON.parse(readFileSync(manifestOf(file), 'utf8'))
+  if (manifest.banco !== databaseId) throw new Error('Este backup é de outro banco. Nada foi aplicado.')
+  if (sha256(readFileSync(file)) !== manifest.sha256) {
+    throw new Error('O arquivo de backup mudou desde a primeira etapa. Nada foi aplicado.')
+  }
+  if ((await dataFingerprint(client)) !== manifest.dados) {
+    throw new Error('Os dados do banco mudaram desde o backup. Gere outro e guarde a nova cópia. Nada foi aplicado.')
+  }
+  console.log('Backup conferido: o arquivo e os dados do banco são os mesmos da primeira etapa.')
 }
 
 async function main() {
   const args = process.argv.slice(2)
   const known = ['--aplicar', '--sem-backup', `--confirmar=${confirmation}`]
-  const unknown = args.filter((arg) => !known.includes(arg))
+  const unknown = args.filter((arg) => !known.includes(arg) && !/^--backup=.+/.test(arg))
   if (unknown.length > 0) throw new Error(`Opção não reconhecida: ${unknown[0].split('=')[0]}. Nada foi aplicado.`)
   const apply = args.includes('--aplicar')
   const confirmed = args.includes(`--confirmar=${confirmation}`)
   const withoutBackup = args.includes('--sem-backup')
+  const backupArg = args.find((arg) => arg.startsWith('--backup='))?.slice('--backup='.length)
 
   const { Client } = require('pg')
   const target = connectionOptions(readDatabaseUrl())
   if (isTestRun && !target.local) throw new Error('Recusado: testes não podem usar banco remoto.')
   if (withoutBackup && !target.local) throw new Error('Recusado: banco remoto sempre exige backup.')
+  if (backupArg && !apply) throw new Error('--backup só vale com --aplicar. Nada foi aplicado.')
+  if (backupArg && withoutBackup) throw new Error('Use --backup ou --sem-backup, e não os dois. Nada foi aplicado.')
   if (apply && !confirmed) {
     throw new Error(`Para aplicar, use também --confirmar=${confirmation}. Nada foi aplicado.`)
   }
@@ -274,7 +362,13 @@ async function main() {
     const lock = await client.query(`SELECT pg_try_advisory_lock(hashtext('slm:aplicar-migracoes')) AS ok`)
     if (!lock.rows[0].ok) throw new Error('Já há uma aplicação em andamento. Nada foi aplicado.')
 
-    if (!withoutBackup) backupFirst()
+    const databaseId = sha256(`${target.host}/${new URL(target.options.connectionString).pathname}`)
+    if (!withoutBackup && !backupArg) {
+      await prepareBackup(client, databaseId)
+      process.exitCode = 5
+      return
+    }
+    if (backupArg) await checkBackup(client, resolve(backupArg), databaseId)
 
     const before = await counts(client)
     before.__tables = (await client.query(

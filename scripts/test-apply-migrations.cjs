@@ -6,15 +6,16 @@
 require('../backend/testing/block-remote-connections.cjs')
 const assert = require('node:assert/strict')
 const { spawnSync } = require('node:child_process')
-const { readFileSync } = require('node:fs')
-const { resolve } = require('node:path')
+const { appendFileSync, copyFileSync, existsSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync } = require('node:fs')
+const { tmpdir } = require('node:os')
+const { join, resolve } = require('node:path')
 const { assertPortsFree, projectRoot, startDisposablePostgres, testPorts } = require('./testing/isolation.cjs')
 
-function run(args, url) {
+function run(args, url, extra = {}) {
   return spawnSync(process.execPath, [resolve(projectRoot, 'scripts/apply-migrations.cjs'), ...args], {
     cwd: projectRoot,
     encoding: 'utf8',
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, NODE_ENV: 'test', DATABASE_URL: url },
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, NODE_ENV: 'test', DATABASE_URL: url, ...extra },
   })
 }
 
@@ -72,9 +73,72 @@ async function prepare(url, extra) {
   return client
 }
 
+async function twoStepBackup(url) {
+  const directory = mkdtempSync(join(tmpdir(), 'slm-migracoes-'))
+  const extra = { SLM_BACKUP_DIR: directory }
+  const confirm = '--confirmar=APLICAR-MIGRACOES'
+  const client = await prepare(url)
+  try {
+    const first = run(['--aplicar', confirm], url, extra)
+    assert.equal(first.status, 5, `${first.stdout}\n${first.stderr}`)
+    assert.match(first.stdout, /NADA FOI APLICADO/)
+    assert.equal(await present(client, 'password_recovery_codes'), false, 'a primeira etapa não aplica')
+    const file = /Arquivo: (.+)/.exec(first.stdout)[1].trim()
+    assert.ok(file.startsWith(directory), 'a cópia de teste fica na pasta temporária')
+    assert.equal(statSync(`${file}.manifesto.json`).mode & 0o777, 0o600)
+    assert.ok(!readFileSync(`${file}.manifesto.json`, 'utf8').includes(new URL(url).password))
+    console.log('✔ primeira etapa: gera e testa o backup, sai com 5 e não aplica nada')
+
+    const second = ['--aplicar', confirm, `--backup=${file}`]
+    const refused = async (args, pattern, why) => {
+      const result = run(args, url, extra)
+      assert.equal(result.status, 1, `${why}: ${result.stdout}\n${result.stderr}`)
+      assert.match(result.stderr, pattern)
+      assert.equal(await present(client, 'password_recovery_codes'), false, `${why}: nada é aplicado`)
+    }
+
+    await refused(['--aplicar', `--backup=${file}`], /--confirmar/, 'sem confirmação')
+    await refused([`--backup=${file}`], /só vale com --aplicar/, 'sem --aplicar')
+    console.log('✔ segunda etapa: também exige --aplicar e a confirmação')
+
+    const original = `${file}.original`
+    copyFileSync(file, original)
+    appendFileSync(file, 'x')
+    await refused(second, /O arquivo de backup mudou/, 'arquivo alterado')
+    renameSync(original, file)
+    console.log('✔ arquivo alterado depois do backup é recusado, e nada é aplicado')
+
+    renameSync(`${file}.manifesto.json`, `${file}.guardado`)
+    await refused(second, /não tem o registro da primeira etapa/, 'sem registro')
+    renameSync(`${file}.guardado`, `${file}.manifesto.json`)
+    await refused(['--aplicar', confirm, '--backup=/nao/existe.dump'], /não foi encontrado/, 'arquivo inexistente')
+
+    const account = `(SELECT id FROM public.auth_users WHERE email = 'migra-admin@example.gov.br')`
+    await client.query(`UPDATE public.auth_users SET sector = 'Outro' WHERE id = ${account}`)
+    assert.ok(existsSync(file))
+    await refused(second, /Os dados do banco mudaram/, 'linha alterada')
+    await client.query(`UPDATE public.auth_users SET sector = 'TI' WHERE id = ${account}`)
+    await client.query(`INSERT INTO public.setores (nome) VALUES ('Setor novo')`)
+    await refused(second, /Os dados do banco mudaram/, 'linha criada')
+    await client.query(`DELETE FROM public.setores WHERE nome = 'Setor novo'`)
+    console.log('✔ dados alterados ou criados depois do backup são recusados, com o arquivo íntegro')
+
+    const applied = run(second, url, extra)
+    assert.equal(applied.status, 0, `${applied.stdout}\n${applied.stderr}`)
+    assert.match(applied.stdout, /Backup conferido/)
+    assert.match(applied.stdout, /16 migrações aplicadas/)
+    assert.equal(await present(client, 'driver_occurrence_types'), true)
+    console.log('✔ com arquivo e dados iguais, a segunda etapa aplica as 16 migrações')
+  } finally {
+    await client.end().catch(() => undefined)
+    rmSync(directory, { recursive: true, force: true })
+  }
+}
+
 async function main() {
-  await assertPortsFree([testPorts.backupDatabase])
-  const database = await startDisposablePostgres({ port: testPorts.backupDatabase, database: 'slm_migracoes_test' })
+  // O teste de restauração usa a porta backupDatabase; a origem fica em outra.
+  await assertPortsFree([testPorts.integrationDatabase, testPorts.backupDatabase])
+  const database = await startDisposablePostgres({ port: testPorts.integrationDatabase, database: 'slm_migracoes_test' })
   try {
     const { url } = database
 
@@ -168,6 +232,8 @@ async function main() {
     assert.equal((await client.query(`SELECT to_regclass('public.request_attachments') AS t`)).rows[0].t, null, 'as seguintes não rodam')
     console.log('✔ erro no meio: desfaz aquela, mantém as anteriores e não tenta as seguintes')
     await client.end()
+
+    await twoStepBackup(url)
 
     // A conferência precisa reprovar uma sequência nova aberta, para cada papel.
     for (const role of ['anon', 'authenticated', 'service_role', 'PUBLIC']) {

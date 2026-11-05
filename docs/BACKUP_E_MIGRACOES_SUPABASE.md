@@ -127,12 +127,45 @@ Faça um backup antes e aplique uma de cada vez, conferindo o resultado. Cada ar
 
 ### Aplicar com o script
 
+Exige Docker. Prefira um horário sem uso e pare a API e a tela ligadas ao banco real antes de começar: qualquer dado novo depois do backup faz o script recusar a cópia. Rode no terminal do Codespaces, ou no prompt do Claude Code com o prefixo `!`, que não faz parte do comando.
+
+**1. Conferir, só com leitura:**
+
 ```bash
-npm run migrations:check     # Só confere, em transação somente leitura
+npm run migrations:check
+```
+
+**2. Primeira etapa: gerar e testar o backup.** O script gera a cópia, testa a restauração em um banco descartável, registra o arquivo e os dados do banco e para, com código 5. **Nada é aplicado.**
+
+```bash
 node scripts/apply-migrations.cjs --aplicar --confirmar=APLICAR-MIGRACOES
 ```
 
-Para aplicar, exige Docker. O script gera o backup, testa a restauração e confere o que bloquearia as migrações. Depois aplica as pendentes, da 002 à 017, parando no primeiro erro, e faz a conferência final. Prefira um horário sem uso.
+**3. Guardar a cópia fora do Codespace.** Use o arquivo mostrado no passo anterior:
+
+```bash
+gpg --symmetric --cipher-algo AES256 backups/<arquivo>.dump
+sha256sum backups/<arquivo>.dump.gpg
+```
+
+Baixe o `.gpg` pelo Explorer do VS Code ou, no seu computador, com `gh codespace cp -c <codespace> 'remote:/workspaces/sistema-logistica-web/backups/<arquivo>.dump.gpg' ./`. No destino, confira o SHA-256 e abra a cópia com `gpg --decrypt`. Guarde a senha em outro lugar. Não apague o `.dump` nem o `.manifesto.json` do Codespace antes do próximo passo.
+
+**4. Segunda etapa: aplicar.**
+
+```bash
+node scripts/apply-migrations.cjs --aplicar --confirmar=APLICAR-MIGRACOES --backup=backups/<arquivo>.dump
+```
+
+Antes de aplicar, o script faz duas conferências independentes e, se alguma falhar, sai com código 1 sem aplicar nada:
+
+- **O arquivo é o mesmo:** compara o SHA-256 do `.dump` com o registrado na primeira etapa.
+- **Os dados são os mesmos:** o `.manifesto.json` guarda um resumo de todas as linhas e colunas das tabelas de `public`. O script calcula o resumo de novo no banco, somente com leitura, e compara. Qualquer linha criada, alterada ou apagada muda o resumo. Uma sessão em uso também muda, por isso a API precisa estar parada. Nesse caso, volte ao passo 2.
+
+Sobra um intervalo de instantes entre a conferência e a primeira migração, que o script não fecha. Por isso, o sistema precisa continuar parado até o fim.
+
+Depois, o script aplica as pendentes, da 002 à 017, parando no primeiro erro, e faz a conferência final.
+
+**Transações:** cada arquivo de migração tem o próprio `BEGIN` e `COMMIT`, e não existe transação única para todas. Por isso, uma falha pode deixar parte aplicada: a migração em andamento é desfeita, e as anteriores permanecem. O código 2 indica esse caso.
 
 | Código de saída | Significado |
 |---|---|
@@ -141,6 +174,7 @@ Para aplicar, exige Docker. O script gera o backup, testa a restauração e conf
 | 2 | A aplicação começou e falhou. Cada migração tem a própria transação: a que falhou foi desfeita, as anteriores permanecem e as seguintes não rodaram. Corrija e rode de novo, pois as já aplicadas são reconhecidas. Se a mensagem disser que a conexão caiu, rode `npm run migrations:check` antes, para ver o estado |
 | 3 | Todas aplicadas, e a conferência final encontrou um problema. Revise antes de usar |
 | 4 | Todas aplicadas, e a conferência final não conseguiu terminar, como em uma queda de conexão. Rode `npm run migrations:check` e confira antes de usar |
+| 5 | Primeira etapa concluída: backup pronto e nada aplicado. Falta guardar a cópia e rodar a segunda etapa |
 
 Se o processo for interrompido à força, como por Ctrl+C, o código é outro. A migração em andamento é desfeita pelo banco quando a conexão termina, e `npm run migrations:check` mostra o estado.
 
