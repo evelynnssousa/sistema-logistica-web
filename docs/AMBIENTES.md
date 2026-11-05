@@ -84,7 +84,8 @@ Nenhum deles faz parte dos testes, e todos recusam banco remoto em ambiente de t
 |---|---|
 | `npm run backup:database` | Somente leitura. Veja `docs/BACKUP_E_MIGRACOES_SUPABASE.md` |
 | `npm run migrations:check` | Somente leitura: mostra as migrações pendentes e o que impediria aplicá-las |
-| `node scripts/apply-migrations.cjs --aplicar --confirmar=APLICAR-MIGRACOES` | **Grava**: gera e testa um backup e aplica as migrações pendentes. Veja `docs/BACKUP_E_MIGRACOES_SUPABASE.md` |
+| `node scripts/apply-migrations.cjs --aplicar --confirmar=APLICAR-MIGRACOES` | Primeira etapa: gera e testa um backup e para, sem aplicar. Só lê o banco |
+| `node scripts/apply-migrations.cjs --aplicar --confirmar=APLICAR-MIGRACOES --backup=<arquivo>` | **Grava**: segunda etapa, aplica as migrações. Recusa se o arquivo ou os dados tiverem mudado. Veja `BACKUP_E_MIGRACOES_SUPABASE.md` |
 | `backend/src/cli/create-initial-admin.ts` | **Grava**: cria o primeiro administrador |
 | `backend/src/cli/reset-initial-admin-password.ts` | **Grava**: redefine a senha de um administrador |
 
