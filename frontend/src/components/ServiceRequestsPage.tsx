@@ -1,183 +1,227 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { protocolLabel, errorMessage, listRequests, statusLabels } from '../api/modulesApi'
+import type { RequestModule, ServiceRequest } from '../api/modulesApi'
+import { usePeriodFilter } from '../app/period'
 import { useHasPermission } from '../auth/UserContext'
+import { Alert, EmptyState, Loading } from './ui/Feedback'
+import { FilterBar, FilterSelect, PeriodFields, SearchField } from './ui/Filters'
+import Icon from './ui/Icon'
+import type { IconName } from './ui/Icon'
+import PageHeader from './ui/PageHeader'
+import Pagination from './ui/Pagination'
+import StatusBadge from './ui/StatusBadge'
+
+type Column = { label: string; render: (request: ServiceRequest) => ReactNode }
 
 type ServiceRequestsPageProps = {
+  module: RequestModule
+  basePath: string
   pageTitle: string
   pageDescription: string
   searchPlaceholder: string
-  listDescription: string
   statusOptions: readonly string[]
-  columns: readonly string[]
-  emptyDescription: string
+  columns: readonly Column[]
   className?: string
-  statusFilterStyle?: 'select' | 'tabs'
-  emptyActionLabel?: string
-  newRequestTo?: string
-  createPermission?: string
+  createPermission: string
+  extraAction?: { to: string; label: string; icon: IconName; permission: string }
+  secondExtraAction?: { to: string; label: string; icon: IconName; permission: string }
+  /** Filtro próprio do módulo, enviado à API. */
+  tripTypeOptions?: { value: string; label: string }[]
 }
 
 function ServiceRequestsPage({
+  module,
+  basePath,
   pageTitle,
   pageDescription,
   searchPlaceholder,
-  listDescription,
   statusOptions,
   columns,
-  emptyDescription,
   className = 'maintenance-page',
-  statusFilterStyle = 'select',
-  emptyActionLabel,
-  newRequestTo,
   createPermission,
+  extraAction,
+  secondExtraAction,
+  tripTypeOptions,
 }: ServiceRequestsPageProps) {
-  const canCreate = useHasPermission(createPermission ?? '')
-  const hidesCreateAction = Boolean(createPermission) && !canCreate
+  const canCreate = useHasPermission(createPermission)
+  const canSeeExtra = useHasPermission(extraAction?.permission ?? '')
+  const canSeeSecondExtra = useHasPermission(secondExtraAction?.permission ?? '')
+  const period = usePeriodFilter()
   const [searchTerm, setSearchTerm] = useState('')
-  const [status, setStatus] = useState(
-    statusFilterStyle === 'tabs' ? 'Todos' : statusOptions[0],
-  )
+  const [appliedSearch, setAppliedSearch] = useState('')
+  const [status, setStatus] = useState('')
+  const [tripType, setTripType] = useState('')
+  const [page, setPage] = useState(1)
+  const [data, setData] = useState<{ requests: ServiceRequest[]; total: number; pageSize: number } | null>(null)
+  const [error, setError] = useState('')
+  const { from, to } = period.range
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setAppliedSearch(searchTerm)
+      setPage(1)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
+
+  useEffect(() => {
+    let active = true
+    listRequests(module, { status, tripType, search: appliedSearch, from, to, page })
+      .then((result) => {
+        if (!active) return
+        setData(result)
+        setError('')
+      })
+      .catch((err: unknown) => {
+        if (!active) return
+        setData(null)
+        setError(errorMessage(err, 'Não foi possível carregar as solicitações.'))
+      })
+    return () => {
+      active = false
+    }
+  }, [module, status, tripType, appliedSearch, from, to, page])
+
+  const filtering = Boolean(status || tripType || searchTerm) || period.isActive
+  const lastPage = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1
 
   return (
     <div className={className}>
-      <section className="maintenance-heading">
-        <div>
-          <div className="eyebrow">JUCESP · GESTÃO OPERACIONAL</div>
-          <h1>{pageTitle}</h1>
-          <p>{pageDescription}</p>
-        </div>
-        <div className="maintenance-action">
-          {hidesCreateAction ? null : newRequestTo ? (
-            <Link className="maintenance-primary-button" to={newRequestTo}>
-              <span aria-hidden="true">+</span>
-              Nova solicitação
-            </Link>
-          ) : (
-            <>
-              <button
-                className="maintenance-primary-button"
-                type="button"
-                disabled
-                aria-describedby="service-request-action-note"
-              >
-                <span aria-hidden="true">+</span>
+      <PageHeader
+        title={pageTitle}
+        description={pageDescription}
+        actions={
+          <>
+            {extraAction && canSeeExtra && (
+              <Link className="maintenance-secondary-button" to={extraAction.to}>
+                <Icon name={extraAction.icon} size={18} />
+                {extraAction.label}
+              </Link>
+            )}
+            {secondExtraAction && canSeeSecondExtra && (
+              <Link className="maintenance-secondary-button" to={secondExtraAction.to}>
+                <Icon name={secondExtraAction.icon} size={18} />
+                {secondExtraAction.label}
+              </Link>
+            )}
+            {canCreate && (
+              <Link className="maintenance-primary-button" to={`${basePath}/nova`}>
+                <Icon name="add" size={20} />
                 Nova solicitação
-              </button>
-              <span id="service-request-action-note">
-                Disponível em uma próxima etapa.
-              </span>
-            </>
-          )}
-        </div>
-      </section>
+              </Link>
+            )}
+          </>
+        }
+      />
 
-      <section
-        className="maintenance-list"
-        aria-labelledby="service-requests-list-title"
-      >
-        <div className="maintenance-section-heading">
-          <div>
-            <h2 id="service-requests-list-title">Solicitações</h2>
-            <p>{listDescription}</p>
-          </div>
-        </div>
-
-        <div className="maintenance-filters">
-          <label className="maintenance-search">
-            <span className="maintenance-search-icon" aria-hidden="true">
-              ⌕
-            </span>
-            <span className="visually-hidden">{searchPlaceholder}</span>
-            <input
-              type="search"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder={searchPlaceholder}
+      <section className="ui-card" aria-label={`Solicitações de ${pageTitle}`}>
+        <FilterBar
+          label="Filtros das solicitações"
+          canClear={filtering}
+          onClear={() => {
+            setSearchTerm('')
+            setStatus('')
+            setTripType('')
+            period.clear()
+            setPage(1)
+          }}
+        >
+          <SearchField
+            label="Pesquisar"
+            value={searchTerm}
+            placeholder={searchPlaceholder}
+            onChange={setSearchTerm}
+          />
+          <FilterSelect
+            label="Situação"
+            value={status}
+            allLabel="Todas as situações"
+            options={statusOptions.map((value) => ({ value, label: statusLabels[value] }))}
+            onChange={(value) => {
+              setStatus(value)
+              setPage(1)
+            }}
+          />
+          {tripTypeOptions && (
+            <FilterSelect
+              label="Tipo de viagem"
+              value={tripType}
+              allLabel="Todos os tipos"
+              options={tripTypeOptions}
+              onChange={(value) => {
+                setTripType(value)
+                setPage(1)
+              }}
             />
-          </label>
-
-          {statusFilterStyle === 'tabs' ? (
-            <div
-              className="service-status-tabs"
-              role="group"
-              aria-label="Filtrar por status"
-            >
-              {['Todos', ...statusOptions].map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  className={`service-status-tab${status === option ? ' active' : ''}`}
-                  aria-pressed={status === option}
-                  onClick={() => setStatus(option)}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <label className="maintenance-status-filter">
-              <span>Status</span>
-              <select
-                value={status}
-                onChange={(event) => setStatus(event.target.value)}
-              >
-                {statusOptions.map((option) => (
-                  <option key={option}>{option}</option>
-                ))}
-              </select>
-            </label>
           )}
-        </div>
+          <PeriodFields filter={period} onChange={() => setPage(1)} />
+        </FilterBar>
 
-        <div className="maintenance-table-wrapper">
-          <table className="maintenance-table">
-            <caption className="visually-hidden">
-              {`Solicitações de ${pageTitle.toLocaleLowerCase('pt-BR')} por ${columns.join(', ')}`}
-            </caption>
-            <thead>
-              <tr>
-                {columns.map((column) => (
-                  <th key={column} scope="col">
-                    {column}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {emptyActionLabel ? (
-                <tr>
-                  <td colSpan={columns.length - 1}>
-                    <div className="maintenance-empty-state">
-                      <span aria-hidden="true">▤</span>
-                      <strong>Nenhuma solicitação disponível</strong>
-                      <p>{emptyDescription}</p>
-                    </div>
-                  </td>
-                  <td className="service-empty-action-cell">
-                    <button
-                      className="service-row-action"
-                      type="button"
-                      disabled
-                      title="Disponível quando houver solicitações."
-                    >
-                      {emptyActionLabel}
-                    </button>
-                  </td>
-                </tr>
-              ) : (
-                <tr>
-                  <td colSpan={columns.length}>
-                    <div className="maintenance-empty-state">
-                      <span aria-hidden="true">▤</span>
-                      <strong>Nenhuma solicitação disponível</strong>
-                      <p>{emptyDescription}</p>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        {error && <Alert tone="error">{error}</Alert>}
+        {!data && !error && <Loading label="Carregando solicitações..." />}
+
+        {data && data.requests.length === 0 && (
+          <EmptyState title={filtering ? 'Nada encontrado' : 'Nenhuma solicitação ainda'}>
+            {filtering
+              ? 'Não há solicitações para os filtros selecionados.'
+              : 'As solicitações aparecem aqui assim que forem registradas.'}
+          </EmptyState>
+        )}
+
+        {data && data.requests.length > 0 && (
+          <>
+            <div className="maintenance-table-wrapper">
+              <table className="maintenance-table">
+                <caption className="visually-hidden">Solicitações de {pageTitle}</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Protocolo</th>
+                    {columns.map((column) => (
+                      <th key={column.label} scope="col">
+                        {column.label}
+                      </th>
+                    ))}
+                    <th scope="col">Situação</th>
+                    <th scope="col">
+                      <span className="visually-hidden">Ações</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.requests.map((request) => (
+                    <tr key={request.id}>
+                      <td>{protocolLabel(request.protocol)}</td>
+                      {columns.map((column) => (
+                        <td key={column.label}>{column.render(request)}</td>
+                      ))}
+                      <td>
+                        <StatusBadge status={request.status} label={statusLabels[request.status]} />
+                      </td>
+                      <td>
+                        <Link
+                          className="service-row-action"
+                          to={`${basePath}/${request.id}`}
+                          aria-label={`Ver a solicitação ${request.protocol}`}
+                        >
+                          <Icon name="view" size={16} />
+                          Ver
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Pagination
+              page={page}
+              summary={`${data.total} ${data.total === 1 ? 'solicitação' : 'solicitações'} · Página ${page} de ${lastPage}`}
+              hasNext={page < lastPage}
+              onChange={setPage}
+            />
+          </>
+        )}
       </section>
     </div>
   )

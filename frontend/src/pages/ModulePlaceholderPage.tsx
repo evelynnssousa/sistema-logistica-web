@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { navigationItems } from '../app/navigation'
+import Icon from '../components/ui/Icon'
 
 function ModulePlaceholderPage() {
   const { pathname } = useLocation()
@@ -13,7 +14,6 @@ function ModulePlaceholderPage() {
     <>
       <section className="welcome-section">
         <div>
-          <div className="eyebrow">JUCESP · GESTÃO OPERACIONAL</div>
           <h1>{module.name}</h1>
           <p>Acompanhe as solicitações e os serviços em um só lugar.</p>
         </div>
@@ -21,7 +21,7 @@ function ModulePlaceholderPage() {
 
       <section className="placeholder-card">
         <div className="placeholder-icon" aria-hidden="true">
-          {module.icon}
+          <Icon name={module.icon} size={40} weight="duotone" />
         </div>
         <h2>Módulo de {module.name}</h2>
         <p>

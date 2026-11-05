@@ -2,7 +2,13 @@
 import { Router } from 'express'
 import { isAuthRole } from '../auth/roles.js'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
-import { UserRepository, AccountAuthorizationError } from '../database/userRepository.js'
+import { InstitutionalLinkRepository } from '../database/institutionalLinkRepository.js'
+import { ModuleError, sendModuleError } from '../database/moduleErrors.js'
+import { UserRepository, AccountAuthorizationError, UserManagementError } from '../database/userRepository.js'
+import { readInstitutionalLinks } from '../demands/demandValidation.js'
+import { isPermission } from '../auth/permissions.js'
+import type { Permission } from '../auth/permissions.js'
+import { asBody, optionalText, RequestValidationError } from '../requests/validation.js'
 import { requirePermission } from '../middleware/requirePermission.js'
 import { requireCsrf } from '../middleware/requireCsrf.js'
 import { requireAuth } from '../auth/sessionRuntime.js'
@@ -11,6 +17,7 @@ import { describeError, logSecurityEvent } from '../security/logger.js'
 
 const router = Router()
 const users = new UserRepository()
+const institutional = new InstitutionalLinkRepository()
 
 // Limitado a este caminho: um router.use sem caminho alcançaria as rotas montadas depois.
 router.use(
@@ -37,6 +44,15 @@ function sendError(
       success: false,
       message: 'Ação administrativa não autorizada.',
     })
+    return
+  }
+
+  if (error instanceof UserManagementError) {
+    response.status(error.status).json({ success: false, message: error.message })
+    return
+  }
+  if (error instanceof RequestValidationError || error instanceof ModuleError) {
+    sendModuleError(response as never, error)
     return
   }
 
@@ -88,6 +104,32 @@ router.get('/admin/registrations/pending', async (_request, response) => {
   }
 })
 
+router.get('/admin/registrations/institutional-options', async (_request, response) => {
+  try {
+    response.json({ success: true, options: await institutional.options() })
+  } catch (error) {
+    sendError(error, response)
+  }
+})
+
+/**
+ * Vínculos e concessões vêm só dentro de "setup", pedidos de forma expressa pela tela.
+ * Os mesmos nomes soltos no corpo continuam ignorados. Sem "setup", a aprovação segue como antes.
+ */
+function readApprovalLinks(raw: Record<string, unknown>) {
+  const body = asBody(raw.setup)
+  const granted = body.grantedPermissions
+  if (granted !== undefined && (!Array.isArray(granted) || !granted.every(isPermission))) {
+    throw new RequestValidationError('Permissões adicionais inválidas.')
+  }
+  return {
+    ...(typeof body.slmMember === 'boolean' ? { slmMember: body.slmMember } : {}),
+    ...(granted ? { grantedPermissions: [...new Set(granted as Permission[])] } : {}),
+    ...(body.lotation ? { lotation: optionalText(body.lotation, 'Setor de lotação', 120) } : {}),
+    ...(body.institutional ? { links: readInstitutionalLinks(body.institutional) } : {}),
+  }
+}
+
 router.post('/admin/registrations/:userId/approve', async (request, response) => {
   const { role } = request.body ?? {}
 
@@ -103,7 +145,7 @@ router.post('/admin/registrations/:userId/approve', async (request, response) =>
     const result = await users.decidePendingRegistration(
       getIdentity(response),
       request.params.userId,
-      { action: 'approve', role },
+      { action: 'approve', role, ...readApprovalLinks(request.body ?? {}) },
     )
 
     response.json({

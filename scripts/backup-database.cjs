@@ -12,7 +12,7 @@
  */
 const { spawnSync } = require('node:child_process')
 const { createHash } = require('node:crypto')
-const { chmodSync, mkdirSync, readFileSync, statSync } = require('node:fs')
+const { appendFileSync, chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } = require('node:fs')
 const { basename, resolve } = require('node:path')
 
 const projectRoot = resolve(__dirname, '..')
@@ -31,8 +31,16 @@ function readDatabaseUrl() {
   return url.trim()
 }
 
+/** Registro de execução, lido pela tela de Monitoramento. Nunca traz credenciais nem caminhos. */
+function recordRun(entry) {
+  const path = process.env.BACKUP_LOG_PATH?.trim()
+  if (!path) return
+  appendFileSync(path, `${JSON.stringify({ type: 'backup', at: new Date().toISOString(), ...entry })}\n`, { mode: 0o600 })
+}
+
 function fail(message) {
   console.error(`Falha: ${message}`)
+  recordRun({ ok: false })
   process.exit(1)
 }
 
@@ -122,3 +130,6 @@ console.log(`Chaves estrang.:  ${count(/ FK CONSTRAINT public /g)}`)
 console.log(`Tabelas com RLS:  ${count(/ ROW SECURITY public /g)}`)
 console.log(`Políticas de RLS: ${count(/ POLICY public /g)}`)
 console.log(`Privilégios:      ${count(/ ACL public /g)}`)
+
+writeFileSync(`${file}.sha256`, `${digest}  ${basename(file)}\n`, { mode: 0o600 })
+recordRun({ ok: true, sizeBytes: statSync(file).size })

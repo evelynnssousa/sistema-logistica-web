@@ -58,7 +58,7 @@ test('toda rota da API está classificada no mapa de acesso, e o mapa não tem r
   assert.deepEqual(registeredRoutes(), mapped)
 })
 
-test('as rotas públicas são só as de entrada, recuperação e saúde', () => {
+test('as rotas públicas são só as de entrada, recuperação, saúde e textos do cadastro', () => {
   const publicRoutes = routeAccessMap
     .filter((route) => route.access === 'public')
     .map((route) => route.path)
@@ -69,8 +69,10 @@ test('as rotas públicas são só as de entrada, recuperação e saúde', () => 
     '/auth/logout',
     '/auth/password-recovery/request',
     '/auth/password-recovery/reset',
+    '/auth/password-recovery/reset-link',
     '/auth/register',
     '/health',
+    '/public/forms/registration',
   ])
 })
 
@@ -123,20 +125,16 @@ test('variações de caminho e de método não contornam a sessão', async () =>
   assert.equal(override.status, 401)
 })
 
-test('módulos sem API respondem 404 ou exigem sessão, e nunca entregam dados', async () => {
-  for (const path of [
-    '/settings',
-    '/maintenance',
-    '/fleet',
-    '/warehouse',
-    '/calendar',
-    '/reports',
-    '/requests',
-    '/setores',
-    '/materials',
-  ]) {
+test('caminhos sem rota respondem 404 ou exigem sessão, e nunca entregam dados', async () => {
+  for (const path of ['/requests', '/setores', '/materials']) {
     const response = await fetch(`${baseUrl}${path}`)
     assert.equal(response.status, 404, path)
+  }
+
+  // Módulos que ganharam API: mesmo em caminhos inexistentes, a sessão vem primeiro.
+  for (const path of ['/settings', '/maintenance', '/fleet', '/warehouse', '/calendar', '/reports']) {
+    const response = await fetch(`${baseUrl}${path}`)
+    assert.equal(response.status, 401, path)
   }
 })
 

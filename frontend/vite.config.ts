@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-const port = 5173
+const port = Number(process.env.SLM_FRONTEND_PORT) || 5173
 const {
   API_PROXY_TARGET,
   E2E_RUN_ID,

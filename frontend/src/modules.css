@@ -1,0 +1,237 @@
+/* Blocos das telas operacionais. A reorganização visual fica para o Supercomando 02. */
+.detail-card {
+  margin-top: 16px;
+  padding: 20px;
+}
+
+.detail-card h2 {
+  margin: 0 0 12px;
+  font-size: 1.1rem;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px 24px;
+  margin: 0;
+}
+
+.detail-info dt {
+  font-size: 0.8rem;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.detail-info dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.detail-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.detail-action {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.detail-action h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.detail-action button {
+  align-self: flex-start;
+}
+
+.detail-status {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #e8eef7;
+  color: #034ea2;
+}
+
+.detail-history {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.detail-history li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 12px;
+  border-left: 3px solid #d5deea;
+}
+
+.detail-history small {
+  opacity: 0.7;
+}
+
+.detail-passenger-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.module-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.module-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+
+.module-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.module-tabs button[aria-selected='true'] {
+  background: #034ea2;
+  color: #fff;
+}
+
+.module-notice {
+  margin: 12px 0;
+  padding: 12px 16px;
+  border-left: 4px solid #034ea2;
+  border-radius: 6px;
+  background: #eef3fa;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.calendar-weekday {
+  padding: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.calendar-day {
+  min-height: 96px;
+  padding: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.calendar-day.outside {
+  opacity: 0.45;
+}
+
+.calendar-day-number {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.calendar-event {
+  display: block;
+  margin-top: 4px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: #e8eef7;
+  color: #034ea2;
+  font-size: 0.75rem;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.calendar-event.fleet {
+  background: #e6f4ea;
+  color: #1b6e3c;
+}
+
+.calendar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.report-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.report-bar {
+  display: grid;
+  grid-template-columns: 180px 1fr 48px;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+
+.report-bar-track {
+  height: 10px;
+  border-radius: 999px;
+  background: #e8eef7;
+}
+
+.report-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #034ea2;
+}
+
+.warehouse-cart-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(90px, 1fr) minmax(90px, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .calendar-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .calendar-weekday {
+    display: none;
+  }
+
+  .detail-passenger-row,
+  .warehouse-cart-row {
+    grid-template-columns: 1fr;
+  }
+
+  .report-bar {
+    grid-template-columns: 110px 1fr 40px;
+  }
+}
+
+.warehouse-forecast-date {
+  display: block;
+  margin-top: 4px;
+  white-space: nowrap;
+}

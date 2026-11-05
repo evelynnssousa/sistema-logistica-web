@@ -62,3 +62,29 @@ export async function sendPasswordRecoveryCode(
     throw new Error('O serviço de e-mail não conseguiu enviar a mensagem.')
   }
 }
+
+export async function sendPasswordRecoveryLink(
+  recipient: string,
+  link: string,
+): Promise<void> {
+  const { apiKey, from } = getEmailConfiguration()
+  const resend = new Resend(apiKey)
+
+  const { error } = await resend.emails.send({
+    from,
+    to: [recipient],
+    subject: 'Link para recuperação de senha — JUCESP',
+    text: [
+      'Você solicitou a recuperação de senha do sistema de logística da JUCESP.',
+      '',
+      `Abra este link para escolher uma nova senha: ${link}`,
+      '',
+      'O link expira em 10 minutos e pode ser utilizado uma única vez.',
+      'Se você não solicitou esta recuperação, ignore este e-mail.',
+    ].join('\n'),
+  })
+
+  if (error) {
+    throw new Error('O serviço de e-mail não conseguiu enviar a mensagem.')
+  }
+}

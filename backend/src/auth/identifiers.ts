@@ -8,7 +8,7 @@ export type NormalizedLoginIdentifiers = {
   username: string | null
 }
 
-const emailPattern = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/
+export const emailPattern = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/
 const usernamePattern = /^[a-z0-9][a-z0-9._-]{0,63}$/
 
 function normalizeOptionalIdentifier(value: unknown): string | null {

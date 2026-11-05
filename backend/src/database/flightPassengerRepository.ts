@@ -1,5 +1,6 @@
 import type { Pool } from 'pg'
 import { maskCpf } from '../auth/requestPolicy.js'
+import { decryptCpf } from '../requests/cpfProtection.js'
 import { insertAuthAuditEvent } from './authAuditRepository.js'
 import { getDatabasePool } from './pool.js'
 import { withTransaction } from './withTransaction.js'
@@ -47,13 +48,15 @@ export class FlightPassengerRepository {
 
   /** O CPF é mascarado aqui, para que o valor completo não chegue à rota. */
   async listMasked(requestId: string) {
+    // to_jsonb: também funciona antes da migração 005, sem as colunas novas.
     const result = await this.poolProvider().query<{
       id: string
       full_name: string
-      cpf: string
+      cpf: string | null
+      cpf_masked: string | null
     }>(
-      `SELECT id::text AS id, full_name, cpf
-         FROM public.flight_request_passengers
+      `SELECT id::text AS id, full_name, cpf, to_jsonb(p)->>'cpf_masked' AS cpf_masked
+         FROM public.flight_request_passengers p
         WHERE request_id = $1
         ORDER BY created_at, id`,
       [requestId],
@@ -62,7 +65,7 @@ export class FlightPassengerRepository {
     return result.rows.map((row) => ({
       id: row.id,
       name: row.full_name,
-      cpfMasked: maskCpf(row.cpf),
+      cpfMasked: row.cpf_masked ?? maskCpf(row.cpf ?? ''),
     }))
   }
 
@@ -76,11 +79,15 @@ export class FlightPassengerRepository {
     scope: PassengerRequestScope,
   ): Promise<string | null> {
     return withTransaction(this.poolProvider(), async (client) => {
-      const result = await client.query<{ cpf: string }>(
-        `SELECT cpf FROM public.flight_request_passengers WHERE id = $1`,
+      const result = await client.query<{ cpf: string | null; cpf_encrypted: string | null }>(
+        `SELECT cpf, to_jsonb(p)->>'cpf_encrypted' AS cpf_encrypted
+           FROM public.flight_request_passengers p
+          WHERE id = $1`,
         [passengerId],
       )
-      const cpf = result.rows[0]?.cpf
+      const row = result.rows[0]
+      if (!row) return null
+      const cpf = row.cpf_encrypted ? decryptCpf(row.cpf_encrypted) : row.cpf
       if (!cpf) return null
 
       await insertAuthAuditEvent(client, {

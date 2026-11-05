@@ -4,7 +4,7 @@
 |---|---|---|---|
 | **Banco** | **Supabase real**, de `backend/.env` | Nenhum, ou PostgreSQL descartável | PostgreSQL descartável |
 | **Grava dados reais?** | **Sim** | Não | Não |
-| **Portas** | API 3000, tela 5173 | Banco 55902 (só integração) | API 3901, tela 5901, banco 55901 |
+| **Portas** | API 3000, tela 5173 | Banco 55902 (integração), 55903 (restauração) | API 3901, tela 5901, banco 55901 |
 | **Contas** | Reais | Fictícias | Fictícias, com senha nova a cada execução |
 | **Comando** | `npm run dev:backend` e `npm run dev:frontend` | `npm run test:backend` e `npm run test:integration` | `npm run test:e2e` |
 
@@ -48,6 +48,8 @@ O comando faz tudo sozinho e pode rodar com os servidores de desenvolvimento no 
 
 **Não rode ferramentas de navegador manualmente contra as portas 3000 e 5173.** Foi assim que contas de teste chegaram ao banco real.
 
+Durante uma investigação, `E2E_ONLY=session-persistence npm run test:e2e` roda só os cenários indicados, separados por vírgula. O executor pode terminar acusando falta de dados de outros cenários: para validar tudo, rode sem a variável.
+
 Novos cenários entram em `e2e/`. Eles recebem o endereço e a senha do executor e não podem ter endereços fixos nem ler variáveis de ambiente.
 
 ## Tudo de uma vez
@@ -81,5 +83,45 @@ Nenhum deles faz parte dos testes, e todos recusam banco remoto em ambiente de t
 | Comando | Efeito |
 |---|---|
 | `npm run backup:database` | Somente leitura. Veja `docs/BACKUP_E_MIGRACOES_SUPABASE.md` |
+| `npm run migrations:check` | Somente leitura: mostra as migrações pendentes e o que impediria aplicá-las |
+| `node scripts/apply-migrations.cjs --aplicar --confirmar=APLICAR-MIGRACOES` | **Grava**: gera e testa um backup e aplica as migrações pendentes. Veja `docs/BACKUP_E_MIGRACOES_SUPABASE.md` |
 | `backend/src/cli/create-initial-admin.ts` | **Grava**: cria o primeiro administrador |
 | `backend/src/cli/reset-initial-admin-password.ts` | **Grava**: redefine a senha de um administrador |
+
+## Depois da migração 005
+
+Sem a migração, os módulos operacionais respondem 503 e não gravam. Depois que ela for aplicada no banco real, **as telas dos módulos em `npm run dev:frontend` também gravam dados reais**, incluindo solicitações, configurações e pedidos de material.
+
+## Depois das migrações 007 a 010
+
+Os novos protocolos, a Central, os anexos e os demais registros passam a gravar no banco real por `npm run dev:frontend`, como os demais módulos. Sem cada migração, a função correspondente responde 503, e as solicitações seguem com o número antigo.
+
+Duas funções só ligam com variável própria, para iniciar a API continuar sem gravar nada: `MONITORING_ENABLED=true` para o registro contínuo de disponibilidade e `ATTACHMENTS_DIR` para os anexos. Erros técnicos, com a 010 aplicada, são gravados assim que acontecem.
+
+`npm run test:backup` e `npm run backup:verify` usam só bancos descartáveis. O segundo lê a cópia indicada, que contém dados pessoais: rode na máquina autorizada a guardá-la.
+
+## Depois da migração 012
+
+Devolução, motivos por item, reserva, histórico de parâmetros, versões de modelos e de formulários e controle interno do Almoxarifado passam a gravar no banco real por `npm run dev:frontend`. Sem a migração, essas funções respondem 503, e o restante continua funcionando, com os textos e campos padrão.
+
+## Central de comunicação
+
+Depois da 013, enviar pela tela de desenvolvimento registra a mensagem no banco real. Ela só sai com `NOTIFICATION_EMAILS_ENABLED=true` e com o worker ligado. Sem isso, fica como não enviada ou aguardando envio, e nunca como enviada. Anexos exigem `ATTACHMENTS_DIR`.
+
+## Controle de Demandas
+
+Depois das migrações 014 e 015, usar o módulo pela tela de desenvolvimento grava no banco real. Fora de produção, a geração automática de ocorrências e os alertas de prazo só rodam com `DEMANDS_WORKER_ENABLED=true`, e iniciar a API continua sem gravar nada. Sem o worker, as próximas ocorrências não são geradas. Veja `CONTROLE_DE_DEMANDAS.md`.
+
+Para ver o módulo sem tocar no banco real, use `npm run demo:demandas`: API, tela e banco descartáveis nas portas 3910, 5910 e 55910, com contas e dados demonstrativos e o mesmo isolamento dos testes. Se uma dessas portas estiver ocupada, o comando para sem encerrar nada.
+
+## Portal do Motorista
+
+Depois das migrações 016 e 017, usar o portal pela tela de desenvolvimento grava no banco real: início, término e ocorrências de viagem. A conta de perfil Motorista vê só o portal. Sem a migração, o perfil não pode ser definido, e a Frota segue igual.
+
+## Comunicações automáticas
+
+Fora de produção, a API não processa as filas: o worker exige `INTEGRATIONS_WORKER_ENABLED=true`. Iniciar a API continua sem gravar nada.
+
+Mesmo assim, **depois da migração 006, cada ação no ambiente de desenvolvimento registra e-mails e notificações no banco real**. Sem `NOTIFICATION_EMAILS_ENABLED=true`, esses e-mails ficam como "não configurados" e não saem.
+
+Nos testes, `NODE_ENV=test` nunca escolhe um provedor real, mesmo com credenciais, e a trava de rede continua valendo. `npm run test:e2e` usa transportes simulados, que são recusados em produção. Veja `INTEGRACOES_E_AUTOMACOES.md`.

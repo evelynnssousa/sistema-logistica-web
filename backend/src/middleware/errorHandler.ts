@@ -1,5 +1,5 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express'
-import { describeError, logSecurityEvent } from '../security/logger.js'
+import { recordTechnicalEvent } from '../monitoring/technicalEvents.js'
 
 export const notFoundHandler: RequestHandler = (_request, response) => {
   response.status(404).json({
@@ -22,7 +22,7 @@ function clientErrorStatus(error: unknown): number | null {
  */
 export const errorHandler: ErrorRequestHandler = (
   error,
-  request,
+  _request,
   response,
   _next,
 ) => {
@@ -44,10 +44,7 @@ export const errorHandler: ErrorRequestHandler = (
     return
   }
 
-  logSecurityEvent('unhandled_error', {
-    method: request.method,
-    ...describeError(error),
-  })
+  recordTechnicalEvent('api', 'unhandled_error', error)
 
   response.status(500).json({
     success: false,

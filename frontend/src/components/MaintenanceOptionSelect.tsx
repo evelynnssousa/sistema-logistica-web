@@ -1,30 +1,36 @@
-import { useSyncExternalStore } from 'react'
-import type { MaintenanceOptionCategory } from '../app/maintenanceCatalog'
-import {
-  getMaintenanceCatalogSnapshot,
-  subscribeMaintenanceCatalog,
-} from '../app/maintenanceCatalog'
+import type { CatalogCategory } from '../api/modulesApi'
+import { useCatalog } from '../app/useCatalog'
 
 type MaintenanceOptionSelectProps = {
-  category: MaintenanceOptionCategory
+  category: CatalogCategory
   label: string
   name: string
   required?: boolean
+  value?: string
+  onChange?: (value: string) => void
+  emptyLabel?: string
 }
 
+/** Seletor padronizado: só oferece as opções ativas cadastradas em Configurações. */
 function MaintenanceOptionSelect({
   category,
   label,
   name,
   required = false,
+  value,
+  onChange,
+  emptyLabel,
 }: MaintenanceOptionSelectProps) {
-  const snapshot = useSyncExternalStore(
-    subscribeMaintenanceCatalog,
-    getMaintenanceCatalogSnapshot,
-    getMaintenanceCatalogSnapshot,
-  )
-  const options = snapshot.options[category].filter((option) => option.active)
+  const { catalog, error, loaded } = useCatalog()
+  const options = catalog[category]
   const errorId = `${name}-catalog-error`
+  const placeholder = !loaded
+    ? 'Carregando...'
+    : options.length > 0
+      ? (emptyLabel ?? 'Selecione uma opção')
+      : error
+        ? 'Opções indisponíveis'
+        : 'Nenhuma opção cadastrada. Consulte Configurações.'
 
   return (
     <div className="maintenance-option-select">
@@ -41,16 +47,14 @@ function MaintenanceOptionSelect({
         <select
           name={name}
           required={required}
-          disabled={options.length === 0 || snapshot.error !== null}
-          defaultValue=""
-          aria-describedby={snapshot.error ? errorId : undefined}
+          disabled={options.length === 0}
+          {...(onChange
+            ? { value: value ?? '', onChange: (event) => onChange(event.target.value) }
+            : { defaultValue: '' })}
+          aria-describedby={error ? errorId : undefined}
         >
-          <option value="" disabled>
-            {options.length > 0
-              ? 'Selecione uma opção'
-              : snapshot.error
-                ? 'Opções indisponíveis'
-                : 'Nenhuma opção cadastrada. Consulte Configurações.'}
+          <option value="" disabled={!emptyLabel}>
+            {placeholder}
           </option>
           {options.map((option) => (
             <option key={option.id} value={option.id}>
@@ -59,9 +63,9 @@ function MaintenanceOptionSelect({
           ))}
         </select>
       </label>
-      {snapshot.error && (
+      {error && (
         <span id={errorId} className="maintenance-option-error" role="alert">
-          {snapshot.error}
+          {error}
         </span>
       )}
     </div>

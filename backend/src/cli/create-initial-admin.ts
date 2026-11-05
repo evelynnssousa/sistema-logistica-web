@@ -76,6 +76,17 @@ async function main() {
         [name, email, sector, passwordHash],
       )
 
+      // Depois da migração 003, o administrador também tem sua linha de acesso.
+      const accessTable = await client.query<{ present: boolean }>(
+        `SELECT to_regclass('public.auth_user_access') IS NOT NULL AS present`,
+      )
+      if (accessTable.rows[0]?.present) {
+        await client.query(
+          `INSERT INTO public.auth_user_access (user_id, profile) VALUES ($1, 'administrator')`,
+          [created.rows[0].id],
+        )
+      }
+
       await insertAuthAuditEvent(client, {
         actorUserId: null,
         actorKind: 'system',

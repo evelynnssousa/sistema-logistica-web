@@ -75,7 +75,7 @@ export function accessSql(isMigrated: boolean) {
                   a.denied_permissions AS access_denied`,
         join: 'LEFT JOIN public.auth_user_access a ON a.user_id = u.id',
         profile: `COALESCE(a.profile, ${legacyProfileSql})`,
-        slmMember: `COALESCE(a.slm_member, ${legacyProfileSql} = 'slm_operator')`,
+        slmMember: 'COALESCE(a.slm_member, false)',
       }
     : {
         columns: `u.role, u.permissions,
@@ -85,7 +85,7 @@ export function accessSql(isMigrated: boolean) {
                   NULL::text[] AS access_denied`,
         join: '',
         profile: legacyProfileSql,
-        slmMember: `COALESCE(${legacyProfileSql} = 'slm_operator', false)`,
+        slmMember: 'false',
       }
 }
 
@@ -115,6 +115,8 @@ export function resolveAccess(row: AccessRow): ResolvedAccess | null {
   const deniedPermissions = hasAccessRow
     ? onlyKnownPermissions(row.access_denied)
     : []
+  // Sem a linha nova, ninguém é da equipe SLM: a inclusão é sempre um ato explícito.
+  const slmMember = hasAccessRow && row.access_slm_member === true
 
   return {
     role,
@@ -122,10 +124,9 @@ export function resolveAccess(row: AccessRow): ResolvedAccess | null {
       role,
       grantedPermissions,
       deniedPermissions,
+      slmMember,
     ),
-    slmMember: hasAccessRow
-      ? row.access_slm_member === true
-      : role === 'slm_operator',
+    slmMember,
     grantedPermissions,
     deniedPermissions,
   }

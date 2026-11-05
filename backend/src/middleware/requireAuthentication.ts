@@ -1,6 +1,12 @@
 import type { RequestHandler } from 'express'
-import { createClearedSessionCookie, readSessionToken } from '../auth/cookies.js'
+import {
+  createClearedSessionCookie,
+  hasSessionCookie,
+  readSessionToken,
+} from '../auth/cookies.js'
+import { isDriverApiPath } from '../auth/driverPolicy.js'
 import type { ResolvedSession } from '../auth/session.js'
+import { logSecurityEvent } from '../security/logger.js'
 
 export type SessionResolver = {
   resolve(token: string): Promise<ResolvedSession | null>
@@ -12,7 +18,11 @@ export function requireAuthentication(
   return async (request, response, next) => {
     const token = readSessionToken(request.headers.cookie)
     if (!token) {
-      response.append('Set-Cookie', createClearedSessionCookie())
+      // Sem cookie, não há o que limpar. Limpar mesmo assim apagaria a sessão criada por um login
+      // concluído enquanto esta resposta estava a caminho.
+      if (hasSessionCookie(request.headers.cookie)) {
+        response.append('Set-Cookie', createClearedSessionCookie())
+      }
       response.status(401).json({
         success: false,
         message: 'Autenticação necessária.',
@@ -28,6 +38,13 @@ export function requireAuthentication(
           success: false,
           message: 'Autenticação necessária.',
         })
+        return
+      }
+
+      // O motorista só alcança o próprio portal. Vale para toda rota, mesmo as que só pedem sessão.
+      if (session.role === 'driver' && !isDriverApiPath(request.originalUrl ?? '')) {
+        logSecurityEvent('driver_route_denied', { path: (request.originalUrl ?? '').split('?')[0] })
+        response.status(403).json({ success: false, message: 'Acesso não autorizado.' })
         return
       }
 

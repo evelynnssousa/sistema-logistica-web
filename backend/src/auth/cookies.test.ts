@@ -59,7 +59,9 @@ test('COOKIE_SECURE turns on Secure outside production and cannot turn it off th
 
 test('reads one well-formed session token and rejects ambiguous cookies', () => {
   assert.equal(readSessionToken(`theme=dark; ${sessionCookieName}=${token}`), token)
-  assert.equal(readSessionToken(`${sessionCookieName}=${token}; ${sessionCookieName}=${token}`), null)
+  // O mesmo valor repetido não é ambíguo; valores diferentes são.
+  assert.equal(readSessionToken(`${sessionCookieName}=${token}; ${sessionCookieName}=${token}`), token)
+  assert.equal(readSessionToken(`${sessionCookieName}=${token}; ${sessionCookieName}=${'b'.repeat(43)}`), null)
   assert.equal(readSessionToken(`${sessionCookieName}=invalid`), null)
   assert.equal(readSessionToken(undefined), null)
 })

@@ -1,31 +1,23 @@
+import Icon from './ui/Icon'
+import type { IconName } from './ui/Icon'
+
 type StatCardProps = {
-  icon: string
-  tone: 'blue' | 'orange' | 'green' | 'purple'
-  tag: string
+  icon: IconName
+  tone: 'black' | 'yellow' | 'white' | 'graphite'
   label: string
   value: string
   description: string
 }
 
-function StatCard({
-  icon,
-  tone,
-  tag,
-  label,
-  value,
-  description,
-}: StatCardProps) {
+function StatCard({ icon, tone, label, value, description }: StatCardProps) {
   return (
-    <article className="stat-card">
-      <div className="stat-top">
-        <span className={`stat-icon ${tone}`} aria-hidden="true">
-          {icon}
-        </span>
-        <span className="stat-tag">{tag}</span>
-      </div>
-      <p className="stat-label">{label}</p>
-      <div className="stat-value">{value}</div>
-      <p className="stat-description">{description}</p>
+    <article className={`stat-card ui-metric ui-metric-${tone}`}>
+      <span className="ui-metric-icon">
+        <Icon name={icon} size={26} weight="duotone" />
+      </span>
+      <p className="ui-metric-label">{label}</p>
+      <div className="ui-metric-value">{value}</div>
+      <p className="ui-metric-description">{description}</p>
     </article>
   )
 }

@@ -2,15 +2,22 @@ import { Router } from 'express'
 import type { Response } from 'express'
 import {
   allPermissions,
+  essentialAdministratorPermissions,
+  isEligibleForRestrictedPermission,
   isPermission,
   permissionGroups,
   permissionsForProfile,
+  restrictedPermissions,
 } from '../auth/permissions.js'
 import type { Permission } from '../auth/permissions.js'
 import { authRoles, isAuthRole } from '../auth/roles.js'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
 import { requireAuth } from '../auth/sessionRuntime.js'
 import { AccessMigrationRequiredError } from '../database/accessSchema.js'
+import { InstitutionalLinkRepository } from '../database/institutionalLinkRepository.js'
+import { notFound, sendModuleError } from '../database/moduleErrors.js'
+import { readInstitutionalLinks } from '../demands/demandValidation.js'
+import { asBody, isUuid } from '../requests/validation.js'
 import {
   AccountAuthorizationError,
   UserManagementError,
@@ -22,6 +29,7 @@ import { describeError, logSecurityEvent } from '../security/logger.js'
 
 const router = Router()
 const users = new UserRepository()
+const institutional = new InstitutionalLinkRepository()
 
 for (const path of ['/admin/users', '/admin/permissions', '/admin/audit']) {
   router.use(path, requireAuth, requireCsrf)
@@ -90,6 +98,36 @@ function readPermissionList(value: unknown): Permission[] | null {
   return [...new Set(value)]
 }
 
+// Vínculos institucionais: DA e setores de atuação. Lotação e equipe SLM têm os campos próprios.
+router.get(
+  '/admin/users/:userId/institutional-links',
+  requirePermission('users:read'),
+  async (request, response) => {
+    try {
+      const { userId } = request.params
+      if (!isUuid(userId)) throw notFound()
+      response.json({ success: true, ...(await institutional.overview(userId)) })
+    } catch (error) {
+      sendModuleError(response, error)
+    }
+  },
+)
+
+router.put(
+  '/admin/users/:userId/institutional-links',
+  requirePermission('users:manage'),
+  async (request, response) => {
+    try {
+      const { userId } = request.params
+      if (!isUuid(userId)) throw notFound()
+      await institutional.update(identityOf(response), userId, readInstitutionalLinks(asBody(request.body)))
+      response.json({ success: true, ...(await institutional.overview(userId)) })
+    } catch (error) {
+      sendModuleError(response, error)
+    }
+  },
+)
+
 router.get(
   '/admin/permissions',
   requirePermission('users:read'),
@@ -101,6 +139,18 @@ router.get(
         key: role,
         permissions: permissionsForProfile(role),
       })),
+      restricted: restrictedPermissions,
+      essentialAdministrator: essentialAdministratorPermissions,
+      // A tela usa a mesma regra do servidor, sem uma cópia própria.
+      eligibility: authRoles.flatMap((role) =>
+        [true, false].map((slmMember) => ({
+          role,
+          slmMember,
+          eligible: restrictedPermissions.filter((permission) =>
+            isEligibleForRestrictedPermission(permission, role, slmMember),
+          ),
+        })),
+      ),
     })
   },
 )
@@ -110,8 +160,18 @@ router.get(
   requirePermission('audit:read'),
   async (request, response) => {
     try {
+      const { action, result, person, from, to } = request.query
+      const date = (value: unknown) => {
+        const parsed = typeof value === 'string' && value ? new Date(value) : null
+        return parsed && !Number.isNaN(parsed.getTime()) ? parsed : null
+      }
       const page = await users.listAuditEvents(identityOf(response), {
         page: readPage(request.query.page),
+        action: readText(action, 80) || undefined,
+        result: ['success', 'failure', 'denied'].includes(String(result)) ? String(result) : undefined,
+        person: readText(person, 120) || undefined,
+        from: date(from),
+        to: date(to),
       })
       response.json({ success: true, ...page })
     } catch (error) {
@@ -255,5 +315,33 @@ for (const [action, isActive] of [
     },
   )
 }
+
+// Só início, último uso e validade: a sessão nunca expõe token nem endereço.
+router.get(
+  '/admin/users/:userId/sessions',
+  requirePermission('users:manage'),
+  async (request, response) => {
+    try {
+      const userId = String(request.params.userId)
+      const sessions = /^[0-9a-f-]{36}$/i.test(userId) ? await users.listOwnSessions(userId) : []
+      response.json({ success: true, sessions })
+    } catch (error) {
+      sendError(error, response)
+    }
+  },
+)
+
+router.post(
+  '/admin/users/:userId/sessions/revoke',
+  requirePermission('users:manage'),
+  async (request, response) => {
+    try {
+      const total = await users.revokeUserSessions(identityOf(response), String(request.params.userId))
+      response.json({ success: true, total })
+    } catch (error) {
+      sendError(error, response)
+    }
+  },
+)
 
 export default router

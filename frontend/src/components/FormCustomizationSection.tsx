@@ -31,6 +31,8 @@ const typeLabels: Record<FormFieldType, string> = {
   singleSelect: 'Lista de opções',
   multiSelect: 'Múltiplas opções',
   boolean: 'Sim/não',
+  phone: 'Telefone',
+  checkbox: 'Caixa de seleção',
 }
 
 function copyDefinitions(fields: FormFieldDefinition[]) {

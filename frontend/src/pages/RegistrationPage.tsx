@@ -1,4 +1,7 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { getPublicRegistrationForm } from '../api/configApi'
+import type { FormContent } from '../api/configApi'
+import { isManagedFieldVisible } from '../app/requestForm'
 import { register } from '../auth/auth'
 import logoJucesp from '../assets/logoJucespNovo.png'
 import '../App.css'
@@ -16,6 +19,26 @@ function RegistrationPage({ onBackToLogin }: RegistrationPageProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [form, setForm] = useState<FormContent | null>(null)
+  const [extra, setExtra] = useState<Record<string, string>>({})
+
+  // Sem resposta, vale o formulário padrão: entrar com a conta não depende disto.
+  useEffect(() => {
+    let active = true
+    getPublicRegistrationForm()
+      .then((data) => {
+        if (active) setForm(data.form)
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const labelOf = (id: string, fallback: string) => form?.fields.find((field) => field.id === id)?.label ?? fallback
+  const customFields = (form?.fields ?? []).filter(
+    (field) => field.id.startsWith('custom-') && isManagedFieldVisible(field, { ...extra, fullName, email, sector }, false),
+  )
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -41,6 +64,9 @@ function RegistrationPage({ onBackToLogin }: RegistrationPageProps) {
         sector: sector.trim(),
         password,
         passwordConfirmation,
+        customFields: Object.fromEntries(
+          customFields.filter((field) => extra[field.id]).map((field) => [field.id, extra[field.id]]),
+        ),
       })
       setSuccess(message)
       setFullName('')
@@ -94,7 +120,7 @@ function RegistrationPage({ onBackToLogin }: RegistrationPageProps) {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="login-form">
-            <label htmlFor="register-name">Nome completo</label>
+            <label htmlFor="register-name">{labelOf('fullName', 'Nome completo')}</label>
             <input
               id="register-name"
               type="text"
@@ -108,7 +134,7 @@ function RegistrationPage({ onBackToLogin }: RegistrationPageProps) {
               disabled={loading}
             />
 
-            <label htmlFor="register-email">E-mail</label>
+            <label htmlFor="register-email">{labelOf('email', 'E-mail')}</label>
             <input
               id="register-email"
               type="email"
@@ -121,7 +147,7 @@ function RegistrationPage({ onBackToLogin }: RegistrationPageProps) {
               disabled={loading}
             />
 
-            <label htmlFor="register-sector">Setor</label>
+            <label htmlFor="register-sector">{labelOf('sector', 'Setor')}</label>
             <input
               id="register-sector"
               type="text"
@@ -134,7 +160,39 @@ function RegistrationPage({ onBackToLogin }: RegistrationPageProps) {
               disabled={loading}
             />
 
-            <label htmlFor="register-password">Senha</label>
+            {customFields.map((field) => (
+              <div key={field.id}>
+                <label htmlFor={`register-${field.id}`}>{field.label}{field.required && <span aria-hidden="true"> *</span>}</label>
+                {field.type === 'singleSelect' ? (
+                  <select
+                    id={`register-${field.id}`}
+                    required={field.required}
+                    disabled={loading}
+                    value={extra[field.id] ?? ''}
+                    onChange={(event) => setExtra((current) => ({ ...current, [field.id]: event.target.value }))}
+                  >
+                    <option value="">Selecione</option>
+                    {field.options.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    id={`register-${field.id}`}
+                    type={field.type === 'number' ? 'number' : field.type === 'phone' ? 'tel' : field.type === 'date' ? 'date' : 'text'}
+                    required={field.required}
+                    disabled={loading}
+                    minLength={field.minLength ?? undefined}
+                    maxLength={field.maxLength ?? undefined}
+                    value={extra[field.id] ?? ''}
+                    onChange={(event) => setExtra((current) => ({ ...current, [field.id]: event.target.value }))}
+                  />
+                )}
+                {(field.help || field.description) && <small>{field.help || field.description}</small>}
+              </div>
+            ))}
+
+            <label htmlFor="register-password">{labelOf('password', 'Senha')}</label>
             <input
               id="register-password"
               type="password"

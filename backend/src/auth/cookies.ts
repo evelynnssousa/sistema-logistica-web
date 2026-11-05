@@ -13,10 +13,21 @@ export function readSessionToken(cookieHeader: string | undefined): string | nul
     return [cookie.slice(separator + 1).trim()]
   })
 
-  if (matchingCookies.length !== 1) return null
-  return sessionTokenPattern.test(matchingCookies[0])
-    ? matchingCookies[0]
+  // O mesmo valor repetido é a mesma sessão: já ocorreu de um pedido chegar assim, e recusá-lo
+  // derrubava sessões válidas. Valores diferentes continuam recusados: um pode ter sido plantado.
+  const distinctValues = [...new Set(matchingCookies)]
+  if (distinctValues.length !== 1) return null
+  return sessionTokenPattern.test(distinctValues[0])
+    ? distinctValues[0]
     : null
+}
+
+/** Se a requisição trouxe algum cookie de sessão, mesmo inválido, repetido ou vencido. */
+export function hasSessionCookie(cookieHeader: string | undefined): boolean {
+  return (cookieHeader ?? '').split(';').some((cookie) => {
+    const separator = cookie.indexOf('=')
+    return separator >= 0 && cookie.slice(0, separator).trim() === sessionCookieName
+  })
 }
 
 // Em produção é sempre Secure. Fora dela, COOKIE_SECURE=true liga o atributo

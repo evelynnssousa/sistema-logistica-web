@@ -1,38 +1,40 @@
+import { ticketStatusLabels } from '../api/communicationsApi'
+import { formatDateTime } from '../api/modulesApi'
+import { useHasPermission } from '../auth/UserContext'
 import ServiceRequestsPage from '../components/ServiceRequestsPage'
 
-const airTravelStatuses = [
-  'EM COTAÇÃO',
-  'AGUARDANDO APROVAÇÃO',
-  'EM EMISSÃO',
-  'EMITIDA',
-  'CANCELADA',
-] as const
+const statuses = ['em_cotacao', 'aguardando_aprovacao', 'em_emissao', 'emitida', 'cancelada'] as const
 
-const airTravelColumns = [
-  'Identificação',
-  'Passageiro',
-  'Solicitante',
-  'Destino',
-  'Data de ida',
-  'Data de volta',
-  'Status',
-  'Ações',
-] as const
+const tripLabels: Record<string, string> = {
+  ida_volta: 'Ida e volta',
+  somente_ida: 'Somente ida',
+  somente_volta: 'Somente volta',
+}
 
 function AirTravelPage() {
+  const readsCommunications = useHasPermission('communications:read')
+  const attendsFlights = useHasPermission('flights:update')
+  const seesTicket = readsCommunications && attendsFlights
+
   return (
     <ServiceRequestsPage
       className="maintenance-page air-travel-page"
+      module="flights"
+      basePath="/passagens-aereas"
       pageTitle="Passagens Aéreas"
       pageDescription="Consulte e acompanhe as solicitações de passagens aéreas."
-      searchPlaceholder="Pesquisar solicitações"
-      listDescription="Pesquise e consulte as solicitações de passagens aéreas."
-      statusOptions={airTravelStatuses}
-      columns={airTravelColumns}
-      emptyDescription="As solicitações serão exibidas aqui quando houver dados reais disponíveis."
-      statusFilterStyle="tabs"
-      emptyActionLabel="Visualizar"
-      newRequestTo="/passagens-aereas/nova"
+      searchPlaceholder="Pesquisar por protocolo, trecho ou solicitante"
+      statusOptions={statuses}
+      tripTypeOptions={Object.entries(tripLabels).map(([value, label]) => ({ value, label }))}
+      columns={[
+        { label: 'Trecho', render: (request) => request.title },
+        { label: 'Tipo', render: (request) => tripLabels[String(request.details.tipoViagem)] ?? '—' },
+        { label: 'Solicitante', render: (request) => request.requester.name },
+        { label: 'Data da solicitação', render: (request) => formatDateTime(request.createdAt) },
+        ...(seesTicket
+          ? [{ label: 'Bilhete', render: (request: { ticketStatus?: keyof typeof ticketStatusLabels }) => ticketStatusLabels[request.ticketStatus ?? 'nao_enviado'] }]
+          : []),
+      ]}
       createPermission="flights:create"
     />
   )

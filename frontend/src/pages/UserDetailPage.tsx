@@ -1,21 +1,29 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { revokeUserSessions } from '../api/modulesApi'
 import { roleLabels } from '../app/roleLabels'
 import { useAuthenticatedUser, useHasPermission } from '../auth/UserContext'
+import { Alert } from '../components/ui/Feedback'
+import { useConfirm } from '../components/ui/useConfirm'
+import InstitutionalLinksEditor from '../components/InstitutionalLinksEditor'
 import {
   auditActionLabels,
   describeAuditDetails,
   getPermissionCatalog,
   getUser,
   getUserHistory,
+  getUserInstitutionalLinks,
   setUserActive,
   statusLabels,
   updateUserAccess,
   updateUserData,
+  updateUserInstitutionalLinks,
 } from '../auth/usersApi'
 import type {
   AuditEntry,
+  InstitutionalLinks,
+  InstitutionalOptions,
   ManagedUser,
   PermissionCatalog,
   UserRole,
@@ -40,6 +48,7 @@ function UserDetailPage() {
   const { userId = '' } = useParams()
   const currentUser = useAuthenticatedUser()
   const canManage = useHasPermission('users:manage')
+  const { confirm, confirmDialog } = useConfirm()
 
   const [user, setUser] = useState<ManagedUser | null>(null)
   const [catalog, setCatalog] = useState<PermissionCatalog | null>(null)
@@ -55,6 +64,8 @@ function UserDetailPage() {
   const [role, setRole] = useState<UserRole>('requester')
   const [slmMember, setSlmMember] = useState(false)
   const [overrides, setOverrides] = useState<Record<string, Override>>({})
+  const [links, setLinks] = useState<InstitutionalLinks | null>(null)
+  const [linkOptions, setLinkOptions] = useState<InstitutionalOptions | null>(null)
 
   function applyUser(next: ManagedUser) {
     setUser(next)
@@ -82,6 +93,15 @@ function UserDetailPage() {
         }
       })
 
+    // Sem os vínculos, o restante da página continua funcionando.
+    getUserInstitutionalLinks(userId)
+      .then((data) => {
+        if (!active) return
+        setLinks(data.links)
+        setLinkOptions(data.options)
+      })
+      .catch(() => undefined)
+
     return () => {
       active = false
     }
@@ -93,6 +113,35 @@ function UserDetailPage() {
     [catalog, role],
   )
 
+  const eligiblePermissions = useMemo(
+    () =>
+      new Set(
+        catalog?.eligibility.find(
+          (entry) => entry.role === role && entry.slmMember === slmMember,
+        )?.eligible,
+      ),
+    [catalog, role, slmMember],
+  )
+
+  // Mesma regra do servidor: sem elegibilidade, a permissão especial não vale.
+  function isBlocked(permission: string) {
+    return (
+      Boolean(catalog?.restricted.includes(permission)) &&
+      !eligiblePermissions.has(permission)
+    )
+  }
+
+  function isProtected(permission: string) {
+    return (
+      role === 'administrator' &&
+      Boolean(catalog?.essentialAdministrator.includes(permission))
+    )
+  }
+
+  const pendingRevocations = (user?.grantedPermissions ?? []).filter(
+    (permission) => overrides[permission] === 'grant' && isBlocked(permission),
+  )
+
   const isSelf = currentUser?.id === userId
   const canEditAccess =
     canManage && !isSelf && currentUser?.role === 'administrator'
@@ -101,15 +150,23 @@ function UserDetailPage() {
     canManage && (currentUser?.role === 'administrator' || !targetIsAdministrator)
   const decided = user?.role !== null
 
-  async function run(action: () => Promise<ManagedUser>, success: string) {
+  async function run(
+    action: () => Promise<ManagedUser>,
+    success: string,
+  ) {
     setSaving(true)
     setError('')
     setNotice('')
 
     try {
-      applyUser(await action())
+      const updated = await action()
+      applyUser(updated)
       setHistory(await getUserHistory(userId))
-      setNotice(success)
+      setNotice(
+        updated.revokedPermissions?.length
+          ? `${success} Permissões especiais revogadas automaticamente: ${updated.revokedPermissions.join(', ')}.`
+          : success,
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível salvar.')
     } finally {
@@ -125,7 +182,7 @@ function UserDetailPage() {
     )
   }
 
-  function saveAccess(event: FormEvent<HTMLFormElement>) {
+  async function saveAccess(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     const grantedPermissions = Object.keys(overrides).filter(
@@ -138,9 +195,19 @@ function UserDetailPage() {
     if (
       grantedPermissions.includes(cpfPermission) &&
       !user?.grantedPermissions.includes(cpfPermission) &&
-      !window.confirm(
+      !(await confirm(
         `Conceder a ${user?.name} acesso ao CPF completo dos passageiros? Cada consulta ficará registrada na auditoria.`,
-      )
+      ))
+    ) {
+      return
+    }
+
+    if (
+      pendingRevocations.length > 0 &&
+      !(await confirm(
+        `Estas permissões especiais serão revogadas e não voltam automaticamente: ${pendingRevocations.join(', ')}. Continuar?`,
+        { danger: true },
+      ))
     ) {
       return
     }
@@ -157,13 +224,35 @@ function UserDetailPage() {
     )
   }
 
-  function toggleActive() {
+  async function saveLinks(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!links) return
+    setSaving(true)
+    setError('')
+    setNotice('')
+    try {
+      const saved = await updateUserInstitutionalLinks(userId, links)
+      setLinks(saved.links)
+      setLinkOptions(saved.options)
+      setHistory(await getUserHistory(userId))
+      setNotice('Vínculos atualizados. A alteração já vale para as sessões abertas.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível salvar os vínculos.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function toggleActive() {
     if (!user) return
     const activating = user.status !== 'approved'
 
     if (
       !activating &&
-      !window.confirm(`Desativar a conta de ${user.name}? As sessões abertas serão encerradas.`)
+      !(await confirm(
+        `Desativar a conta de ${user.name}? As sessões abertas serão encerradas, e as permissões especiais não voltam na reativação.`,
+        { confirmLabel: 'Desativar conta', danger: true },
+      ))
     ) {
       return
     }
@@ -174,14 +263,34 @@ function UserDetailPage() {
     )
   }
 
+  async function revokeSessions() {
+    if (!user || !(await confirm(`Encerrar todas as sessões de ${user.name}?`, { confirmLabel: 'Encerrar sessões' }))) return
+    setError('')
+    setNotice('')
+    try {
+      const { total } = await revokeUserSessions(userId)
+      setNotice(total === 1 ? '1 sessão encerrada.' : `${total} sessões encerradas.`)
+      setHistory(await getUserHistory(userId))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível encerrar as sessões.')
+    }
+  }
+
   function changeRole(next: UserRole) {
     setRole(next)
     if (next === 'slm_operator') setSlmMember(true)
+    if (next === 'requester') setSlmMember(false)
+    // O perfil Motorista é fechado: sem equipe SLM nem permissões individuais.
+    if (next === 'driver') {
+      setSlmMember(false)
+      setOverrides({})
+    }
   }
 
-  // O perfil operacional só existe dentro da equipe: sair dela volta a Solicitante.
+  // Só Administrador e Operador SLM integram a equipe, então o perfil acompanha.
   function changeSlmMember(next: boolean) {
     setSlmMember(next)
+    if (next && (role === 'requester' || role === 'driver')) setRole('slm_operator')
     if (!next && role === 'slm_operator') setRole('requester')
   }
 
@@ -267,7 +376,7 @@ function UserDetailPage() {
             />
           </label>
           <label>
-            <span>Setor</span>
+            <span>Setor de lotação</span>
             <input
               value={sector}
               maxLength={120}
@@ -296,16 +405,48 @@ function UserDetailPage() {
               type="button"
               className={user.status === 'approved' ? 'danger' : ''}
               disabled={saving}
-              onClick={toggleActive}
+              onClick={() => void toggleActive()}
             >
               {user.status === 'approved' ? 'Desativar conta' : 'Ativar conta'}
+            </button>
+          )}
+          {canEditAccount && !isSelf && user.status === 'approved' && (
+            <button type="button" disabled={saving} onClick={() => void revokeSessions()}>
+              Encerrar sessões
             </button>
           )}
         </div>
       )}
 
+      {decided && links && linkOptions && (
+        <form className="users-card" onSubmit={(event) => void saveLinks(event)}>
+          <h2>Vínculos institucionais</h2>
+          <p>
+            Independentes da lotação e da equipe SLM, e cumulativos. Retirar um vínculo não apaga as ações anteriores
+            nem o histórico das demandas.
+          </p>
+          {linkOptions.available ? (
+            <InstitutionalLinksEditor
+              options={linkOptions}
+              value={links}
+              disabled={!canEditAccess || saving}
+              onChange={setLinks}
+            />
+          ) : (
+            <p className="users-note" role="note">
+              Os vínculos dependem de uma atualização do banco de dados ainda não aplicada.
+            </p>
+          )}
+          {canEditAccess && linkOptions.available && (
+            <button type="submit" disabled={saving}>
+              {saving ? 'Salvando...' : 'Salvar vínculos'}
+            </button>
+          )}
+        </form>
+      )}
+
       {decided && (
-        <form className="users-card" onSubmit={saveAccess}>
+        <form className="users-card" onSubmit={(event) => void saveAccess(event)}>
           <h2>Perfil e equipe SLM</h2>
           {!canEditAccess && !isSelf && (
             <p>Somente um administrador pode alterar o acesso de um usuário.</p>
@@ -321,6 +462,7 @@ function UserDetailPage() {
                 <option value="requester">{roleLabels.requester}</option>
                 <option value="slm_operator">{roleLabels.slm_operator}</option>
                 <option value="administrator">{roleLabels.administrator}</option>
+                <option value="driver">{roleLabels.driver}</option>
               </select>
             </label>
             <label className="users-checkbox">
@@ -333,26 +475,45 @@ function UserDetailPage() {
               <span>
                 Integra a equipe SLM. Não depende do setor cadastrado, e a
                 retirada não apaga o histórico. Retirar um Operador SLM da equipe
-                muda o perfil para Solicitante.
+                muda o perfil para Solicitante, e incluir um Solicitante muda o
+                perfil para Operador SLM.
               </span>
             </label>
           </div>
 
+          {pendingRevocations.length > 0 && (
+            <p className="users-note" role="note">
+              Ao salvar, estas permissões especiais serão revogadas e não voltam
+              automaticamente: {pendingRevocations.join(', ')}.
+            </p>
+          )}
+
           <h2>Permissões individuais</h2>
           <p>
             Somam ou retiram em relação ao perfil, sem promover o usuário. A
-            retirada sempre prevalece.
+            retirada prevalece, exceto sobre as permissões essenciais do
+            administrador. Permissões especiais dependem do perfil e da equipe SLM.
           </p>
 
-          {catalog.groups.map((group) => (
+          {role === 'driver' && (
+            <Alert tone="info">
+              O perfil Motorista dá acesso só ao Portal do Motorista e não aceita permissões individuais. O vínculo com
+              o cadastro de motoristas é feito em Frota → Motoristas.
+            </Alert>
+          )}
+          {(role === 'driver' ? [] : catalog.groups.filter((group) => group.key !== 'driver_portal')).map((group) => (
             <fieldset className="users-permission-group" key={group.key}>
               <legend>{group.label}</legend>
               {group.permissions.map((permission) => {
                 const fromProfile = profilePermissions.has(permission.key)
                 const override = overrides[permission.key] ?? 'profile'
+                const blocked = isBlocked(permission.key)
+                const isProtectedPermission = isProtected(permission.key)
                 const effective =
-                  override === 'grant' ||
-                  (override === 'profile' && fromProfile)
+                  !blocked &&
+                  (override === 'grant' ||
+                    (override === 'profile' && fromProfile) ||
+                    isProtectedPermission)
 
                 return (
                   <div
@@ -365,6 +526,8 @@ function UserDetailPage() {
                         {permission.key} ·{' '}
                         {effective ? 'Com acesso' : 'Sem acesso'}
                         {fromProfile ? ' · incluída no perfil' : ''}
+                        {blocked ? ' · exige perfil elegível e equipe SLM' : ''}
+                        {isProtectedPermission ? ' · essencial' : ''}
                       </small>
                     </div>
                     <select
@@ -379,8 +542,12 @@ function UserDetailPage() {
                       }
                     >
                       <option value="profile">Conforme o perfil</option>
-                      <option value="grant">Conceder</option>
-                      <option value="deny">Retirar</option>
+                      <option value="grant" disabled={blocked && override !== 'grant'}>
+                        Conceder
+                      </option>
+                      <option value="deny" disabled={isProtectedPermission}>
+                        Retirar
+                      </option>
                     </select>
                   </div>
                 )
@@ -425,6 +592,7 @@ function UserDetailPage() {
           </div>
         )}
       </div>
+      {confirmDialog}
     </section>
   )
 }

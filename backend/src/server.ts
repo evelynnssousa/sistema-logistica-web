@@ -5,6 +5,10 @@ import { isPasswordRecoveryConfigured } from './auth/passwordRecoveryService.js'
 import { isRemoteDatabaseConfigured } from './auth/reservedTestEmails.js'
 import { shouldRunSessionCleanup } from './auth/sessionCleanupPolicy.js'
 import { startSessionCleanup } from './auth/sessionRuntime.js'
+import { shouldRunDemandWorker, startDemandWorker } from './demands/worker.js'
+import { shouldRunIntegrationWorker } from './integrations/config.js'
+import { startIntegrationWorker } from './integrations/worker.js'
+import { shouldRunMonitoring, startMonitoring } from './monitoring/healthChecks.js'
 import { logSecurityEvent } from './security/logger.js'
 
 const PORT = Number(process.env.PORT) || 3000
@@ -26,5 +30,14 @@ app.listen(PORT, '0.0.0.0', () => {
 
   if (shouldRunSessionCleanup()) {
     startSessionCleanup()
+  }
+  if (shouldRunIntegrationWorker()) {
+    startIntegrationWorker()
+  }
+  if (shouldRunMonitoring()) {
+    startMonitoring()
+  }
+  if (shouldRunDemandWorker()) {
+    startDemandWorker()
   }
 })

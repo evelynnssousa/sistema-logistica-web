@@ -99,7 +99,21 @@ async function prepareDatabase(url, passwordHash) {
     '002_password_recovery.sql',
     '003_user_access.sql',
     '004_flight_passengers.sql',
-  ]) {
+    '005_operational_modules.sql',
+    '006_integrations.sql',
+    '007_operations_center.sql',
+    '008_attachments.sql',
+    '009_module_extensions.sql',
+    '010_monitoring.sql',
+    '011_delivery_forecast.sql',
+    '012_operational_transparency.sql',
+    '013_communications.sql',
+    '014_demands.sql',
+    '015_organizational_structure.sql',
+    '016_driver_portal.sql',
+    '017_driver_portal_settings.sql',
+    // E2E_REAL_ENV reproduz o desenvolvimento: só as migrações presentes no banco real e a tela do Vite.
+  ].filter((file) => !process.env.E2E_REAL_ENV || /^00[12]_/.test(file))) {
     const client = new Client({ connectionString: url })
     await client.connect()
     if (file.startsWith('001')) {
@@ -119,6 +133,24 @@ async function prepareDatabase(url, passwordHash) {
      VALUES ('Administradora E2E', 'e2e-admin@slm-e2e.invalid', 'TI', $1, 'approved', 'admin', now())`,
     [passwordHash],
   )
+  // Contas do cenário demand-permissions, criadas aqui para não gastar o limite de cadastros por IP.
+  for (const key of ['servidor', 'chefe', 'diretor']) {
+    await client.query(
+      `INSERT INTO public.auth_users
+        (full_name, email, sector, password_hash, status, role, decided_at)
+       VALUES ($1, $2, 'Administração', $3, 'approved', 'operator', now())`,
+      [`Pessoa matriz ${key}`, `e2e-matriz-${key}@slm-e2e.invalid`, passwordHash],
+    )
+  }
+  // Contas do cenário driver-portal. O perfil Motorista é definido pelo próprio cenário, como na vida real.
+  for (const key of ['um', 'dois', 'config']) {
+    await client.query(
+      `INSERT INTO public.auth_users
+        (full_name, email, sector, password_hash, status, role, decided_at)
+       VALUES ($1, $2, 'Transporte', $3, 'approved', 'operator', now())`,
+      [`Pessoa motorista ${key}`, `e2e-motorista-${key}@slm-e2e.invalid`, passwordHash],
+    )
+  }
   await client.end()
 }
 
@@ -162,12 +194,14 @@ async function main() {
   const runId = randomBytes(16).toString('hex')
   const password = randomBytes(24).toString('hex')
   const buildDirectory = mkdtempSync(join(tmpdir(), 'slm-e2e-'))
+  const attachmentsDirectory = mkdtempSync(join(tmpdir(), 'slm-e2e-anexos-'))
   let database
 
   const finish = () => {
     stopStarted()
     database?.stop()
     rmSync(buildDirectory, { recursive: true, force: true })
+    rmSync(attachmentsDirectory, { recursive: true, force: true })
   }
   for (const signal of ['SIGINT', 'SIGTERM']) {
     process.once(signal, () => {
@@ -199,6 +233,15 @@ async function main() {
           PORT: String(apiPort),
           FRONTEND_URL: frontendUrl,
           E2E_RUN_ID: runId,
+          // Chave descartável, nova a cada execução. Os CPFs fictícios somem com o banco.
+          PASSENGER_DATA_KEY: randomBytes(32).toString('base64'),
+          // Simulados: nada sai da máquina. O worker processa as filas como em produção.
+          EMAIL_TRANSPORT: 'simulated',
+          GOOGLE_CALENDAR_TRANSPORT: 'simulated',
+          INTEGRATIONS_WORKER_ENABLED: 'true',
+          DEMANDS_WORKER_ENABLED: 'true',
+          // Pasta descartável para os anexos fictícios desta execução.
+          ATTACHMENTS_DIR: attachmentsDirectory,
         }),
       },
     )
@@ -211,11 +254,13 @@ async function main() {
       NODE_ENV: 'production',
     })
     const vite = resolve(frontendDirectory, 'node_modules/.bin/vite')
-    const build = spawnSync(
-      vite,
-      ['build', '--outDir', buildDirectory, '--emptyOutDir', '--logLevel', 'error'],
-      { cwd: frontendDirectory, env: viteEnvironment, encoding: 'utf8' },
-    )
+    const build = process.env.E2E_REAL_ENV
+      ? { status: 0 }
+      : spawnSync(
+          vite,
+          ['build', '--outDir', buildDirectory, '--emptyOutDir', '--logLevel', 'error'],
+          { cwd: frontendDirectory, env: viteEnvironment, encoding: 'utf8' },
+        )
     if (build.status !== 0) {
       throw new Error(`Falha ao gerar a tela de teste:\n${build.stderr.slice(-800)}`)
     }
@@ -223,18 +268,26 @@ async function main() {
     const frontend = startProcess(
       'A tela de teste',
       vite,
-      ['preview', '--outDir', buildDirectory, '--host', '127.0.0.1', '--port', String(frontendPort), '--strictPort'],
+      process.env.E2E_REAL_ENV
+        ? ['--host', '127.0.0.1', '--port', String(frontendPort), '--strictPort']
+        : ['preview', '--outDir', buildDirectory, '--host', '127.0.0.1', '--port', String(frontendPort), '--strictPort'],
       { cwd: frontendDirectory, env: viteEnvironment },
     )
     // Passa pelo proxy: confirma o caminho inteiro, da tela até o backend desta execução.
     await waitForRun(`${frontendUrl}/api/health`, runId, frontend)
 
-    await require('../e2e/access-control.e2e.cjs').run({
-      playwright,
-      baseUrl: frontendUrl,
-      runId,
-      password,
-    })
+    // E2E_ONLY roda cenários escolhidos, separados por vírgula, durante uma investigação.
+    const selected = process.env.E2E_ONLY?.split(',')
+    for (const scenario of selected ?? ['session-persistence', 'access-control', 'operational-modules', 'integrations', 'operations-center', 'transparency', 'communications', 'demands', 'demand-permissions', 'driver-portal', 'driver-portal-settings', 'visual-review']) {
+      await require(`../e2e/${scenario}.e2e.cjs`).run({
+        playwright,
+        baseUrl: frontendUrl,
+        runId,
+        password,
+        // Opcional: pasta para guardar as capturas de tela, com dados fictícios desta execução.
+        screenshotDirectory: process.env.E2E_SCREENSHOT_DIR,
+      })
+    }
 
     const remoteSockets = remoteSocketsOfStartedProcesses()
     if (remoteSockets.length > 0) {

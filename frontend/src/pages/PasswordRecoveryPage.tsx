@@ -1,14 +1,16 @@
 import { useState, type FormEvent } from 'react'
 import logoJucesp from '../assets/logoJucespNovo.png'
-import { requestPasswordRecovery, resetPassword } from '../auth/auth'
+import { requestPasswordRecovery, resetPassword, resetPasswordWithLink } from '../auth/auth'
 import '../App.css'
 
 type PasswordRecoveryPageProps = {
   onBackToLogin: () => void
+  // Token recebido pelo link do e-mail. Com ele, não se pede e-mail nem código.
+  linkToken?: string | null
 }
 
-function PasswordRecoveryPage({ onBackToLogin }: PasswordRecoveryPageProps) {
-  const [step, setStep] = useState<'email' | 'reset'>('email')
+function PasswordRecoveryPage({ onBackToLogin, linkToken = null }: PasswordRecoveryPageProps) {
+  const [step, setStep] = useState<'email' | 'reset'>(linkToken ? 'reset' : 'email')
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
@@ -46,12 +48,14 @@ function PasswordRecoveryPage({ onBackToLogin }: PasswordRecoveryPageProps) {
 
     setLoading(true)
     try {
-      const result = await resetPassword({
-        email: email.trim(),
-        code,
-        password,
-        passwordConfirmation,
-      })
+      const result = linkToken
+        ? await resetPasswordWithLink({ token: linkToken, password, passwordConfirmation })
+        : await resetPassword({
+            email: email.trim(),
+            code,
+            password,
+            passwordConfirmation,
+          })
       setMessage(result)
       setPassword('')
       setPasswordConfirmation('')
@@ -80,7 +84,9 @@ function PasswordRecoveryPage({ onBackToLogin }: PasswordRecoveryPageProps) {
         <p className="login-description">
           {step === 'email'
             ? 'Informe seu e-mail cadastrado para receber as instruções de recuperação.'
-            : 'Informe o código de seis dígitos recebido por e-mail e escolha uma nova senha.'}
+            : linkToken
+              ? 'Escolha uma nova senha.'
+              : 'Informe o código recebido por e-mail, se houver, e escolha uma nova senha.'}
         </p>
 
         {step === 'email' ? (
@@ -105,20 +111,24 @@ function PasswordRecoveryPage({ onBackToLogin }: PasswordRecoveryPageProps) {
           </form>
         ) : (
           <form className="login-form" onSubmit={handleReset}>
-            <label htmlFor="recovery-code">Código de verificação</label>
-            <input
-              id="recovery-code"
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              value={code}
-              onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
-              placeholder="Digite os 6 números"
-              pattern="[0-9]{6}"
-              maxLength={6}
-              required
-              disabled={loading || resetCompleted}
-            />
+            {!linkToken && (
+              <>
+                <label htmlFor="recovery-code">Código de verificação</label>
+                <input
+                  id="recovery-code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={code}
+                  onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="Digite os 6 números"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  required
+                  disabled={loading || resetCompleted}
+                />
+              </>
+            )}
 
             <label htmlFor="recovery-new-password">Nova senha</label>
             <input
@@ -156,7 +166,7 @@ function PasswordRecoveryPage({ onBackToLogin }: PasswordRecoveryPageProps) {
                 {loading ? 'Salvando...' : 'Redefinir senha'}
               </button>
             )}
-            {!resetCompleted && (
+            {!resetCompleted && !linkToken && (
               <button
                 className="recovery-link recovery-resend"
                 type="button"
@@ -178,7 +188,9 @@ function PasswordRecoveryPage({ onBackToLogin }: PasswordRecoveryPageProps) {
             Voltar ao login
           </button>
         </p>
-        <p className="login-footer">O código expira em 10 minutos e só pode ser usado uma vez.</p>
+        <p className="login-footer">
+          O {linkToken ? 'link' : 'código'} expira em 10 minutos e só pode ser usado uma vez.
+        </p>
       </section>
     </main>
   )

@@ -17,14 +17,26 @@ import {
   verifyPassword,
   verifyPasswordAgainstDecoy,
 } from '../auth/password.js'
+import {
+  hashPasswordRecoveryToken,
+  isPasswordRecoveryToken,
+} from '../auth/passwordRecovery.js'
 import { processPasswordRecoveryRequest } from '../auth/passwordRecoveryService.js'
+import { isInstitutionalEmailAllowed } from '../auth/institutionalEmail.js'
+import { hashSessionToken } from '../auth/session.js'
 import { isTestAccountBlocked } from '../auth/reservedTestEmails.js'
 import { requireAuth, sessions } from '../auth/sessionRuntime.js'
 import { recordAuthAuditEvent } from '../database/authAuditRepository.js'
 import { PasswordRecoveryRepository } from '../database/passwordRecoveryRepository.js'
 import { UserRepository } from '../database/userRepository.js'
+import { requireCsrf } from '../middleware/requireCsrf.js'
 import { authRateLimits } from '../security/authRateLimits.js'
 import { describeError, logSecurityEvent } from '../security/logger.js'
+import { readPublishedConfig } from '../database/configRepository.js'
+import { getDatabasePool } from '../database/pool.js'
+import { validateCustomValues } from '../requests/formRules.js'
+import type { ManagedFormContent } from '../requests/formRules.js'
+import { RequestValidationError } from '../requests/validation.js'
 import type { RateLimitResult } from '../security/rateLimiter.js'
 
 const authRouter = Router()
@@ -82,7 +94,7 @@ authRouter.post('/auth/register', async (request, response) => {
     return
   }
 
-  if (isTestAccountBlocked(email)) {
+  if (isTestAccountBlocked(email) || !isInstitutionalEmailAllowed(email)) {
     response.status(400).json({
       success: false,
       message: 'Informe um e-mail institucional válido.',
@@ -104,6 +116,24 @@ authRouter.post('/auth/register', async (request, response) => {
     return
   }
 
+  // Campos próprios do formulário de conta. Os essenciais acima não dependem da configuração.
+  let registrationForm: { version: number; values: Record<string, string>; labels: Record<string, string> } | null = null
+  try {
+    const published = await readPublishedConfig<ManagedFormContent>(getDatabasePool(), 'form', 'registration')
+    if (published) {
+      const custom = validateCustomValues(published.content, request.body?.customFields, { context: request.body ?? {} })
+      registrationForm = { version: published.version, ...custom }
+    }
+  } catch (error) {
+    if (error instanceof RequestValidationError) {
+      response.status(400).json({ success: false, message: error.message })
+      return
+    }
+    logSecurityEvent('registration_failed', describeError(error))
+    response.status(503).json({ success: false, message: 'Não foi possível enviar a solicitação neste momento.' })
+    return
+  }
+
   // A resposta é a mesma para e-mails novos e já cadastrados.
   const accepted = () =>
     response.status(202).json({
@@ -119,6 +149,7 @@ authRouter.post('/auth/register', async (request, response) => {
       email: email.trim().toLowerCase(),
       sector: sector.trim(),
       passwordHash,
+      registrationForm,
     })
     accepted()
   } catch (error) {
@@ -459,6 +490,131 @@ authRouter.post('/auth/password-recovery/reset', async (request, response) => {
     response.status(503).json({
       success: false,
       message: 'Não foi possível redefinir a senha neste momento.',
+    })
+  }
+})
+
+authRouter.post('/auth/password-recovery/reset-link', async (request, response) => {
+  const { token, password, passwordConfirmation } = request.body ?? {}
+
+  if (
+    !isPasswordRecoveryToken(token) ||
+    typeof password !== 'string' ||
+    password.length < 12 ||
+    password.length > 512 ||
+    password !== passwordConfirmation
+  ) {
+    response.status(400).json({
+      success: false,
+      message: password !== passwordConfirmation
+        ? 'A confirmação de senha não corresponde.'
+        : 'Link inválido, ou senha com menos de 12 caracteres.',
+    })
+    return
+  }
+
+  const ip = clientIp(request)
+  const ipLimit = authRateLimits.recoveryResetIp.consume(ip)
+  if (!ipLimit.allowed) {
+    sendTooManyRequests(
+      response,
+      ipLimit,
+      'Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.',
+    )
+    return
+  }
+
+  try {
+    const passwordHash = await hashPassword(password)
+    const email = await passwordRecovery.resetPasswordByToken({
+      tokenHash: hashPasswordRecoveryToken(token),
+      passwordHash,
+    })
+
+    if (!email) {
+      response.status(400).json({
+        success: false,
+        message: 'Link inválido ou expirado. Solicite uma nova recuperação de senha.',
+      })
+      return
+    }
+
+    authRateLimits.recoveryResetEmail.reset(email)
+    authRateLimits.loginPair.reset(`${ip}|${email}`)
+    authRateLimits.loginAccount.reset(email)
+
+    response.json({
+      success: true,
+      message: 'Senha alterada com sucesso. Entre com sua nova senha.',
+    })
+  } catch (error) {
+    logSecurityEvent('password_reset_failed', describeError(error))
+    response.status(503).json({
+      success: false,
+      message: 'Não foi possível redefinir a senha neste momento.',
+    })
+  }
+})
+
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// Sessões da própria conta. Encerrar as demais não exige outra permissão além da sessão.
+authRouter.get('/auth/sessions', requireAuth, async (request, response) => {
+  try {
+    const token = readSessionToken(request.headers.cookie)
+    const current = token ? await users.sessionIdByTokenHash(hashSessionToken(token)) : null
+    const list = await users.listOwnSessions(response.locals.authenticatedUser.userId)
+    response.json({
+      success: true,
+      sessions: list.map((session) => ({ ...session, current: session.id === current })),
+    })
+  } catch (error) {
+    logSecurityEvent('sessions_list_failed', describeError(error))
+    response.status(503).json({
+      success: false,
+      message: 'Não foi possível consultar as sessões neste momento.',
+    })
+  }
+})
+
+authRouter.post('/auth/sessions/:sessionId/revoke', requireAuth, requireCsrf, async (request, response) => {
+  try {
+    const sessionId = String(request.params.sessionId)
+    const token = readSessionToken(request.headers.cookie)
+    const revoked =
+      uuidPattern.test(sessionId) &&
+      (await users.revokeOwnSession(
+        response.locals.authenticatedUser.userId,
+        sessionId,
+        hashSessionToken(token as string),
+      ))
+    if (!revoked) {
+      response.status(404).json({ success: false, message: 'Sessão não encontrada.' })
+      return
+    }
+    response.json({ success: true })
+  } catch (error) {
+    logSecurityEvent('sessions_revoke_failed', describeError(error))
+    response.status(503).json({
+      success: false,
+      message: 'Não foi possível encerrar a sessão neste momento.',
+    })
+  }
+})
+
+authRouter.post('/auth/sessions/revoke-others', requireAuth, requireCsrf, async (request, response) => {
+  try {
+    const token = readSessionToken(request.headers.cookie)
+    const total = await users.revokeOwnOtherSessions(
+      response.locals.authenticatedUser.userId,
+      hashSessionToken(token as string),
+    )
+    response.json({ success: true, total })
+  } catch (error) {
+    logSecurityEvent('sessions_revoke_failed', describeError(error))
+    response.status(503).json({
+      success: false,
+      message: 'Não foi possível encerrar as sessões neste momento.',
     })
   }
 })

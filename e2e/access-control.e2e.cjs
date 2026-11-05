@@ -118,6 +118,7 @@ async function run({ playwright, baseUrl, runId, password }) {
         const row = admin.locator('.data-table tbody tr', { hasText: email })
         await row.locator('select').selectOption(role)
         await row.locator('.table-actions button').first().click()
+        await admin.click('[data-confirm]')
         await row.waitFor({ state: 'detached' })
       }
     })
@@ -144,8 +145,10 @@ async function run({ playwright, baseUrl, runId, password }) {
       assert.equal(status, 403)
     })
 
+    let operator
+
     await step('operadora vê a identificação da SLM e não administra usuários', async () => {
-      const operator = await login(emails.operator)
+      operator = await login(emails.operator)
       assert.equal(await operator.textContent('.user-info span'), 'Operador SLM')
       assert.ok((await menu(operator)).includes('Calendário'))
       await operator.goto('/usuarios')
@@ -163,6 +166,71 @@ async function run({ playwright, baseUrl, runId, password }) {
       await admin.click('button:has-text("Salvar acesso")')
       await admin.waitForSelector('.page-section > [role=status]')
     }
+
+    await step('o perfil não concede permissões especiais, e a tela só oferece a quem é elegível', async () => {
+      const operatorId = await operator.evaluate(async () => (await (await fetch('/api/auth/me')).json()).user.id)
+      const special = ['requests:schedule', 'requests:create_on_behalf', 'flights:cpf:read']
+
+      const before = await operator.evaluate(async () => (await (await fetch('/api/auth/me')).json()).user.permissions)
+      for (const key of special) assert.equal(before.includes(key), false, key)
+
+      await admin.goto(`/usuarios/${requesterId}`)
+      await admin.waitForSelector('.users-permission')
+      for (const key of special) {
+        const grant = admin.locator('.users-permission', { hasText: key }).locator('option[value=grant]')
+        assert.equal(await grant.isDisabled(), true, `solicitante: ${key}`)
+      }
+
+      await admin.goto(`/usuarios/${operatorId}`)
+      await admin.waitForSelector('.users-permission')
+      for (const key of special) {
+        await admin.locator('.users-permission', { hasText: key }).locator('select').selectOption('grant')
+      }
+      await admin.click('button:has-text("Salvar acesso")')
+      await admin.click('[data-confirm]')
+      await admin.waitForSelector('.page-section > [role=status]')
+
+      const granted = await operator.evaluate(async () => (await (await fetch('/api/auth/me')).json()).user.permissions)
+      for (const key of special) assert.ok(granted.includes(key), key)
+
+      // Sair da equipe: a tela avisa, e o servidor revoga, sem novo login.
+      await admin.uncheck('.users-checkbox input')
+      await admin.waitForSelector('form .users-note')
+      assert.match(await admin.textContent('form .users-note'), /flights:cpf:read/)
+      await admin.click('button:has-text("Salvar acesso")')
+      await admin.click('[data-confirm]')
+      await admin.waitForFunction(() => document.querySelector('.page-section > [role=status]')?.textContent.includes('revogadas automaticamente'))
+
+      const after = await operator.evaluate(async () => (await (await fetch('/api/auth/me')).json()).user)
+      assert.equal(after.slmMember, false)
+      for (const key of special) assert.equal(after.permissions.includes(key), false, key)
+    })
+
+    await step('as permissões essenciais de um administrador não podem ser retiradas pela tela', async () => {
+      const operatorId = await operator.evaluate(async () => (await (await fetch('/api/auth/me')).json()).user.id)
+      const catalog = await admin.evaluate(async () => (await (await fetch('/api/admin/permissions')).json()).essentialAdministrator)
+      assert.equal(catalog.length, 6)
+
+      await admin.goto(`/usuarios/${operatorId}`)
+      await admin.waitForSelector('.users-permission')
+      await admin.selectOption('form select >> nth=0', 'administrator')
+      for (const key of catalog) {
+        const deny = admin.locator('.users-permission', { hasText: key }).locator('option[value=deny]')
+        assert.equal(await deny.isDisabled(), true, key)
+      }
+      // Administrador: CPF só com a equipe marcada; ao desmarcar, a opção é bloqueada de novo.
+      const cpfGrant = admin.locator('.users-permission', { hasText: 'flights:cpf:read' }).locator('option[value=grant]')
+      assert.equal(await cpfGrant.isDisabled(), true, 'administrador fora da equipe')
+      await admin.check('.users-checkbox input')
+      assert.equal(await cpfGrant.isDisabled(), false, 'administrador na equipe')
+      await admin.uncheck('.users-checkbox input')
+      assert.equal(await cpfGrant.isDisabled(), true, 'administrador que saiu da equipe')
+
+      // Só a simulação na tela: nada foi salvo, e não existe segundo administrador.
+      await admin.goto(`/usuarios/${operatorId}`)
+      await admin.waitForSelector('.users-permission')
+      assert.equal(await admin.locator('form select >> nth=0').inputValue(), 'requester')
+    })
 
     await step('settings:read deixa Configurações só em consulta', async () => {
       await setPermissions({ 'settings:read': 'grant' })
@@ -211,8 +279,9 @@ async function run({ playwright, baseUrl, runId, password }) {
       await admin.goto(`/usuarios/${requesterId}`)
       await admin.waitForSelector('button.danger')
       await admin.click('button.danger')
+      await admin.click('[data-confirm]')
       await admin.waitForSelector('.page-section > [role=status]')
-      await requester.click('.nav-item[title="Frota"]')
+      await requester.click('.nav-item:has-text("Frota")')
       await requester.waitForSelector('#login-identifier')
     })
 

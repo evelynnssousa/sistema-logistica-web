@@ -1,0 +1,131 @@
+#!/usr/bin/env node
+/**
+ * Testa a aplicação das migrações em um PostgreSQL descartável, com os papéis e os privilégios
+ * automáticos do Supabase, para conferir que nada novo fica ao alcance da API pública.
+ */
+require('../backend/testing/block-remote-connections.cjs')
+const assert = require('node:assert/strict')
+const { spawnSync } = require('node:child_process')
+const { readFileSync } = require('node:fs')
+const { resolve } = require('node:path')
+const { assertPortsFree, projectRoot, startDisposablePostgres, testPorts } = require('./testing/isolation.cjs')
+
+function run(args, url) {
+  return spawnSync(process.execPath, [resolve(projectRoot, 'scripts/apply-migrations.cjs'), ...args], {
+    cwd: projectRoot,
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, NODE_ENV: 'test', DATABASE_URL: url },
+  })
+}
+
+const apply = ['--aplicar', '--confirmar=APLICAR-MIGRACOES', '--sem-backup']
+
+async function prepare(url, extra) {
+  const { Client } = require('pg')
+  const client = new Client({ connectionString: url })
+  await client.connect()
+  await client.query(`DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;`)
+  await client.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN CREATE ROLE service_role NOLOGIN BYPASSRLS; END IF;
+    END $$;
+    GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
+  `)
+  await client.query(readFileSync(resolve(projectRoot, 'backend/database/schema/001_public_schema_snapshot.sql'), 'utf8'))
+  await client.query(`
+    ALTER TABLE public.setores ENABLE ROW LEVEL SECURITY;
+    INSERT INTO public.auth_users (full_name, email, sector, password_hash, status, role, decided_at)
+    VALUES ('Administradora', 'migra-admin@example.gov.br', 'TI', 'x', 'approved', 'admin', now());
+  `)
+  if (extra) await client.query(extra)
+  return client
+}
+
+async function main() {
+  await assertPortsFree([testPorts.backupDatabase])
+  const database = await startDisposablePostgres({ port: testPorts.backupDatabase, database: 'slm_migracoes_test' })
+  try {
+    const { url } = database
+
+    let client = await prepare(url)
+    const secret = new URL(url).password
+
+    const check = run([], url)
+    assert.equal(check.status, 0, check.stderr)
+    assert.match(check.stdout, /PENDENTE {2}002_password_recovery/)
+    assert.match(check.stdout, /PENDENTE {2}016_driver_portal/)
+    assert.match(check.stdout, /PENDENTE {2}017_driver_portal_settings/)
+    assert.match(check.stdout, /Nada foi alterado/)
+    assert.equal((await client.query(`SELECT to_regclass('public.auth_user_access') AS t`)).rows[0].t, null, 'conferir não altera')
+    console.log('✔ sem opções, só confere e não altera nada')
+
+    const noConfirmation = run(['--aplicar', '--sem-backup'], url)
+    assert.equal(noConfirmation.status, 1)
+    assert.match(noConfirmation.stderr, /--confirmar/)
+    assert.equal((await client.query(`SELECT to_regclass('public.auth_user_access') AS t`)).rows[0].t, null)
+    console.log('✔ aplicar exige a confirmação')
+
+    const typo = run(['--aplicar', '--confirmar=sim', '--sem-backup'], url)
+    assert.equal(typo.status, 1)
+    console.log('✔ opção desconhecida é recusada')
+
+    const remote = run(['--sem-backup'], 'postgresql://u:p@banco.example.gov.br:5432/real')
+    assert.equal(remote.status, 1)
+    assert.match(remote.stderr, /Recusado/)
+    console.log('✔ em teste, banco remoto é recusado')
+
+    const applied = run(apply, url)
+    assert.equal(applied.status, 0, `${applied.stdout}\n${applied.stderr}`)
+    assert.match(applied.stdout, /16 migrações aplicadas/)
+    assert.match(applied.stdout, /Tabelas novas acessíveis à API pública: nenhuma/)
+    assert.match(applied.stdout, /Funções novas executáveis pela API pública: nenhuma/)
+    assert.ok(!`${applied.stdout}${applied.stderr}`.includes(secret), 'a senha não pode aparecer')
+    const account = await client.query(`SELECT count(*)::int AS n FROM public.auth_users`)
+    assert.equal(account.rows[0].n, 1)
+    const access = await client.query(`SELECT profile, slm_member FROM public.auth_user_access`)
+    assert.deepEqual(access.rows, [{ profile: 'administrator', slm_member: false }])
+    console.log('✔ aplica as 16 migrações e a conferência final passa, com os privilégios do Supabase')
+
+    const again = run(apply, url)
+    assert.equal(again.status, 0, again.stderr)
+    assert.match(again.stdout, /Nenhuma migração pendente/)
+    console.log('✔ rodar de novo não repete nada')
+    await client.end()
+
+    client = await prepare(url, `INSERT INTO public.auth_users (full_name, email, sector, password_hash, status, role, permissions, decided_at)
+      VALUES ('Operadora', 'migra-op@example.gov.br', 'TI', 'x', 'approved', 'operator', ARRAY['fleet:write'], now());`)
+    const blocked = run(apply, url)
+    assert.equal(blocked.status, 1)
+    assert.match(blocked.stdout, /BLOQUEIO {2}003/)
+    assert.equal((await client.query(`SELECT to_regclass('public.password_recovery_codes') AS t`)).rows[0].t, null, 'nada é aplicado')
+    console.log('✔ um bloqueio conhecido impede tudo, antes de aplicar a primeira')
+    await client.end()
+
+    // Falha no meio: uma migração anterior já criou a tabela que a 007 cria.
+    client = await prepare(url, `CREATE TABLE public.protocol_counters (x int);`)
+    const failed = run(apply, url)
+    assert.equal(failed.status, 2, `${failed.stdout}\n${failed.stderr}`)
+    assert.match(failed.stderr, /ERRO {6}007_operations_center/)
+    assert.match(failed.stderr, /006_integrations/)
+    assert.equal((await client.query(`SELECT to_regclass('public.integration_events') AS t`)).rows[0].t !== null, true, 'as anteriores ficam')
+    assert.equal((await client.query(`SELECT to_regclass('public.system_settings') AS t`)).rows[0].t, null, 'a que falhou é desfeita')
+    assert.equal((await client.query(`SELECT to_regclass('public.request_attachments') AS t`)).rows[0].t, null, 'as seguintes não rodam')
+    console.log('✔ erro no meio: desfaz aquela, mantém as anteriores e não tenta as seguintes')
+    await client.end()
+  } finally {
+    database.stop()
+  }
+}
+
+main().then(
+  () => console.log('Teste de aplicação das migrações concluído.'),
+  (error) => {
+    console.error(`Teste interrompido: ${error.message}`)
+    process.exitCode = 1
+  },
+)

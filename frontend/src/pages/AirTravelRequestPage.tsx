@@ -1,14 +1,61 @@
 import { useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { createRequest, errorMessage } from '../api/modulesApi'
 import ConfiguredField from '../components/ConfiguredField'
+import { customFieldsOf, isManagedFieldVisible, useCanActOnBehalf } from '../app/requestForm'
+import { RequestField } from '../components/RequestFields'
 import { useConfiguredForm } from '../app/useConfiguredForm'
+import { privacyNotices } from '../app/privacyNotices'
+import { useDuplicateCheck } from '../app/useDuplicateCheck'
+import { useAuthenticatedUser } from '../auth/UserContext'
+import DuplicateWarning from '../components/DuplicateWarning'
+import FormNotices from '../components/FormNotices'
+import { Alert } from '../components/ui/Feedback'
+import PageHeader from '../components/ui/PageHeader'
 
 type Passenger = {
   id: number
   name: string
   cpf: string
 }
+
+type TripType = 'one-way' | 'round-trip' | 'return-only'
+
+const tripTypeByOption: Record<string, TripType> = {
+  'Somente ida': 'one-way',
+  'Ida e volta': 'round-trip',
+  'Somente volta': 'return-only',
+}
+
+const apiTripType: Record<TripType, string> = {
+  'one-way': 'somente_ida',
+  'round-trip': 'ida_volta',
+  'return-only': 'somente_volta',
+}
+
+const knownFields = [
+  'requesterName',
+  'requesterEmail',
+  'requesterSector',
+  'requesterFloor',
+  'requesterRoom',
+  'passengerName',
+  'passengerCpf',
+  'tripType',
+  'outboundOrigin',
+  'outboundDestination',
+  'departureDate',
+  'departureTime',
+  'returnOrigin',
+  'returnDestination',
+  'returnDate',
+  'returnTime',
+  'baggage',
+  'notes',
+]
+
+const outboundFields = ['outboundOrigin', 'outboundDestination', 'departureDate', 'departureTime']
 
 const maxPassengers = 10
 function formatCpf(value: string) {
@@ -49,7 +96,12 @@ function dateTimeValue(date: string, time: string) {
 
 function AirTravelRequestPage() {
   const { fields, error } = useConfiguredForm('airTravel')
-  const [tripType, setTripType] = useState<'one-way' | 'round-trip'>('one-way')
+  const navigate = useNavigate()
+  const canActOnBehalf = useCanActOnBehalf()
+  const [values, setValues] = useState<Record<string, string>>({})
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
+  const [tripType, setTripType] = useState<TripType>('one-way')
   const [passengers, setPassengers] = useState<Passenger[]>([
     { id: 1, name: '', cpf: '' },
   ])
@@ -58,8 +110,10 @@ function AirTravelRequestPage() {
   const [departureTime, setDepartureTime] = useState('')
   const [returnDate, setReturnDate] = useState('')
   const [returnTime, setReturnTime] = useState('')
-  const [submissionNotice, setSubmissionNotice] = useState('')
   const returnTimeRef = useRef<HTMLInputElement>(null)
+  const duplicate = useDuplicateCheck('flights')
+  const isStaff = useAuthenticatedUser()?.permissions.includes('flights:update') ?? false
+  const visibleFields = fields.filter((field) => isManagedFieldVisible(field, values, isStaff))
 
   function updatePassenger(
     id: number,
@@ -92,7 +146,7 @@ function AirTravelRequestPage() {
     )
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = event.currentTarget
     const cpfInputs = Array.from(
@@ -116,25 +170,63 @@ function AirTravelRequestPage() {
       )
     }
 
-    if (!form.reportValidity()) {
-      setSubmissionNotice('')
-      return
+    setSubmitError('')
+    if (!form.reportValidity()) return
+
+    await send()
+  }
+
+  async function send(acknowledged = duplicate.acknowledged) {
+    const outbound = {
+      origem: values.outboundOrigin,
+      destino: values.outboundDestination,
+      data: departureDate,
+      horario: departureTime,
+    }
+    const inbound = {
+      origem: values.returnOrigin,
+      destino: values.returnDestination,
+      data: returnDate,
+      horario: returnTime,
     }
 
-    setSubmissionNotice(
-      'O envio real ainda não está implementado. Nenhum dado foi enviado ou registrado.',
-    )
+    setSubmitting(true)
+    try {
+      const body = {
+        setorId: values.requesterSector || undefined,
+        andarId: values.requesterFloor,
+        sala: values.requesterRoom,
+        tipoViagem: apiTripType[tripType],
+        ida: tripType === 'return-only' ? undefined : outbound,
+        volta: tripType === 'one-way' ? undefined : inbound,
+        bagagem: values.baggage,
+        observacoes: values.notes,
+        passageiros: passengers.map((passenger) => ({
+          nome: passenger.name,
+          cpf: passenger.cpf,
+        })),
+        avisoPrivacidade: privacyNotices.flights.version,
+        customFields: customFieldsOf(visibleFields, values, knownFields),
+      }
+      // A conferência de duplicidade não recebe passageiros nem CPF.
+      const probe: Partial<typeof body> = { ...body }
+      delete probe.passageiros
+      if (!acknowledged && !(await duplicate.shouldProceed(probe))) {
+        setSubmitting(false)
+        return
+      }
+      const created = await createRequest('flights', { ...body, duplicidadeAvisada: acknowledged })
+      navigate(`/passagens-aereas/${created.id}`)
+    } catch (err) {
+      setSubmitError(errorMessage(err, 'Não foi possível enviar a solicitação.'))
+      setSubmitting(false)
+    }
   }
 
   return (
     <div className="maintenance-page maintenance-request-page air-travel-request-page">
-      <section className="maintenance-heading">
-        <div>
-          <div className="eyebrow">JUCESP · GESTÃO OPERACIONAL</div>
-          <h1>Nova solicitação de passagens aéreas</h1>
-          <p>Informe os dados do solicitante, dos passageiros e dos trechos.</p>
-        </div>
-      </section>
+      <PageHeader title="Nova solicitação de passagens aéreas" description="Informe os dados do solicitante, dos passageiros e dos trechos." />
+
 
       <section
         className="maintenance-request-card"
@@ -150,8 +242,7 @@ function AirTravelRequestPage() {
 
         <form
           noValidate
-          onSubmit={handleSubmit}
-          onChange={() => setSubmissionNotice('')}
+          onSubmit={(event) => void handleSubmit(event)}
         >
           {error && (
             <div className="settings-storage-error" role="alert">
@@ -159,8 +250,7 @@ function AirTravelRequestPage() {
             </div>
           )}
           <div className="maintenance-request-fields">
-            {fields
-              .filter((field) => field.active)
+            {visibleFields
               .map((field) => {
                 if (field.id === 'passengerCpf') return null
 
@@ -265,10 +355,10 @@ function AirTravelRequestPage() {
                   )
                 }
 
-                if (
-                  field.id.startsWith('return') &&
-                  tripType !== 'round-trip'
-                ) {
+                if (field.id.startsWith('return') && tripType === 'one-way') {
+                  return null
+                }
+                if (outboundFields.includes(field.id) && tripType === 'return-only') {
                   return null
                 }
 
@@ -291,14 +381,8 @@ function AirTravelRequestPage() {
                             name="tripType"
                             value={option}
                             required={field.required}
-                            checked={tripType === (option === 'Somente ida' ? 'one-way' : 'round-trip')}
-                            onChange={() =>
-                              setTripType(
-                                option === 'Somente ida'
-                                  ? 'one-way'
-                                  : 'round-trip',
-                              )
-                            }
+                            checked={tripType === tripTypeByOption[option]}
+                            onChange={() => setTripType(tripTypeByOption[option])}
                           />
                           {option}
                         </label>
@@ -380,9 +464,33 @@ function AirTravelRequestPage() {
                   )
                 }
 
-                return <ConfiguredField key={field.id} field={field} />
+                return (
+                  <RequestField
+                    key={field.id}
+                    field={field}
+                    values={values}
+                    onChange={(id, value) =>
+                      setValues((current) => ({ ...current, [id]: value }))
+                    }
+                    canActOnBehalf={canActOnBehalf}
+                    identityFields={{ requesterName: 'name', requesterEmail: 'email' }}
+                    sectorField="requesterSector"
+                  />
+                )
               })}
           </div>
+
+          <FormNotices module="flights" />
+
+          <DuplicateWarning
+            module="flights"
+            duplicates={duplicate.duplicates}
+            onConfirm={() => {
+              duplicate.acknowledge()
+              void send(true)
+            }}
+            onDismiss={duplicate.dismiss}
+          />
 
           <div className="maintenance-form-actions">
             <Link
@@ -392,25 +500,14 @@ function AirTravelRequestPage() {
               Voltar
             </Link>
             <div className="maintenance-submit-action">
-              <button className="maintenance-primary-button" type="submit">
-                Enviar solicitação
+              <button className="maintenance-primary-button" type="submit" disabled={submitting}>
+                {submitting ? 'Enviando...' : 'Enviar solicitação'}
               </button>
-              <span>
-                O envio real ainda não está implementado; nenhum dado será
-                registrado.
-              </span>
-              {submissionNotice && (
-                <span className="air-travel-submit-notice" role="status">
-                  {submissionNotice}
-                </span>
+              {submitError && (
+                <Alert tone="error">{submitError}</Alert>
               )}
             </div>
           </div>
-
-          <p className="air-travel-data-consent">
-            Ao clicar em enviar, você concorda com o armazenamento de seus dados
-            em nosso sistema
-          </p>
         </form>
       </section>
     </div>

@@ -1,6 +1,10 @@
 import { Router } from 'express'
 import type { Response } from 'express'
-import { canReadFullCpf, canReadRequest } from '../auth/requestPolicy.js'
+import {
+  canReadFullCpf,
+  canReadRequest,
+  hasCpfAuthorization,
+} from '../auth/requestPolicy.js'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
 import { requireAuth } from '../auth/sessionRuntime.js'
 import { recordAuthAuditEvent } from '../database/authAuditRepository.js'
@@ -8,10 +12,11 @@ import { FlightPassengerRepository } from '../database/flightPassengerRepository
 import { requireCsrf } from '../middleware/requireCsrf.js'
 import { requirePermission } from '../middleware/requirePermission.js'
 import { describeError, logSecurityEvent } from '../security/logger.js'
+import { registerRequestRoutes } from './requests.js'
 
 /**
- * Apenas a autorização de acesso aos passageiros, que o módulo de passagens usará.
- * Recursos sem acesso respondem 404, para não revelar que existem.
+ * Passagens aéreas: o fluxo comum das solicitações, em requests.ts, e o acesso aos
+ * passageiros. Recursos sem acesso respondem 404, para não revelar que existem.
  */
 
 const router = Router()
@@ -21,6 +26,8 @@ const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 router.use('/flights', requireAuth, requirePermission('flights:read'), requireCsrf)
+
+registerRequestRoutes(router, 'flights')
 
 function identityOf(response: Response) {
   return response.locals.authenticatedUser as AuthenticatedIdentity
@@ -74,7 +81,7 @@ router.get('/flights/passengers/:passengerId/cpf', async (request, response) => 
   const { passengerId } = request.params
   const identity = identityOf(response)
 
-  if (!canReadFullCpf(identity)) {
+  if (!hasCpfAuthorization(identity)) {
     await recordAuthAuditEvent({
       actorUserId: identity.userId,
       actorKind: 'user',
@@ -98,13 +105,7 @@ router.get('/flights/passengers/:passengerId/cpf', async (request, response) => 
 
   try {
     const scope = await passengers.findPassengerScope(passengerId)
-    if (
-      !scope ||
-      !canReadRequest(identity, {
-        module: 'flights',
-        requesterId: scope.requesterId,
-      })
-    ) {
+    if (!scope || !canReadFullCpf(identity, scope)) {
       sendNotFound(response)
       return
     }

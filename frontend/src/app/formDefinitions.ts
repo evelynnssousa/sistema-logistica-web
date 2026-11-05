@@ -1,3 +1,6 @@
+import { saveParameters } from '../api/operationsApi'
+import { apiRequest } from '../auth/apiClient'
+
 export const formKeys = ['maintenance', 'fleet', 'airTravel'] as const
 export type FormKey = (typeof formKeys)[number]
 
@@ -12,6 +15,8 @@ export const fieldTypes = [
   'singleSelect',
   'multiSelect',
   'boolean',
+  'phone',
+  'checkbox',
 ] as const
 export type FormFieldType = (typeof fieldTypes)[number]
 
@@ -24,12 +29,23 @@ export type FormFieldDefinition = {
   active: boolean
   protected: boolean
   options: string[]
+  // Publicados pelo Gerenciador de formulários. Sem eles, vale o comportamento padrão.
+  help?: string
+  section?: string
+  minLength?: number | null
+  maxLength?: number | null
+  min?: number | null
+  max?: number | null
+  visibleTo?: 'all' | 'staff'
+  visibleWhen?: { field: string; equals: string } | null
 }
 
 export type FormDefinitions = Record<FormKey, FormFieldDefinition[]>
 export type FormDefinitionsSnapshot = {
   definitions: FormDefinitions
   error: string | null
+  /** Há personalização gravada no servidor. */
+  onServer: boolean
 }
 
 const storageKey = 'jucesp.form-definitions.v1'
@@ -65,12 +81,24 @@ export function createDefaultFormDefinitions(): FormDefinitions {
       field('tipoSolicitacao', 'Tipo de serviço de manutenção', 'singleSelect', true, true),
       field('descricao', 'Descrição detalhada do problema ou serviço solicitado', 'longText', true, true),
       field('localServico', 'Local onde o serviço deverá ser realizado', 'shortText', true, true),
+      {
+        ...field('dataPreferencial', 'Data e horário preferenciais', 'dateTime'),
+        description: 'Se houver preferência. A data poderá ser ajustada conforme a disponibilidade.',
+      },
       field('observacoes', 'Observações adicionais', 'longText'),
     ],
     fleet: [
       field('requester', 'Solicitante', 'shortText', true, true),
-      field('vehicle', 'Veículo', 'shortText', true, true),
+      field('sector', 'Setor', 'singleSelect', true, true),
+      field('floor', 'Andar', 'singleSelect'),
+      field('origin', 'Origem', 'shortText', true, true),
+      field('destination', 'Destino', 'shortText', true, true),
+      field('departureAt', 'Data e horário de saída', 'dateTime', true, true),
+      field('returnAt', 'Data e horário de retorno', 'dateTime'),
       field('serviceRequested', 'Serviço solicitado', 'shortText', true, true),
+      field('vehicle', 'Veículo', 'shortText'),
+      field('passengerNames', 'Passageiros (um nome por linha)', 'longText'),
+      field('notes', 'Observações adicionais', 'longText'),
     ],
     airTravel: [
       field('requesterName', 'Nome do solicitante', 'shortText', true, true),
@@ -80,7 +108,7 @@ export function createDefaultFormDefinitions(): FormDefinitions {
       field('requesterRoom', 'Sala', 'shortText'),
       field('passengerName', 'Nome completo', 'shortText', true, true),
       field('passengerCpf', 'CPF', 'shortText', true, true),
-      field('tripType', 'Tipo de viagem', 'singleSelect', true, true, ['Somente ida', 'Ida e volta']),
+      field('tripType', 'Tipo de viagem', 'singleSelect', true, true, ['Somente ida', 'Ida e volta', 'Somente volta']),
       field('outboundOrigin', 'Origem', 'shortText', true, true),
       field('outboundDestination', 'Destino', 'shortText', true, true),
       field('departureDate', 'Data da ida', 'date', true, true),
@@ -97,6 +125,38 @@ export function createDefaultFormDefinitions(): FormDefinitions {
       field('notes', 'Observações adicionais', 'longText'),
     ],
   }
+}
+
+/**
+ * Personalizações salvas antes de uma mudança nos campos padrão continuam valendo: rótulos
+ * e campos próprios são mantidos, e os campos protegidos voltam à definição atual.
+ */
+function mergeWithDefaults(definitions: FormDefinitions): FormDefinitions {
+  const defaults = createDefaultFormDefinitions()
+  const merged = {} as FormDefinitions
+
+  for (const key of formKeys) {
+    const current = defaults[key]
+    const stored = definitions[key].map((item) => {
+      const standard = current.find((candidate) => candidate.id === item.id)
+      if (!standard) return { ...item, protected: false }
+      return standard.protected
+        ? {
+            ...item,
+            type: standard.type,
+            options: standard.options,
+            protected: true,
+            active: true,
+            required: true,
+          }
+        : { ...item, protected: false, type: standard.type }
+    })
+    const missing = current.filter(
+      (item) => item.protected && !stored.some((candidate) => candidate.id === item.id),
+    )
+    merged[key] = [...stored, ...missing]
+  }
+  return merged
 }
 
 function isFieldType(value: unknown): value is FormFieldType {
@@ -187,87 +247,77 @@ function hasValidFieldValues(definitions: FormDefinitions) {
   })
 }
 
-function readInitialSnapshot(): FormDefinitionsSnapshot {
-  if (typeof window === 'undefined') {
-    return { definitions: createDefaultFormDefinitions(), error: null }
-  }
+/** Personalização antiga deste navegador, só para oferecer a cópia ao servidor. Nunca é apagada. */
+export function readLegacyLocalDefinitions(): FormDefinitions | null {
+  if (typeof window === 'undefined') return null
   try {
     const stored = window.localStorage.getItem(storageKey)
-    if (!stored) {
-      return { definitions: createDefaultFormDefinitions(), error: null }
-    }
-    const parsed: unknown = JSON.parse(stored)
-    const storedRecord =
-      typeof parsed === 'object' && parsed !== null
-        ? (parsed as Record<string, unknown>)
-        : null
-    if (
-      !storedRecord ||
-      ![1, 2].includes(storedRecord.version as number) ||
-      !isDefinitions(storedRecord.definitions) ||
-      !hasRequiredFields(storedRecord.definitions) ||
-      !hasValidFieldValues(storedRecord.definitions)
-    ) {
-      return {
-        definitions: createDefaultFormDefinitions(),
-        error:
-          'As personalizações salvas estão inválidas ou incompatíveis. Elas não foram aplicadas.',
-      }
-    }
-    if (storedRecord.version === 1) {
-      const migrated = {
-        version: 2,
-        definitions: storedRecord.definitions,
-      }
-      window.localStorage.setItem(storageKey, JSON.stringify(migrated))
-    }
-    return {
-      definitions: storedRecord.definitions as FormDefinitions,
-      error: null,
-    }
+    if (!stored) return null
+    const parsed = JSON.parse(stored) as Record<string, unknown>
+    if (!isDefinitions(parsed.definitions)) return null
+    const definitions = mergeWithDefaults(parsed.definitions)
+    return hasRequiredFields(definitions) && hasValidFieldValues(definitions) ? definitions : null
   } catch {
-    return {
-      definitions: createDefaultFormDefinitions(),
-      error: 'Não foi possível ler as personalizações neste navegador.',
-    }
+    return null
   }
 }
 
-let snapshot = readInitialSnapshot()
+let formSections: Record<string, { id: string; title: string }[]> = {}
+
+/** Título da seção publicada. Sem seções publicadas, o formulário não mostra títulos. */
+export function sectionTitle(form: FormKey, field: FormFieldDefinition, previous: FormFieldDefinition | undefined) {
+  const sections = formSections[form]
+  if (!sections || sections.length < 2 || !field.section || field.section === previous?.section) return undefined
+  return sections.find((section) => section.id === field.section)?.title
+}
+
+let snapshot: FormDefinitionsSnapshot = {
+  definitions: createDefaultFormDefinitions(),
+  error: null,
+  onServer: false,
+}
 const listeners = new Set<() => void>()
 
 function notify() {
   listeners.forEach((listener) => listener())
 }
 
-function onStorage(event: StorageEvent) {
-  if (event.key !== storageKey && event.key !== null) return
-  if (event.newValue === null) {
-    snapshot = { definitions: createDefaultFormDefinitions(), error: null }
-    notify()
-    return
-  }
-  try {
-    const parsed: unknown = JSON.parse(event.newValue)
-    const record = parsed as Record<string, unknown>
-    if (
-      ![1, 2].includes(record.version as number) ||
-      !isDefinitions(record.definitions) ||
-      !hasRequiredFields(record.definitions) ||
-      !hasValidFieldValues(record.definitions)
-    ) {
-      snapshot = { ...snapshot, error: 'As personalizações em outra aba são inválidas.' }
-    } else {
-      snapshot = { definitions: record.definitions, error: null }
-    }
-  } catch {
-    snapshot = { ...snapshot, error: 'Não foi possível ler as personalizações em outra aba.' }
-  }
+function publish(next: FormDefinitionsSnapshot) {
+  // Sem mudança, a referência se mantém: quem está editando não perde o rascunho.
+  if (JSON.stringify(next) === JSON.stringify(snapshot)) return
+  snapshot = next
   notify()
 }
 
-if (typeof window !== 'undefined') {
-  window.addEventListener('storage', onStorage)
+/** Busca os campos no servidor. Sem resposta, os formulários seguem com os campos padrão. */
+export async function loadFormDefinitions() {
+  try {
+    const data = await apiRequest<{
+      success: boolean
+      definitions: unknown
+      sections?: Record<string, { id: string; title: string }[]>
+    }>('/forms/definitions')
+    formSections = data.sections ?? {}
+    if (data.definitions === null) {
+      publish({ definitions: createDefaultFormDefinitions(), error: null, onServer: false })
+      return
+    }
+    const definitions = isDefinitions(data.definitions) ? mergeWithDefaults(data.definitions) : null
+    if (!definitions || !hasRequiredFields(definitions) || !hasValidFieldValues(definitions)) {
+      publish({
+        definitions: createDefaultFormDefinitions(),
+        error: 'As personalizações salvas estão inválidas. Os formulários usam os campos padrão.',
+        onServer: true,
+      })
+      return
+    }
+    publish({ definitions, error: null, onServer: true })
+  } catch {
+    publish({
+      ...snapshot,
+      error: 'Não foi possível carregar as personalizações. Os formulários usam os últimos campos conhecidos.',
+    })
+  }
 }
 
 export function subscribeFormDefinitions(listener: () => void) {
@@ -279,10 +329,7 @@ export function getFormDefinitionsSnapshot() {
   return snapshot
 }
 
-export function saveFormDefinitions(definitions: FormDefinitions) {
-  if (snapshot.error) {
-    throw new Error('Resolva o problema de armazenamento antes de salvar.')
-  }
+export async function saveFormDefinitions(definitions: FormDefinitions) {
   if (
     !isDefinitions(definitions) ||
     !hasRequiredFields(definitions) ||
@@ -347,16 +394,6 @@ export function saveFormDefinitions(definitions: FormDefinitions) {
     }
   }
 
-  try {
-    window.localStorage.setItem(
-      storageKey,
-      JSON.stringify({ version: 2, definitions }),
-    )
-  } catch {
-    throw new Error(
-      'Não foi possível salvar no armazenamento deste navegador.',
-    )
-  }
-  snapshot = { definitions, error: null }
-  notify()
+  await saveParameters('forms', { definitions })
+  publish({ definitions, error: null, onServer: true })
 }

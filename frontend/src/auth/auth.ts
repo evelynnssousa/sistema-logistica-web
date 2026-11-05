@@ -5,7 +5,7 @@ export type AuthenticatedUser = {
   name: string
   email: string | null
   username: string | null
-  role: 'administrator' | 'slm_operator' | 'requester'
+  role: 'administrator' | 'slm_operator' | 'requester' | 'driver'
   sector?: string
   permissions: string[]
   slmMember: boolean
@@ -48,6 +48,7 @@ export async function register(input: {
   sector: string
   password: string
   passwordConfirmation: string
+  customFields?: Record<string, string>
 }): Promise<string> {
   const data = await authRequest('register', {
     method: 'POST',
@@ -83,6 +84,18 @@ export async function requestPasswordRecovery(email: string): Promise<string> {
     body: JSON.stringify({ email }),
   })
   return data.message || 'Se houver uma conta ativa associada a esse e-mail, você receberá instruções.'
+}
+
+export async function resetPasswordWithLink(input: {
+  token: string
+  password: string
+  passwordConfirmation: string
+}): Promise<string> {
+  const data = await authRequest('password-recovery/reset-link', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+  return data.message || 'Senha alterada com sucesso.'
 }
 
 export async function resetPassword(input: {

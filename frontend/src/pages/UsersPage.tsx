@@ -68,6 +68,9 @@ function UsersPage() {
               : 'Consulte as contas cadastradas.'}
           </p>
         </div>
+        <Link className="maintenance-secondary-button" to="/usuarios/revisao-de-acessos">
+          Revisão de acessos
+        </Link>
       </div>
 
       <form className="users-filters" onSubmit={submitSearch} role="search">
@@ -91,6 +94,7 @@ function UsersPage() {
             <option value="administrator">{roleLabels.administrator}</option>
             <option value="slm_operator">{roleLabels.slm_operator}</option>
             <option value="requester">{roleLabels.requester}</option>
+            <option value="driver">{roleLabels.driver}</option>
           </select>
         </label>
         <label>

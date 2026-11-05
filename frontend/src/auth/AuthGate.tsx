@@ -15,26 +15,82 @@ type AuthGateProps = {
   children: React.ReactNode
 }
 
+// O token vem depois do "#": nunca é enviado ao servidor de páginas nem aparece no Referer.
+function readRecoveryToken() {
+  const match = window.location.hash.match(/^#recuperar-senha=([A-Za-z0-9_-]{43})$/)
+  if (!match) return null
+  window.history.replaceState(null, '', window.location.pathname)
+  return match[1]
+}
+
+// Dentro de uma pré-visualização embutida, o navegador recusa o cookie de sessão.
+function isEmbedded() {
+  try {
+    return window.self !== window.top
+  } catch {
+    return true
+  }
+}
+
+const sessionNotKept = () =>
+  isEmbedded()
+    ? 'Seus dados foram aceitos, mas o navegador não guarda a sessão quando o sistema está embutido em outra página, como a pré-visualização do editor. Abra o endereço em uma aba própria do navegador.'
+    : 'Seus dados foram aceitos, mas o navegador não manteve a sessão. Confira se os cookies estão permitidos para este endereço e apague cookies antigos do sistema antes de entrar de novo.'
+
 function AuthGate({ children }: AuthGateProps) {
   const [user, setUser] = useState<AuthenticatedUser | null>(null)
   const [checking, setChecking] = useState(true)
   const [unavailable, setUnavailable] = useState(false)
-  const [authView, setAuthView] = useState<'login' | 'register' | 'recovery'>('login')
+  const [linkToken, setLinkToken] = useState(readRecoveryToken)
+  const [authView, setAuthView] = useState<'login' | 'register' | 'recovery'>(
+    linkToken ? 'recovery' : 'login',
+  )
+
+  const [loginNotice, setLoginNotice] = useState('')
+
+  // Muda a cada login e logout. Resposta de consulta iniciada antes disso é de outra sessão.
+  const sessionEpoch = useRef(0)
+  const authenticated = useRef(false)
+
+  const applyUser = useCallback((currentUser: AuthenticatedUser | null) => {
+    authenticated.current = currentUser !== null
+    setUser(currentUser)
+  }, [])
 
   const refreshSession = useCallback(async () => {
+    sessionEpoch.current += 1
     setChecking(true)
     setUnavailable(false)
+    setLoginNotice('')
 
     try {
-      const currentUser = await getCurrentUser()
-      setUser(currentUser)
+      applyUser(await getCurrentUser())
     } catch {
-      setUser(null)
+      applyUser(null)
       setUnavailable(true)
     } finally {
       setChecking(false)
     }
-  }, [])
+  }, [applyUser])
+
+  // O login foi aceito: se a sessão não se confirmar, a pessoa precisa saber o motivo.
+  const confirmLogin = useCallback(async () => {
+    sessionEpoch.current += 1
+    setChecking(true)
+    setUnavailable(false)
+    setLoginNotice('')
+
+    try {
+      const currentUser = await getCurrentUser()
+      applyUser(currentUser)
+      if (!currentUser) setLoginNotice(sessionNotKept())
+    } catch {
+      applyUser(null)
+      setUnavailable(true)
+    } finally {
+      setChecking(false)
+    }
+  }, [applyUser])
 
   // Primeira verificação: "checking" já começa verdadeiro e os estados só mudam
   // quando a resposta chega, e não durante o efeito.
@@ -43,7 +99,7 @@ function AuthGate({ children }: AuthGateProps) {
 
     getCurrentUser()
       .then((currentUser) => {
-        if (active) setUser(currentUser)
+        if (active) applyUser(currentUser)
       })
       .catch(() => {
         if (active) setUnavailable(true)
@@ -55,7 +111,7 @@ function AuthGate({ children }: AuthGateProps) {
     return () => {
       active = false
     }
-  }, [])
+  }, [applyUser])
 
   // Mantém menus e rotas alinhados às permissões atuais, que podem mudar durante a
   // sessão. Se a conta foi desativada, volta para o login.
@@ -66,9 +122,15 @@ function AuthGate({ children }: AuthGateProps) {
     let active = true
 
     const refresh = () => {
+      // Na tela de login não há sessão para conferir, e a consulta poderia cruzar com o login.
+      if (!authenticated.current) return
+      const epoch = sessionEpoch.current
+
       getCurrentUser()
         .then((currentUser) => {
-          if (active) setUser(currentUser)
+          if (!active || epoch !== sessionEpoch.current) return
+          applyUser(currentUser)
+          if (!currentUser) setLoginNotice('Sua sessão foi encerrada. Entre novamente para continuar.')
         })
         .catch(() => {
           // Falha momentânea: o backend continua validando cada requisição.
@@ -88,14 +150,16 @@ function AuthGate({ children }: AuthGateProps) {
       window.removeEventListener('focus', refresh)
       window.removeEventListener(accessRefusedEvent, refresh)
     }
-  }, [pathname])
+  }, [pathname, applyUser])
 
   // Só considera a saída concluída depois de o backend encerrar a sessão.
   const handleLogout = useCallback(async () => {
     await logout()
-    setUser(null)
+    sessionEpoch.current += 1
+    applyUser(null)
+    setLoginNotice('')
     setAuthView('login')
-  }, [])
+  }, [applyUser])
 
   if (checking) {
     return (
@@ -130,16 +194,19 @@ function AuthGate({ children }: AuthGateProps) {
     if (authView === 'recovery') {
       return (
         <PasswordRecoveryPage
-          onBackToLogin={() => setAuthView('login')}
+          linkToken={linkToken}
+          onBackToLogin={() => {
+            setLinkToken(null)
+            setAuthView('login')
+          }}
         />
       )
     }
 
     return (
       <LoginPage
-        onLogin={async () => {
-          await refreshSession()
-        }}
+        notice={loginNotice}
+        onLogin={confirmLogin}
         onRegister={() => setAuthView('register')}
         onRecoverPassword={() => setAuthView('recovery')}
       />

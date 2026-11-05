@@ -1,6 +1,6 @@
 import type { Permission } from './permissions.js'
 
-export const authRoles = ['administrator', 'slm_operator', 'requester'] as const
+export const authRoles = ['administrator', 'slm_operator', 'requester', 'driver'] as const
 
 export type AuthRole = (typeof authRoles)[number]
 
@@ -40,6 +40,8 @@ export function databaseRoleFor(role: AuthRole): {
   permissions: string[]
 } {
   if (role === 'administrator') return { role: 'admin', permissions: [] }
+  // O acesso do motorista vem só do perfil: nenhuma permissão antiga fica gravada na conta.
+  if (role === 'driver') return { role: 'operator', permissions: [] }
   if (role === 'slm_operator') {
     return {
       role: 'operator',

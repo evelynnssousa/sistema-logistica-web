@@ -1,179 +1,191 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import {
+  errorMessage,
+  getDashboard,
+  moduleLabels,
+  statusLabels,
+  warehouseStatusLabels,
+} from '../api/modulesApi'
+import type { DashboardResponse } from '../api/modulesApi'
+import { usePeriodFilter } from '../app/period'
 import { useAuthenticatedUser } from '../auth/UserContext'
 import StatCard from '../components/StatCard'
+import { BarChart, MonthlyChart } from '../components/ui/Charts'
+import { Alert, EmptyState, Loading } from '../components/ui/Feedback'
+import { FilterBar, FilterSelect, PeriodFields } from '../components/ui/Filters'
+import PageHeader from '../components/ui/PageHeader'
 
-const moduleCards = [
-  {
-    path: '/manutencao',
-    permission: 'maintenance:read',
-    className: 'maintenance',
-    icon: '⚙',
-    title: 'Manutenção',
-    description:
-      'Solicitações, agendamentos e acompanhamento dos serviços de manutenção.',
-  },
-  {
-    path: '/frota',
-    permission: 'fleet:read',
-    className: 'fleet',
-    icon: '▣',
-    title: 'Gestão de frota',
-    description:
-      'Controle de solicitações, veículos, motoristas e agendamentos.',
-  },
-  {
-    path: '/passagens-aereas',
-    permission: 'flights:read',
-    className: 'flights',
-    icon: '✈',
-    title: 'Passagens aéreas',
-    description:
-      'Organização das solicitações de viagens e acompanhamento dos pedidos.',
-  },
-] as const
+function sum(values: Record<string, number>) {
+  return Object.values(values).reduce((total, value) => total + value, 0)
+}
 
 function DashboardPage() {
   const user = useAuthenticatedUser()
-  const visibleCards = moduleCards.filter((module) =>
-    user?.permissions.includes(module.permission),
-  )
+  const period = usePeriodFilter()
+  const [module, setModule] = useState('')
+  const [data, setData] = useState<DashboardResponse | null>(null)
+  const [error, setError] = useState('')
+  const { from, to } = period.range
+
+  useEffect(() => {
+    let active = true
+    getDashboard({ module, from, to })
+      .then((result) => {
+        if (!active) return
+        setData(result)
+        setError('')
+      })
+      .catch((err: unknown) => {
+        if (active) setError(errorMessage(err, 'Não foi possível carregar os indicadores.'))
+      })
+    return () => {
+      active = false
+    }
+  }, [module, from, to])
+
+  const moduleOptions = Object.entries(moduleLabels)
+    .filter(([key]) => user?.permissions.includes(`${key}:read`))
+    .map(([value, label]) => ({ value, label }))
+
+  const byModule = data
+    ? [
+        ...Object.entries(data.byModule).map(([key, statuses]) => ({
+          label: moduleLabels[key],
+          value: sum(statuses),
+        })),
+        ...(data.warehouse ? [{ label: moduleLabels.warehouse, value: sum(data.warehouse) }] : []),
+      ]
+    : []
+
+  const byStatus = data
+    ? Object.values(
+        Object.values(data.byModule).reduce<Record<string, { label: string; value: number }>>(
+          (rows, statuses) => {
+            for (const [status, total] of Object.entries(statuses)) {
+              const label = statusLabels[status] ?? status
+              rows[label] = { label, value: (rows[label]?.value ?? 0) + total }
+            }
+            return rows
+          },
+          {},
+        ),
+      ).sort((first, second) => second.value - first.value)
+    : []
+
+  const warehouseRows = Object.entries(data?.warehouse ?? {}).map(([status, value]) => ({
+    label: warehouseStatusLabels[status] ?? status,
+    value,
+  }))
+
+  const hasData = byModule.some((row) => row.value > 0)
 
   return (
     <div className="dashboard-page">
-      <section className="welcome-section">
-        <div>
-          <div className="eyebrow">JUCESP · GESTÃO OPERACIONAL</div>
-          <h1>Painel de controle</h1>
-          <p>
-            Acompanhe solicitações e serviços de logística e manutenção em um só
-            lugar.
-          </p>
-        </div>
-      </section>
-
-      <section className="stats-grid" aria-label="Indicadores do sistema">
-        <StatCard
-          icon="▤"
-          tone="blue"
-          tag="GERAL"
-          label="Total de solicitações"
-          value="—"
-          description="Aguardando integração com a base de dados"
-        />
-        <StatCard
-          icon="◷"
-          tone="orange"
-          tag="PENDÊNCIAS"
-          label="Em andamento"
-          value="—"
-          description="Solicitações em processamento"
-        />
-        <StatCard
-          icon="✓"
-          tone="green"
-          tag="CONCLUÍDOS"
-          label="Serviços concluídos"
-          value="—"
-          description="Serviços finalizados no sistema"
-        />
-        <StatCard
-          icon="✈"
-          tone="purple"
-          tag="VIAGENS"
-          label="Passagens aéreas"
-          value="—"
-          description="Módulo independente em preparação"
-        />
-      </section>
-
-      <section className="recent-section" aria-labelledby="recent-title">
-        <div className="section-heading">
-          <div>
-            <h2 id="recent-title">Solicitações recentes</h2>
-            <p>Consulte as solicitações registradas no sistema.</p>
-          </div>
-        </div>
-        <div className="recent-table-wrapper">
-          <table className="recent-table">
-            <caption className="visually-hidden">
-              Solicitações recentes por módulo, identificação, solicitante, data
-              e status
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">Módulo</th>
-                <th scope="col">Identificação</th>
-                <th scope="col">Solicitante</th>
-                <th scope="col">Data</th>
-                <th scope="col">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td colSpan={5}>
-                  <div className="empty-state">
-                    <span className="empty-state-icon" aria-hidden="true">
-                      ▤
-                    </span>
-                    <strong>Nenhuma solicitação disponível</strong>
-                    <span>
-                      Os dados serão exibidos aqui quando a integração com as
-                      solicitações estiver disponível.
-                    </span>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="shortcuts-section" aria-labelledby="shortcuts-title">
-        <div className="section-heading">
-          <div>
-            <h2 id="shortcuts-title">Acesso rápido</h2>
-            <p>Acesse um módulo do sistema.</p>
-          </div>
-        </div>
-        <div className="modules-grid shortcuts-grid">
-          {visibleCards.map((module) => (
-            <Link
-              key={module.path}
-              className="module-card"
-              to={module.path}
-              aria-label={`Acessar módulo ${module.title}`}
-            >
-              <div
-                className={`module-icon ${module.className}`}
-                aria-hidden="true"
-              >
-                {module.icon}
-              </div>
-              <div className="module-card-content">
-                <h3>{module.path === '/frota' ? 'Frota' : module.title}</h3>
-                <p>{module.description}</p>
-                <span className="module-link">
-                  Acessar módulo <span aria-hidden="true">→</span>
-                </span>
-              </div>
+      <PageHeader
+        title="Dashboard"
+        description={
+          user?.permissions.includes('requests:read_all')
+            ? 'Indicadores operacionais de todas as solicitações que você pode acompanhar.'
+            : 'Indicadores das suas solicitações.'
+        }
+        actions={
+          user?.permissions.includes('reports:read') && (
+            <Link className="maintenance-secondary-button" to="/relatorios">
+              Abrir relatórios
             </Link>
-          ))}
-        </div>
-      </section>
+          )
+        }
+      />
 
-      <section className="notice-card">
-        <div className="notice-icon" aria-hidden="true">
-          i
-        </div>
-        <div>
-          <strong>Nova plataforma em desenvolvimento</strong>
-          <p>
-            Esta interface é a base visual da nova plataforma. Os indicadores
-            serão preenchidos quando a integração com os dados for implementada
-            e validada.
-          </p>
-        </div>
-      </section>
+      <FilterBar
+        label="Filtros do Dashboard"
+        canClear={Boolean(module) || period.isActive}
+        onClear={() => {
+          setModule('')
+          period.clear()
+        }}
+      >
+        <PeriodFields filter={period} />
+        <FilterSelect
+          label="Módulo"
+          value={module}
+          onChange={setModule}
+          options={moduleOptions}
+          allLabel="Todos os módulos"
+        />
+      </FilterBar>
+
+      {error && <Alert tone="error">{error}</Alert>}
+      {!data && !error && <Loading label="Carregando indicadores..." />}
+
+      {data && (
+        <>
+          <section className="ui-metrics" aria-label="Indicadores">
+            <StatCard
+              icon="requests"
+              tone="black"
+              label="Total de solicitações"
+              value={String(data.totals.requests)}
+              description="No período e módulos selecionados"
+            />
+            <StatCard
+              icon="waiting"
+              tone="yellow"
+              label="Aguardando agendamento"
+              value={String(data.totals.awaitingSchedule)}
+              description={`${data.totals.open} em aberto no total`}
+            />
+            <StatCard
+              icon="progress"
+              tone="graphite"
+              label="Em andamento"
+              value={String(data.totals.inProgress)}
+              description="Atendimentos iniciados"
+            />
+            <StatCard
+              icon="success"
+              tone="white"
+              label="Concluídas"
+              value={String(data.totals.concluded)}
+              description="Atendimentos concluídos e passagens emitidas"
+            />
+          </section>
+
+          {!hasData ? (
+            <section className="ui-card">
+              <EmptyState icon="overview" title="Sem dados para exibir">
+                Não há registros para os filtros selecionados.
+              </EmptyState>
+            </section>
+          ) : (
+            <div className="ui-grid-2">
+              {data.byPeriod.length > 0 && (
+                <section className="ui-card" aria-labelledby="chart-period">
+                  <h2 id="chart-period">Solicitações por mês</h2>
+                  <MonthlyChart rows={data.byPeriod} />
+                </section>
+              )}
+              <section className="ui-card" aria-labelledby="chart-module">
+                <h2 id="chart-module">Solicitações por módulo</h2>
+                <BarChart rows={byModule} />
+              </section>
+              {byStatus.length > 0 && (
+                <section className="ui-card" aria-labelledby="chart-status">
+                  <h2 id="chart-status">Situação dos atendimentos</h2>
+                  <BarChart rows={byStatus} />
+                </section>
+              )}
+              {warehouseRows.length > 0 && (
+                <section className="ui-card" aria-labelledby="chart-warehouse">
+                  <h2 id="chart-warehouse">Pedidos do Almoxarifado</h2>
+                  <BarChart rows={warehouseRows} />
+                </section>
+              )}
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }

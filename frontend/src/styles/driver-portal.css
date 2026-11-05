@@ -1,0 +1,476 @@
+/* Portal do Motorista: só os tokens institucionais de theme.css. Pensado primeiro para o celular. */
+
+.driver-portal {
+  min-height: 100vh;
+  background: var(--page);
+  color: var(--text);
+}
+
+.driver-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--black);
+  color: var(--white);
+}
+
+.driver-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.driver-brand img {
+  width: 44px;
+  height: 44px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--white);
+  object-fit: contain;
+}
+
+.driver-brand div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.driver-brand strong {
+  color: var(--yellow);
+  font-size: 1.05rem;
+}
+
+.driver-brand span {
+  overflow: hidden;
+  font-size: 0.86rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.driver-logout {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--white);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--white);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.driver-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  background: var(--graphite);
+}
+
+.driver-tabs button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 8px;
+  border: 0;
+  border-bottom: 4px solid transparent;
+  background: transparent;
+  color: var(--white);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.driver-tabs button.is-active {
+  border-bottom-color: var(--yellow);
+  color: var(--yellow);
+}
+
+.driver-tab-badge {
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--yellow);
+  color: var(--black);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.driver-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.driver-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.driver-groups button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.driver-groups button.is-active {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: var(--white);
+}
+
+.driver-groups span {
+  font-weight: 700;
+}
+
+.driver-trip {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.driver-trip header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.driver-trip-when {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.driver-trip-when strong {
+  font-size: 1.15rem;
+  text-transform: capitalize;
+}
+
+.driver-trip-when span {
+  color: var(--text-muted);
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.driver-trip-route {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.driver-trip-route small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.driver-trip-route strong {
+  font-size: 1.1rem;
+}
+
+.driver-trip-notes,
+.driver-flag {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  overflow-wrap: anywhere;
+}
+
+.driver-trip-notes svg,
+.driver-flag svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.driver-trip-notes {
+  background: var(--blue-soft);
+  color: var(--text);
+}
+
+.driver-flag {
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 0.9rem;
+}
+
+.driver-trip-times {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.driver-trip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.driver-button {
+  display: inline-flex;
+  flex: 1 1 200px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 10px 16px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.driver-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.driver-button-primary {
+  background: var(--yellow);
+  color: var(--black);
+}
+
+.driver-button-secondary {
+  border-color: var(--black);
+  background: var(--surface);
+  color: var(--black);
+}
+
+/* Dentro do diálogo, a regra genérica de botões do Modal venceria estas. */
+.ui-modal button.driver-button {
+  min-height: 52px;
+  border-radius: 12px;
+  font-weight: 700;
+}
+
+.ui-modal button.driver-button-primary,
+.ui-modal button.driver-button-primary:hover:not(:disabled) {
+  border-color: var(--yellow);
+  background: var(--yellow);
+  color: var(--black);
+}
+
+.driver-button-quiet {
+  flex-basis: 100%;
+  min-height: 44px;
+  background: transparent;
+  color: var(--blue);
+  text-decoration: underline;
+}
+
+.driver-details {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.driver-details h4 {
+  margin: 14px 0 8px;
+}
+
+.driver-details dl,
+.driver-history-times {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.driver-history-times {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.driver-details dt,
+.driver-history-times dt {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.driver-details dd,
+.driver-history-times dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.driver-occurrences,
+.driver-notices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.driver-occurrences li,
+.driver-notices li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-muted);
+  overflow-wrap: anywhere;
+}
+
+.driver-notices li {
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.driver-notices li.is-unread {
+  border-left: 4px solid var(--yellow);
+}
+
+.driver-occurrences small,
+.driver-notices small,
+.driver-muted {
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+.driver-confirm-route {
+  font-size: 1.05rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.driver-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.driver-dialog-actions .driver-button {
+  flex-basis: 140px;
+}
+
+.driver-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.driver-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 600;
+}
+
+.driver-form input,
+.driver-form select,
+.driver-form textarea {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 1rem;
+}
+
+/* Administração: cadastro de motoristas e painel da viagem na Frota. */
+.fleet-execution-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 0 0 12px;
+}
+
+.fleet-execution-grid dt {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.fleet-execution-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.fleet-execution-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.fleet-execution-form h3,
+.fleet-execution-form .form-grid-wide {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.fleet-execution-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Avisos e orientações definidos em Configurações. */
+.driver-messages {
+  display: grid;
+  gap: 8px;
+}
+
+.driver-messages:empty {
+  display: none;
+}
+
+.driver-card-facts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.driver-card-facts dt {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.driver-card-facts dd {
+  margin: 0;
+}

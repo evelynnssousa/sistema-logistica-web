@@ -224,7 +224,11 @@ test('aprovação como operador SLM grava permissões de escrita, sem CPF', asyn
     body: { role: 'slm_operator' },
   })
 
-  assert.equal((await login(email)).body.user.role, 'slm_operator')
+  const operator = await login(email)
+  assert.equal(operator.body.user.role, 'slm_operator')
+  assert.equal(operator.body.user.slmMember, false, 'sem a 003, ninguém é da equipe SLM')
+  assert.equal(operator.body.user.permissions.includes('requests:schedule'), false)
+  assert.equal(operator.body.user.permissions.includes('requests:create_on_behalf'), false)
   const { rows } = await pool.query<{ role: string; permissions: string[] }>(
     'SELECT role, permissions FROM public.auth_users WHERE id = $1',
     [id],

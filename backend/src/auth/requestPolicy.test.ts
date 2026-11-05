@@ -10,6 +10,7 @@ import {
   canReadRequest,
   canScheduleRequest,
   canUpdateRequest,
+  hasCpfAuthorization,
   maskCpf,
   resolveRequestOwnership,
 } from './requestPolicy.js'
@@ -19,11 +20,12 @@ function identity(
   role: AuthRole,
   options: { granted?: Permission[]; denied?: Permission[]; slmMember?: boolean } = {},
 ): AuthenticatedIdentity {
+  const slmMember = options.slmMember ?? role === 'slm_operator'
   return {
     userId: 'eu',
     role,
-    permissions: computeEffectivePermissions(role, options.granted, options.denied),
-    slmMember: options.slmMember ?? role === 'slm_operator',
+    permissions: computeEffectivePermissions(role, options.granted, options.denied, slmMember),
+    slmMember,
     sector: 'CPC',
   }
 }
@@ -48,27 +50,48 @@ test('estar no setor CPC não autoriza abrir em nome de outro setor', () => {
   assert.equal(canActOnBehalfOfOtherSectors(fromCpc), false)
 })
 
-test('abrir em nome de outro setor exige a permissão e a equipe SLM, juntas', () => {
-  assert.equal(canCreateRequest(identity('slm_operator'), otherSector), true)
+test('abrir em nome de outro setor exige equipe, perfil elegível e concessão, juntos', () => {
+  const grant = { granted: ['requests:create_on_behalf'] as Permission[] }
 
+  assert.equal(canCreateRequest(identity('slm_operator', grant), otherSector), true)
   assert.equal(
-    canCreateRequest(identity('requester', { granted: ['requests:create_on_behalf'] }), otherSector),
+    canCreateRequest(identity('slm_operator'), otherSector),
     false,
-    'permissão sem equipe',
+    'o perfil Operador SLM não concede',
   )
   assert.equal(
-    canCreateRequest(identity('requester', { slmMember: true }), otherSector),
+    canCreateRequest(identity('requester', grant), otherSector),
     false,
-    'equipe sem permissão',
+    'concessão sem equipe',
   )
   assert.equal(
-    canCreateRequest(identity('administrator', { slmMember: false }), otherSector),
+    canCreateRequest(identity('requester', { ...grant, slmMember: true }), otherSector),
     false,
-    'administrador fora da equipe',
+    'solicitante não é elegível, mesmo marcado como SLM',
+  )
+  assert.equal(
+    canCreateRequest(identity('administrator'), otherSector),
+    false,
+    'administrador sem equipe nem concessão',
+  )
+  assert.equal(
+    canCreateRequest(identity('administrator', grant), otherSector),
+    false,
+    'administrador com concessão, fora da equipe',
+  )
+  assert.equal(
+    canCreateRequest(identity('administrator', { slmMember: true }), otherSector),
+    false,
+    'administrador na equipe, sem concessão',
+  )
+  assert.equal(
+    canCreateRequest(identity('administrator', { ...grant, slmMember: true }), otherSector),
+    true,
+    'administrador na equipe, com concessão',
   )
   assert.equal(
     canCreateRequest(
-      identity('slm_operator', { denied: ['requests:create_on_behalf'] }),
+      identity('slm_operator', { ...grant, denied: ['requests:create_on_behalf'] }),
       otherSector,
     ),
     false,
@@ -76,27 +99,68 @@ test('abrir em nome de outro setor exige a permissão e a equipe SLM, juntas', (
   )
 })
 
-test('agendar exige autorização, inclusive por módulo', () => {
-  assert.equal(canScheduleRequest(identity('requester'), 'maintenance'), false)
-  assert.equal(canScheduleRequest(identity('slm_operator'), 'maintenance'), true)
-  assert.equal(canScheduleRequest(identity('slm_operator'), 'fleet'), true)
+test('agendar: administrador pelo perfil, operador só com concessão, solicitante nunca', () => {
+  const grant = { granted: ['requests:schedule'] as Permission[] }
 
+  assert.equal(canScheduleRequest(identity('administrator'), 'maintenance'), true, 'fora da SLM')
+  assert.equal(canScheduleRequest(identity('administrator'), 'fleet'), true)
+
+  assert.equal(canScheduleRequest(identity('slm_operator'), 'maintenance'), false, 'sem concessão')
+  assert.equal(canScheduleRequest(identity('slm_operator', grant), 'maintenance'), true)
+  assert.equal(canScheduleRequest(identity('slm_operator', grant), 'fleet'), true)
   assert.equal(
-    canScheduleRequest(identity('slm_operator', { denied: ['fleet:schedule'] }), 'fleet'),
+    canScheduleRequest(identity('slm_operator', { ...grant, slmMember: false }), 'maintenance'),
     false,
+    'operador fora da equipe',
   )
-  assert.equal(
-    canScheduleRequest(identity('slm_operator', { denied: ['fleet:schedule'] }), 'maintenance'),
-    true,
-  )
+
+  assert.equal(canScheduleRequest(identity('requester'), 'maintenance'), false)
   assert.equal(
     canScheduleRequest(
       identity('requester', { granted: ['requests:schedule', 'maintenance:schedule'] }),
       'maintenance',
     ),
-    true,
-    'concessão individual, sem mudar de perfil',
+    false,
+    'concessão não supera a elegibilidade',
   )
+  assert.equal(
+    canScheduleRequest(
+      identity('requester', { granted: ['requests:schedule', 'maintenance:schedule'], slmMember: true }),
+      'maintenance',
+    ),
+    false,
+    'solicitante marcado como SLM',
+  )
+})
+
+test('agendar exige a permissão do módulo, e ela sozinha não basta', () => {
+  const grant: Permission[] = ['requests:schedule']
+
+  assert.equal(
+    canScheduleRequest(identity('slm_operator', { granted: grant, denied: ['fleet:schedule'] }), 'fleet'),
+    false,
+  )
+  assert.equal(
+    canScheduleRequest(identity('slm_operator', { granted: grant, denied: ['fleet:schedule'] }), 'maintenance'),
+    true,
+  )
+  assert.equal(
+    canScheduleRequest(identity('slm_operator', { granted: grant, denied: ['maintenance:schedule'] }), 'maintenance'),
+    false,
+  )
+  assert.equal(
+    canScheduleRequest(identity('administrator', { denied: ['maintenance:schedule'] }), 'maintenance'),
+    false,
+  )
+  assert.equal(
+    canScheduleRequest(identity('administrator', { denied: ['maintenance:schedule'] }), 'fleet'),
+    true,
+  )
+
+  // Só a permissão do módulo, sem a autorização individual.
+  const moduleOnly = identity('slm_operator')
+  assert.ok(moduleOnly.permissions.includes('maintenance:schedule'))
+  assert.equal(canScheduleRequest(moduleOnly, 'maintenance'), false)
 })
 
 test('o operador SLM vê e atende todos os setores', () => {
@@ -119,14 +183,51 @@ test('leitura ampla concedida sem acesso ao módulo não libera o módulo', () =
   assert.equal(canReadRequest(partial, { module: 'fleet', requesterId: 'outra-pessoa' }), false)
 })
 
-test('CPF completo depende só da permissão específica', () => {
-  assert.equal(canReadFullCpf(identity('administrator')), false)
-  assert.equal(canReadFullCpf(identity('slm_operator')), false)
-  assert.equal(canReadFullCpf(identity('requester', { granted: ['flights:cpf:read'] })), true)
+test('CPF completo exige concessão individual, elegibilidade, módulo e acesso à solicitação', () => {
+  const grant = { granted: ['flights:cpf:read'] as Permission[] }
+  const anyRequest = { requesterId: 'outra-pessoa' }
+  const ownRequest = { requesterId: 'eu' }
+
+  assert.equal(canReadFullCpf(identity('administrator'), anyRequest), false, 'perfil não concede')
+  assert.equal(canReadFullCpf(identity('slm_operator'), anyRequest), false, 'perfil não concede')
   assert.equal(
-    canReadFullCpf(identity('requester', { granted: ['flights:cpf:read'], denied: ['flights:cpf:read'] })),
-    false,
+    canReadFullCpf(identity('administrator', { ...grant, slmMember: true }), anyRequest),
+    true,
+    'administrador na equipe, com concessão',
   )
+  assert.equal(
+    canReadFullCpf(identity('administrator', grant), anyRequest),
+    false,
+    'administrador fora da equipe',
+  )
+  assert.equal(
+    canReadFullCpf(identity('administrator', { slmMember: true }), anyRequest),
+    false,
+    'administrador na equipe, sem concessão',
+  )
+  assert.equal(canReadFullCpf(identity('slm_operator', grant), anyRequest), true)
+
+  assert.equal(canReadFullCpf(identity('requester', grant), ownRequest), false, 'não elegível')
+  assert.equal(
+    canReadFullCpf(identity('slm_operator', { ...grant, slmMember: false }), anyRequest),
+    false,
+    'fora da equipe',
+  )
+  assert.equal(
+    canReadFullCpf(identity('slm_operator', { ...grant, denied: ['flights:cpf:read'] }), anyRequest),
+    false,
+    'retirada prevalece',
+  )
+  assert.equal(
+    canReadFullCpf(identity('slm_operator', { ...grant, denied: ['flights:read'] }), anyRequest),
+    false,
+    'sem acesso ao módulo',
+  )
+
+  const withoutReadAll = identity('slm_operator', { ...grant, denied: ['requests:read_all'] })
+  assert.equal(hasCpfAuthorization(withoutReadAll), true)
+  assert.equal(canReadFullCpf(withoutReadAll, anyRequest), false, 'solicitação de terceiro')
+  assert.equal(canReadFullCpf(withoutReadAll, ownRequest), true)
 })
 
 test('o CPF mascarado não contém os dígitos das pontas', () => {
@@ -159,7 +260,10 @@ test('o dono da solicitação é sempre quem está na sessão', () => {
     onBehalf: false,
   })
   assert.deepEqual(
-    resolveRequestOwnership(identity('slm_operator'), { ...manipulated, targetSector: 'RH' }),
+    resolveRequestOwnership(
+      identity('slm_operator', { granted: ['requests:create_on_behalf'] }),
+      { ...manipulated, targetSector: 'RH' },
+    ),
     { requesterId: 'eu', sector: 'RH', onBehalf: true },
   )
 })

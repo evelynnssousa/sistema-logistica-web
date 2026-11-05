@@ -1,0 +1,144 @@
+/* Avisos dos formulários, devolução para correção, duplicidade e acessibilidade (Supercomando 06). */
+
+.form-notices {
+  display: grid;
+  gap: 12px;
+  margin-block: 16px;
+}
+
+.service-notice {
+  background: #fff8e1;
+  border: 1px solid #8a6d00;
+  border-left-width: 4px;
+  border-radius: 8px;
+  color: #15191f;
+  padding: 12px 16px;
+}
+
+.service-notice h3 {
+  align-items: center;
+  display: flex;
+  font-size: 0.95rem;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+.service-notice p {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.form-section-title {
+  font-size: 1rem;
+  grid-column: 1 / -1;
+  margin: 12px 0 0;
+}
+
+.return-panel,
+.duplicate-warning {
+  border: 1px solid #8a6d00;
+  border-left-width: 4px;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.duplicate-warning ul,
+.return-panel ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.duplicate-warning-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.report-export {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.check-list {
+  border: 0;
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+}
+
+.check-list label {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.timing-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.item-decision {
+  align-items: end;
+  border-top: 1px solid #dedfda;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  padding-block: 10px;
+}
+
+/* Acessibilidade: atalho para o conteúdo e foco sempre visível, sem depender da cor de fundo. */
+.skip-link {
+  background: #000;
+  border-radius: 0 0 6px 6px;
+  color: #fbb900;
+  font-weight: 700;
+  left: 16px;
+  padding: 10px 14px;
+  position: fixed;
+  top: 0;
+  transform: translateY(-110%);
+  z-index: 1000;
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid #034ea2;
+  outline-offset: 2px;
+}
+
+input[aria-invalid='true'],
+select[aria-invalid='true'],
+textarea[aria-invalid='true'] {
+  border-width: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skip-link {
+    transition: none;
+  }
+}
+
+@media print {
+  .no-print,
+  .skip-link {
+    display: none !important;
+  }
+}

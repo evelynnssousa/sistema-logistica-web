@@ -1,12 +1,15 @@
 export class ApiError extends Error {
   readonly status: number
   readonly code?: string
+  // Corpo da resposta, para erros que trazem mais do que a mensagem.
+  readonly data?: unknown
 
-  constructor(message: string, status: number, code?: string) {
+  constructor(message: string, status: number, code?: string, data?: unknown) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
+    this.data = data
   }
 }
 
@@ -75,6 +78,7 @@ export async function apiRequest<Response extends ApiResponse>(
       data?.message || fallbackMessage(response.status),
       response.status,
       data?.code,
+      data,
     )
   }
 

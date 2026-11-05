@@ -1,4 +1,4 @@
-import type { Pool } from 'pg'
+import type { Pool, PoolClient } from 'pg'
 import {
   PASSWORD_RECOVERY_MAX_ATTEMPTS,
   PASSWORD_RECOVERY_TTL_MS,
@@ -146,55 +146,89 @@ export class PasswordRecoveryRepository {
         return false
       }
 
-      await client.query(
-        `UPDATE public.password_recovery_codes
-            SET consumed_at = now()
-          WHERE id = $1`,
-        [recovery.id],
-      )
-
-      await client.query(
-        `UPDATE public.auth_users
-            SET password_hash = $2,
-                updated_at = now()
-          WHERE id = $1`,
-        [account.id, input.passwordHash],
-      )
-
-      const revoked = await client.query<{ id: string }>(
-        `DELETE FROM public.auth_sessions
-          WHERE user_id = $1
-          RETURNING id::text AS id`,
-        [account.id],
-      )
-
-      for (const session of revoked.rows) {
-        await insertAuthAuditEvent(client, {
-          actorUserId: null,
-          actorKind: 'system',
-          subjectUserId: account.id,
-          sessionId: session.id,
-          eventType: 'session_revoked',
-        })
-      }
-
-      await insertAuthAuditEvent(client, {
-        actorUserId: null,
-        actorKind: 'system',
-        subjectUserId: account.id,
-        sessionId: null,
-        eventType: 'password_changed',
-      })
-
-      await insertAuthAuditEvent(client, {
-        actorUserId: null,
-        actorKind: 'system',
-        subjectUserId: account.id,
-        sessionId: null,
-        eventType: 'password_recovery_completed',
-      })
-
+      await completeRecovery(client, account.id, recovery.id, input.passwordHash)
       return true
     })
   }
+
+  /** Link temporário: o próprio token identifica a conta. Vale uma vez, dentro do prazo. */
+  async resetPasswordByToken(input: {
+    tokenHash: string
+    passwordHash: string
+  }): Promise<string | null> {
+    return withTransaction(this.poolProvider(), async (client) => {
+      const found = await client.query<{ id: string; user_id: string; email: string }>(
+        `SELECT c.id::text AS id, c.user_id::text AS user_id, u.email
+           FROM public.password_recovery_codes c
+           JOIN public.auth_users u ON u.id = c.user_id
+          WHERE c.code_hash = $1
+            AND c.consumed_at IS NULL
+            AND c.expires_at > now()
+            AND u.status = 'approved'
+          FOR UPDATE OF c, u`,
+        [input.tokenHash],
+      )
+      const recovery = found.rows[0]
+      if (!recovery) return null
+
+      await completeRecovery(client, recovery.user_id, recovery.id, input.passwordHash)
+      return recovery.email.toLowerCase()
+    })
+  }
+}
+
+async function completeRecovery(
+  client: PoolClient,
+  accountId: string,
+  recoveryId: string,
+  passwordHash: string,
+) {
+  await client.query(
+    `UPDATE public.password_recovery_codes
+        SET consumed_at = now()
+      WHERE id = $1`,
+    [recoveryId],
+  )
+
+  await client.query(
+    `UPDATE public.auth_users
+        SET password_hash = $2,
+            updated_at = now()
+      WHERE id = $1`,
+    [accountId, passwordHash],
+  )
+
+  const revoked = await client.query<{ id: string }>(
+    `DELETE FROM public.auth_sessions
+      WHERE user_id = $1
+      RETURNING id::text AS id`,
+    [accountId],
+  )
+
+  for (const session of revoked.rows) {
+    await insertAuthAuditEvent(client, {
+      actorUserId: null,
+      actorKind: 'system',
+      subjectUserId: accountId,
+      sessionId: session.id,
+      eventType: 'session_revoked',
+    })
+  }
+
+  await insertAuthAuditEvent(client, {
+    actorUserId: null,
+    actorKind: 'system',
+    subjectUserId: accountId,
+    sessionId: null,
+    eventType: 'password_changed',
+  })
+
+  await insertAuthAuditEvent(client, {
+    actorUserId: null,
+    actorKind: 'system',
+    subjectUserId: accountId,
+    sessionId: null,
+    eventType: 'password_recovery_completed',
+  })
+
 }

@@ -4,12 +4,14 @@ import logoJucesp from '../assets/logoJucespNovo.png'
 import '../App.css'
 
 type LoginPageProps = {
+  /** Explica por que a pessoa está de volta a esta tela. */
+  notice?: string
   onLogin: () => Promise<void>
   onRegister: () => void
   onRecoverPassword: () => void
 }
 
-function LoginPage({ onLogin, onRegister, onRecoverPassword }: LoginPageProps) {
+function LoginPage({ notice = '', onLogin, onRegister, onRecoverPassword }: LoginPageProps) {
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -89,9 +91,9 @@ function LoginPage({ onLogin, onRegister, onRecoverPassword }: LoginPageProps) {
             disabled={loading}
           />
 
-          {error && (
+          {(error || notice) && (
             <p className="login-error" role="alert">
-              {error}
+              {error || notice}
             </p>
           )}
 

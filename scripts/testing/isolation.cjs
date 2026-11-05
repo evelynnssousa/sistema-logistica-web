@@ -18,6 +18,11 @@ const testPorts = Object.freeze({
   browserFrontend: 5901,
   browserDatabase: 55901,
   integrationDatabase: 55902,
+  backupDatabase: 55903,
+  // Ambiente demonstrativo (npm run demo:demandas), com o mesmo isolamento.
+  demoApi: 3910,
+  demoFrontend: 5910,
+  demoDatabase: 55910,
 })
 
 function describeListener(port) {

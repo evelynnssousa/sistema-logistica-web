@@ -1,34 +1,31 @@
+import { formatDateTime } from '../api/modulesApi'
 import ServiceRequestsPage from '../components/ServiceRequestsPage'
 
-const maintenanceStatuses = [
-  'Todos',
-  'Pendente',
-  'Agendada',
-  'Em andamento',
-  'Concluída',
-  'Cancelada',
-] as const
-
-const maintenanceColumns = [
-  'Identificação',
-  'Solicitação ou descrição',
-  'Solicitante',
-  'Data da solicitação',
-  'Status',
-  'Ações',
+const statuses = [
+  'aguardando_agendamento',
+  'agendado',
+  'reagendado',
+  'em_andamento',
+  'concluido',
+  'cancelado',
 ] as const
 
 function MaintenancePage() {
   return (
     <ServiceRequestsPage
+      module="maintenance"
+      basePath="/manutencao"
       pageTitle="Manutenção"
       pageDescription="Gerencie as solicitações e acompanhe os serviços de manutenção."
-      searchPlaceholder="Pesquisar por identificação ou descrição"
-      listDescription="Pesquise e consulte as solicitações de manutenção."
-      statusOptions={maintenanceStatuses}
-      columns={maintenanceColumns}
-      emptyDescription="As solicitações aparecerão aqui quando a integração com os dados estiver disponível."
-      newRequestTo="/manutencao/nova"
+      searchPlaceholder="Pesquisar por protocolo, descrição ou solicitante"
+      statusOptions={statuses}
+      columns={[
+        { label: 'Solicitação', render: (request) => request.title },
+        { label: 'Solicitante', render: (request) => request.requester.name },
+        { label: 'Setor', render: (request) => request.sector ?? '—' },
+        { label: 'Data da solicitação', render: (request) => formatDateTime(request.createdAt) },
+      ]}
+      extraAction={{ to: '/manutencao/equipamentos', label: 'Equipamentos', icon: 'maintenance', permission: 'maintenance:update' }}
       createPermission="maintenance:create"
     />
   )

@@ -12,6 +12,7 @@ test('valida apenas os perfis internos definidos', () => {
     'administrator',
     'slm_operator',
     'requester',
+    'driver',
   ])
   assert.equal(isAuthRole('administrator'), true)
   assert.equal(isAuthRole('requester'), true)
@@ -50,7 +51,8 @@ test('rejeita perfis desconhecidos e permissões inválidas', () => {
 })
 
 test('cada perfil interno é gravado de forma que volte ao mesmo perfil', () => {
-  for (const role of authRoles) {
+  // As colunas antigas não distinguem o Motorista, que só existe com a linha de acesso (migração 016).
+  for (const role of authRoles.filter((item) => item !== 'driver')) {
     const stored = databaseRoleFor(role)
     assert.equal(resolveDatabaseAuthRole(stored.role, stored.permissions), role)
   }

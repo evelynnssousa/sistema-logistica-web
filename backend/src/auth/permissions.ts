@@ -34,7 +34,15 @@ export const permissionGroups = [
       { key: 'fleet:create', label: 'Criar solicitações' },
       { key: 'fleet:update', label: 'Atualizar solicitações' },
       { key: 'fleet:schedule', label: 'Agendar serviços' },
-      { key: 'fleet:manage', label: 'Administrar o módulo' },
+      { key: 'fleet:manage', label: 'Administrar o módulo e o cadastro de motoristas' },
+      { key: 'fleet:execution_correct', label: 'Corrigir horários de execução das viagens (auditado)' },
+    ],
+  },
+  {
+    key: 'driver_portal',
+    label: 'Portal do Motorista',
+    permissions: [
+      { key: 'driver_portal:access', label: 'Usar o Portal do Motorista (exclusiva do perfil Motorista)' },
     ],
   },
   {
@@ -45,7 +53,7 @@ export const permissionGroups = [
       { key: 'flights:create', label: 'Criar solicitações' },
       { key: 'flights:update', label: 'Atualizar solicitações' },
       { key: 'flights:manage', label: 'Administrar o módulo' },
-      { key: 'flights:cpf:read', label: 'Consultar o CPF completo dos passageiros (auditado)' },
+      { key: 'flights:cpf:read', label: 'Consultar o CPF completo dos passageiros (auditado; exige equipe SLM)' },
     ],
   },
   {
@@ -54,6 +62,37 @@ export const permissionGroups = [
     permissions: [
       { key: 'settings:read', label: 'Consultar configurações' },
       { key: 'settings:manage', label: 'Alterar configurações' },
+    ],
+  },
+  {
+    key: 'email_templates',
+    label: 'Modelos de e-mail',
+    permissions: [
+      { key: 'email_templates:read', label: 'Consultar modelos' },
+      { key: 'email_templates:edit', label: 'Editar modelos e salvar rascunhos' },
+      { key: 'email_templates:publish', label: 'Publicar modelos' },
+    ],
+  },
+  {
+    key: 'forms',
+    label: 'Gerenciador de formulários',
+    permissions: [
+      { key: 'forms:read', label: 'Consultar formulários' },
+      { key: 'forms:edit', label: 'Editar formulários e salvar rascunhos' },
+      { key: 'forms:publish', label: 'Publicar formulários' },
+    ],
+  },
+  {
+    key: 'config_versions',
+    label: 'Versões de configuração',
+    permissions: [{ key: 'config_versions:restore', label: 'Restaurar versões anteriores de modelos e formulários' }],
+  },
+  {
+    key: 'communications',
+    label: 'Central de comunicação',
+    permissions: [
+      { key: 'communications:read', label: 'Consultar o histórico de e-mails das solicitações que atende' },
+      { key: 'communications:send', label: 'Enviar e-mails e anexos pelo sistema' },
     ],
   },
   {
@@ -83,6 +122,37 @@ export const permissionGroups = [
       { key: 'audit:read', label: 'Consultar registros de auditoria' },
     ],
   },
+  {
+    key: 'integrations',
+    label: 'Integrações e comunicações',
+    permissions: [
+      { key: 'integrations:read', label: 'Consultar envios de e-mail e sincronização de agenda' },
+      { key: 'integrations:manage', label: 'Reprocessar envios e sincronizações com falha' },
+    ],
+  },
+  {
+    key: 'slm_central',
+    label: 'Central de Operações da SLM',
+    permissions: [
+      { key: 'slm_central:read', label: 'Acessar a Central de Operações (exige equipe SLM)' },
+      { key: 'slm_central:manage', label: 'Atribuir responsáveis, prioridades e prazos pela Central (exige equipe SLM)' },
+    ],
+  },
+  {
+    key: 'monitoring',
+    label: 'Monitoramento',
+    permissions: [
+      { key: 'monitoring:read', label: 'Consultar a saúde dos serviços e os registros técnicos' },
+    ],
+  },
+  {
+    key: 'demands',
+    label: 'Controle de Demandas',
+    permissions: [
+      { key: 'demands:directorate', label: 'Diretor: vê, cadastra e edita as demandas de todos os setores, e configura setores, integrantes e categorias' },
+      { key: 'demands:configure', label: 'Configurar setores, integrantes e categorias do módulo' },
+    ],
+  },
 ] as const
 
 export type Permission =
@@ -99,20 +169,81 @@ export function isPermission(value: unknown): value is Permission {
 }
 
 /**
- * Nenhum perfil recebe flights:cpf:read, nem o de administrador: o acesso ao CPF
- * completo precisa ser sempre concedido de forma individual e explícita.
+ * Permissões especiais: só valem para quem é elegível, seja qual for a origem. Nenhum
+ * perfil concede abertura em nome de outro setor, CPF nem a Central da SLM; agendar vem do
+ * perfil só para o Administrador. Para os demais elegíveis, tudo depende de concessão individual.
  */
+export const restrictedPermissions = [
+  'requests:schedule',
+  'requests:create_on_behalf',
+  'flights:cpf:read',
+  'slm_central:read',
+  'slm_central:manage',
+] as const satisfies readonly Permission[]
+
+const restrictedSet = new Set<Permission>(restrictedPermissions)
+
+export function isRestrictedPermission(permission: Permission) {
+  return restrictedSet.has(permission)
+}
+
+/** Regra central de elegibilidade. Pertencer a um setor nunca conta. */
+export function isEligibleForRestrictedPermission(
+  permission: Permission,
+  role: AuthRole,
+  slmMember: boolean,
+): boolean {
+  const isSlmStaff = (role === 'administrator' || role === 'slm_operator') && slmMember
+
+  if (
+    permission === 'requests:create_on_behalf' ||
+    permission === 'flights:cpf:read' ||
+    permission === 'slm_central:read' ||
+    permission === 'slm_central:manage'
+  ) {
+    return isSlmStaff
+  }
+  if (permission === 'requests:schedule') {
+    return role === 'administrator' || isSlmStaff
+  }
+  return true
+}
+
+/** Um administrador nunca perde estas permissões, nem por retirada gravada no banco. */
+export const essentialAdministratorPermissions = [
+  'users:read',
+  'users:approve',
+  'users:manage',
+  'audit:read',
+  'settings:read',
+  'settings:manage',
+] as const satisfies readonly Permission[]
+
+const essentialSet = new Set<Permission>(essentialAdministratorPermissions)
+
+export function isEssentialAdministratorPermission(permission: Permission) {
+  return essentialSet.has(permission)
+}
+
 const profilePermissions: Record<AuthRole, readonly Permission[]> = {
+  // Administrar o sistema não dá acesso à Central da SLM: as duas funções são independentes.
   administrator: allPermissions.filter(
-    (permission) => permission !== 'flights:cpf:read',
+    (permission) =>
+      permission !== 'flights:cpf:read' &&
+      permission !== 'requests:create_on_behalf' &&
+      permission !== 'slm_central:read' &&
+      permission !== 'slm_central:manage' &&
+      permission !== 'driver_portal:access' &&
+      // Configurar o Controle de Demandas não dá acesso ao conteúdo das demandas.
+      permission !== 'demands:directorate',
   ),
+  // maintenance:schedule e fleet:schedule só delimitam os módulos: sem a concessão
+  // individual de requests:schedule, não permitem agendar.
   slm_operator: [
     'requests:create',
-    'requests:create_on_behalf',
     'requests:read_own',
     'requests:read_all',
     'requests:update',
-    'requests:schedule',
     'requests:cancel',
     'maintenance:read',
     'maintenance:create',
@@ -128,7 +259,8 @@ const profilePermissions: Record<AuthRole, readonly Permission[]> = {
     'warehouse:read',
     'reports:read',
     'calendar:read',
-    'calendar:manage',
+    'communications:read',
+    'communications:send',
   ],
   // "read" dá acesso à tela do módulo; ver dados de terceiros exige requests:read_all.
   requester: [
@@ -142,26 +274,45 @@ const profilePermissions: Record<AuthRole, readonly Permission[]> = {
     'flights:create',
     'warehouse:read',
   ],
+  // Perfil fechado: só o portal. Ver driverPolicy.ts.
+  driver: ['driver_portal:access'],
 }
 
 export function permissionsForProfile(role: AuthRole): readonly Permission[] {
   return profilePermissions[role]
 }
 
-/** A retirada individual sempre prevalece sobre o perfil e sobre as concessões. */
+/**
+ * Perfil + concessões − retiradas. A retirada prevalece, exceto sobre as permissões
+ * essenciais do administrador, e nenhuma permissão especial passa sem elegibilidade,
+ * mesmo que tenha sido gravada diretamente no banco.
+ */
 export function computeEffectivePermissions(
   role: AuthRole,
   granted: readonly Permission[] = [],
   denied: readonly Permission[] = [],
+  slmMember = false,
 ): Permission[] {
-  const refused = new Set<Permission>(denied)
+  // O perfil Motorista é exclusivo: concessão ou retirada gravada no banco não muda nada,
+  // e a permissão do portal não passa para nenhum outro perfil.
+  if (role === 'driver') return [...profilePermissions.driver]
+  const refused = new Set<Permission>(
+    denied.filter(
+      (permission) =>
+        role !== 'administrator' || !isEssentialAdministratorPermission(permission),
+    ),
+  )
   const available = new Set<Permission>([
     ...profilePermissions[role],
     ...granted,
   ])
 
   return allPermissions.filter(
-    (permission) => available.has(permission) && !refused.has(permission),
+    (permission) =>
+      permission !== 'driver_portal:access' &&
+      available.has(permission) &&
+      !refused.has(permission) &&
+      isEligibleForRestrictedPermission(permission, role, slmMember),
   )
 }
 
@@ -170,16 +321,17 @@ export function onlyKnownPermissions(value: unknown): Permission[] {
   return Array.isArray(value) ? value.filter(isPermission) : []
 }
 
-/** Permissões da estrutura anterior que não vêm dos perfis. Ver migração 003. */
+/**
+ * Permissões da estrutura anterior que continuam valendo. CPF e armazém não são
+ * convertidos: precisam de nova concessão individual. Ver migração 003.
+ */
 export function grantsFromLegacyPermissions(value: unknown): Permission[] {
   if (!Array.isArray(value)) return []
 
   const grants = new Set<Permission>()
   for (const permission of value) {
-    if (permission === 'flights:cpf:read') grants.add('flights:cpf:read')
     if (permission === 'settings:read') grants.add('settings:read')
     if (permission === 'settings:write') grants.add('settings:manage')
-    if (permission === 'warehouse:write') grants.add('warehouse:manage')
   }
   return allPermissions.filter((permission) => grants.has(permission))
 }

@@ -8,12 +8,22 @@ type ConfiguredFieldProps = {
   onValueChange?: (value: string) => void
 }
 
+function FieldHints({ field }: { field: FormFieldDefinition }) {
+  return (
+    <>
+      {field.description && <small>{field.description}</small>}
+      {field.help && <small>{field.help}</small>}
+    </>
+  )
+}
+
 function ConfiguredField({
   field,
   value,
   onValueChange,
 }: ConfiguredFieldProps) {
   const isControlled = value !== undefined && onValueChange !== undefined
+  const selectBinding = isControlled ? { value, onChange: onValueChange } : {}
   const className =
     field.type === 'longText' || field.type === 'multiSelect'
       ? 'maintenance-form-field maintenance-form-field-wide'
@@ -31,8 +41,9 @@ function ConfiguredField({
           label={field.label}
           name={field.id}
           required={field.required}
+          {...selectBinding}
         />
-        {field.description && <small>{field.description}</small>}
+        <FieldHints field={field} />
       </div>
     )
   }
@@ -48,8 +59,9 @@ function ConfiguredField({
           label={field.label}
           name={field.id}
           required={field.required}
+          {...selectBinding}
         />
-        {field.description && <small>{field.description}</small>}
+        <FieldHints field={field} />
       </div>
     )
   }
@@ -61,8 +73,9 @@ function ConfiguredField({
           label={field.label}
           name={field.id}
           required={field.required}
+          {...selectBinding}
         />
-        {field.description && <small>{field.description}</small>}
+        <FieldHints field={field} />
       </div>
     )
   }
@@ -74,7 +87,7 @@ function ConfiguredField({
           {field.required && (
             <>
               {' '}
-              <span className="required-marker">*</span>
+              <span className="required-marker" aria-hidden="true">*</span>
             </>
           )}
         </span>
@@ -89,7 +102,7 @@ function ConfiguredField({
             {option}
           </label>
         ))}
-        {field.description && <small>{field.description}</small>}
+        <FieldHints field={field} />
       </div>
     )
   }
@@ -100,7 +113,7 @@ function ConfiguredField({
       {field.required && (
         <>
           {' '}
-          <span className="required-marker">*</span>
+          <span className="required-marker" aria-hidden="true">*</span>
         </>
       )}
     </span>
@@ -120,8 +133,8 @@ function ConfiguredField({
       {label}
       {field.type === 'longText' ? (
         <>
-          <textarea {...sharedProps} rows={4} />
-          {field.description && <small>{field.description}</small>}
+          <textarea {...sharedProps} rows={4} minLength={field.minLength ?? undefined} maxLength={field.maxLength ?? undefined} />
+          <FieldHints field={field} />
         </>
       ) : field.type === 'singleSelect' ? (
         <>
@@ -141,7 +154,7 @@ function ConfiguredField({
               </option>
             ))}
           </select>
-          {field.description && <small>{field.description}</small>}
+          <FieldHints field={field} />
         </>
       ) : field.type === 'multiSelect' ? (
         <>
@@ -167,7 +180,18 @@ function ConfiguredField({
               </option>
             ))}
           </select>
-          {field.description && <small>{field.description}</small>}
+          <FieldHints field={field} />
+        </>
+      ) : field.type === 'checkbox' ? (
+        <>
+          <input
+            type="checkbox"
+            name={field.id}
+            required={field.required}
+            checked={isControlled ? value === 'true' : undefined}
+            onChange={isControlled ? (event) => onValueChange(event.target.checked ? 'true' : '') : undefined}
+          />
+          <FieldHints field={field} />
         </>
       ) : field.type === 'boolean' ? (
         <>
@@ -184,23 +208,29 @@ function ConfiguredField({
             <option value="true">Sim</option>
             <option value="false">Não</option>
           </select>
-          {field.description && <small>{field.description}</small>}
+          <FieldHints field={field} />
         </>
       ) : (
         <>
           <input
             {...sharedProps}
+            minLength={field.minLength ?? undefined}
+            maxLength={field.maxLength ?? undefined}
+            min={field.min ?? undefined}
+            max={field.max ?? undefined}
             type={
               field.type === 'shortText'
                 ? 'text'
-                : field.type === 'number'
+                : field.type === 'phone'
+                  ? 'tel'
+                  : field.type === 'number'
                   ? 'number'
                   : field.type === 'dateTime'
                     ? 'datetime-local'
                     : field.type
             }
           />
-          {field.description && <small>{field.description}</small>}
+          <FieldHints field={field} />
         </>
       )}
     </label>

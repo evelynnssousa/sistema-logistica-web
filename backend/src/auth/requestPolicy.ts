@@ -1,3 +1,4 @@
+import { isEligibleForRestrictedPermission } from './permissions.js'
 import type { Permission } from './permissions.js'
 import type { AuthenticatedIdentity } from './roles.js'
 
@@ -22,6 +23,14 @@ const scheduleByModule: Record<RequestModule, Permission> = {
 
 function holds(identity: AuthenticatedIdentity, permission: Permission) {
   return identity.permissions.includes(permission)
+}
+
+/** Exige a concessão e a elegibilidade, para a regra valer sobre qualquer identidade. */
+function holdsRestricted(identity: AuthenticatedIdentity, permission: Permission) {
+  return (
+    holds(identity, permission) &&
+    isEligibleForRestrictedPermission(permission, identity.role, identity.slmMember)
+  )
 }
 
 function sameSector(first: string, second: string) {
@@ -74,9 +83,12 @@ export function resolveRequestOwnership(
   }
 }
 
-/** Exige a permissão e a equipe SLM: pertencer ao setor CPC não é suficiente. */
+/** Vale também para administradores: exige equipe SLM, perfil elegível e concessão. */
 export function canActOnBehalfOfOtherSectors(identity: AuthenticatedIdentity) {
-  return identity.slmMember && holds(identity, 'requests:create_on_behalf')
+  return (
+    identity.slmMember &&
+    holdsRestricted(identity, 'requests:create_on_behalf')
+  )
 }
 
 export function canReadRequest(
@@ -104,7 +116,7 @@ export function canScheduleRequest(
   module: RequestModule,
 ): boolean {
   return (
-    holds(identity, 'requests:schedule') &&
+    holdsRestricted(identity, 'requests:schedule') &&
     holds(identity, scheduleByModule[module])
   )
 }
@@ -119,8 +131,22 @@ export function canCancelRequest(
   )
 }
 
-export function canReadFullCpf(identity: AuthenticatedIdentity): boolean {
-  return holds(identity, 'flights:cpf:read')
+/** Autorização da pessoa, sem considerar qual solicitação está sendo consultada. */
+export function hasCpfAuthorization(identity: AuthenticatedIdentity): boolean {
+  return (
+    holdsRestricted(identity, 'flights:cpf:read') &&
+    holds(identity, 'flights:read')
+  )
+}
+
+export function canReadFullCpf(
+  identity: AuthenticatedIdentity,
+  request: { requesterId: string },
+): boolean {
+  return (
+    hasCpfAuthorization(identity) &&
+    canReadRequest(identity, { module: 'flights', requesterId: request.requesterId })
+  )
 }
 
 /** Mantém apenas os seis dígitos centrais, como no padrão usado pelo governo. */

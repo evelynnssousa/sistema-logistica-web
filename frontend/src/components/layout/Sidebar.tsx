@@ -1,17 +1,25 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import logoJucesp from '../../assets/logoJucespNovo.png'
-import { getNavigationForUser } from '../../app/navigation'
+import { getNavigationForUser, navigationGroups } from '../../app/navigation'
 import { roleLabels } from '../../app/roleLabels'
+import { useDemandContext } from '../../app/useDemandContext'
 import { useAuthenticatedUser } from '../../auth/UserContext'
+import Icon from '../ui/Icon'
 
-function Sidebar() {
+type SidebarProps = {
+  open: boolean
+  onClose: () => void
+}
+
+function Sidebar({ open, onClose }: SidebarProps) {
   const { pathname } = useLocation()
   const user = useAuthenticatedUser()
-  const visibleItems = user ? getNavigationForUser(user) : []
+  const { context: demandContext } = useDemandContext()
+  const visibleItems = user ? getNavigationForUser(user, demandContext?.hasAccess === true || import.meta.env.DEV, demandContext?.canConfigure === true) : []
   const currentPath = pathname.replace(/\/+$/, '') || '/'
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${open ? ' open' : ''}`}>
       <div className="brand">
         <div className="brand-symbol">
           <img src={logoJucesp} alt="Logo da JUCESP" />
@@ -20,45 +28,46 @@ function Sidebar() {
           <strong>GESTÃO DE SERVIÇOS</strong>
           <span>LOGÍSTICA E MANUTENÇÃO</span>
         </div>
+        <button type="button" className="sidebar-close" aria-label="Fechar menu" onClick={onClose}>
+          <Icon name="close" size={20} weight="bold" />
+        </button>
       </div>
 
-      <div className="menu-label">MENU PRINCIPAL</div>
-
       <nav className="navigation" aria-label="Navegação principal">
-        {visibleItems.map((item) => {
-          const isActive =
-            currentPath === item.path ||
-            (item.path !== '/' && currentPath.startsWith(`${item.path}/`))
+        {navigationGroups.map((group) => {
+          const items = visibleItems.filter((item) => item.group === group.key)
+          if (items.length === 0) return null
 
           return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.path === '/'}
-              className={`nav-item${isActive ? ' active' : ''}`}
-              aria-label={item.name}
-              title={item.name}
-            >
-              <span className="nav-icon" aria-hidden="true">
-                {item.icon}
-              </span>
-              <span className="nav-label">{item.name}</span>
-              {isActive && (
-                <span className="active-indicator" aria-hidden="true" />
-              )}
-            </NavLink>
+            <div key={group.key} className="nav-group">
+              {group.label && <div className="nav-group-label">{group.label}</div>}
+              {items.map((item) => {
+                const isActive =
+                  currentPath === item.path ||
+                  (item.path !== '/' && currentPath.startsWith(`${item.path}/`))
+
+                return (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    end={item.path === '/'}
+                    className={`nav-item${isActive ? ' active' : ''}`}
+                    aria-current={isActive ? 'page' : undefined}
+                    onClick={onClose}
+                  >
+                    <span className="nav-icon">
+                      <Icon name={item.icon} size={21} />
+                    </span>
+                    <span className="nav-label">{item.name}</span>
+                  </NavLink>
+                )
+              })}
+            </div>
           )
         })}
       </nav>
 
       <div className="sidebar-bottom">
-        <div className="help-card">
-          <span className="help-icon" aria-hidden="true">
-            i
-          </span>
-          <strong>Precisa de ajuda?</strong>
-          <p>Consulte a equipe responsável pelo sistema.</p>
-        </div>
         <div className="user-profile">
           <div className="avatar" aria-hidden="true">
             {(user?.name || 'U').trim().charAt(0).toUpperCase()}

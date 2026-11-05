@@ -1,9 +1,16 @@
 import { PasswordRecoveryRepository } from '../database/passwordRecoveryRepository.js'
 import { describeError, logSecurityEvent } from '../security/logger.js'
-import { isEmailConfigured, sendPasswordRecoveryCode } from './email.js'
+import {
+  isEmailConfigured,
+  sendPasswordRecoveryCode,
+  sendPasswordRecoveryLink,
+} from './email.js'
 import {
   generatePasswordRecoveryCode,
+  generatePasswordRecoveryToken,
   hashPasswordRecoveryCode,
+  hashPasswordRecoveryToken,
+  passwordRecoveryLink,
 } from './passwordRecovery.js'
 
 export function isPasswordRecoveryConfigured(
@@ -23,6 +30,11 @@ type RecoveryDependencies = {
   ) => Promise<{ id: string; email: string } | null>
   invalidateCodes: (userId: string) => Promise<void>
   send: (recipient: string, code: string) => Promise<void>
+  // Com endereço público configurado, o e-mail leva um link no lugar do código.
+  link?: {
+    build: (token: string) => string | null
+    send: (recipient: string, link: string) => Promise<void>
+  }
 }
 
 function defaultDependencies(): RecoveryDependencies {
@@ -32,6 +44,7 @@ function defaultDependencies(): RecoveryDependencies {
     createCode: (email, codeHash) => repository.createCode(email, codeHash),
     invalidateCodes: (userId) => repository.invalidateCodes(userId),
     send: sendPasswordRecoveryCode,
+    link: { build: passwordRecoveryLink, send: sendPasswordRecoveryLink },
   }
 }
 
@@ -49,15 +62,21 @@ export async function processPasswordRecoveryRequest(
   }
 
   try {
+    const token = generatePasswordRecoveryToken()
+    const link = dependencies.link?.build(token) ?? null
     const code = generatePasswordRecoveryCode()
     const account = await dependencies.createCode(
       email,
-      hashPasswordRecoveryCode(code),
+      link ? hashPasswordRecoveryToken(token) : hashPasswordRecoveryCode(code),
     )
     if (!account) return
 
     try {
-      await dependencies.send(account.email, code)
+      if (link) {
+        await dependencies.link!.send(account.email, link)
+      } else {
+        await dependencies.send(account.email, code)
+      }
     } catch (error) {
       logSecurityEvent('password_recovery_email_failed', describeError(error))
       await dependencies.invalidateCodes(account.id)

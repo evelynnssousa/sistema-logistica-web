@@ -1,16 +1,21 @@
 import { useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import type { FormEvent } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { navigationItems } from '../../app/navigation'
-import { useAuthenticatedUser, useLogout } from '../../auth/UserContext'
+import { useLogout } from '../../auth/UserContext'
+import NotificationBell from '../NotificationBell'
+import Icon from '../ui/Icon'
 
 type TopbarProps = {
   apiOnline: boolean | null
+  onOpenMenu: () => void
 }
 
-function Topbar({ apiOnline }: TopbarProps) {
+function Topbar({ apiOnline, onOpenMenu }: TopbarProps) {
   const { pathname } = useLocation()
-  const user = useAuthenticatedUser()
   const logout = useLogout()
+  const navigate = useNavigate()
+  const [term, setTerm] = useState('')
   const [loggingOut, setLoggingOut] = useState(false)
   const [logoutError, setLogoutError] = useState('')
   const currentPath = pathname.replace(/\/+$/, '') || '/'
@@ -19,6 +24,12 @@ function Topbar({ apiOnline }: TopbarProps) {
       item.path === currentPath ||
       (item.path !== '/' && currentPath.startsWith(`${item.path}/`)),
   )
+
+  function search(event: FormEvent) {
+    event.preventDefault()
+    const text = term.trim()
+    if (text.length >= 2) navigate(`/pesquisa?q=${encodeURIComponent(text)}`)
+  }
 
   async function handleLogout() {
     setLoggingOut(true)
@@ -39,19 +50,33 @@ function Topbar({ apiOnline }: TopbarProps) {
   return (
     <header className="topbar">
       <div className="breadcrumb" aria-label="Localização atual">
-        <span>Início</span>
-        <span className="breadcrumb-separator" aria-hidden="true">
-          /
-        </span>
-        <strong>{currentPage?.name ?? 'Visão geral'}</strong>
+        <button type="button" className="topbar-menu" aria-label="Abrir menu" onClick={onOpenMenu}>
+          <Icon name="menu" size={22} weight="bold" />
+        </button>
+        <strong>{currentPage?.name ?? 'Início'}</strong>
       </div>
+      <form className="topbar-search no-print" role="search" onSubmit={search}>
+        <Icon name="search" size={18} />
+        <input
+          type="search"
+          aria-label="Pesquisar no sistema"
+          placeholder="Pesquisar protocolo, solicitação, material..."
+          maxLength={120}
+          value={term}
+          onChange={(event) => setTerm(event.target.value)}
+        />
+      </form>
       <div className="topbar-right">
         {logoutError && (
           <span className="topbar-logout-error" role="alert">
             {logoutError}
           </span>
         )}
-        <span className="environment-badge" role="status">
+        <span
+          className="environment-badge"
+          role="status"
+          aria-label={apiOnline === null ? 'Verificando conexão' : apiOnline ? 'API conectada' : 'API indisponível'}
+        >
           <span
             className={`status-dot ${
               apiOnline === true
@@ -68,19 +93,14 @@ function Topbar({ apiOnline }: TopbarProps) {
               ? 'API conectada'
               : 'API indisponível'}
         </span>
-        <div
-          className="topbar-avatar"
-          aria-label={`Usuário: ${user?.name ?? ''}`}
-          title={user?.name}
-        >
-          {(user?.name || 'U').trim().charAt(0).toUpperCase()}
-        </div>
+        <NotificationBell />
         <button
           className="topbar-logout"
           type="button"
           onClick={() => void handleLogout()}
           disabled={loggingOut}
         >
+          <Icon name="logout" size={18} />
           {loggingOut ? 'Saindo...' : 'Sair'}
         </button>
       </div>

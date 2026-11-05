@@ -10,7 +10,7 @@ import express from 'express'
 import { Pool } from 'pg'
 import app from '../app.js'
 import { hashPassword } from '../auth/password.js'
-import { permissionsForProfile } from '../auth/permissions.js'
+import { isRestrictedPermission, permissionsForProfile } from '../auth/permissions.js'
 import type { Permission } from '../auth/permissions.js'
 import {
   canReadRequest,
@@ -28,7 +28,7 @@ import { resetAccessSchemaCacheForTests } from './accessSchema.js'
 import { requireDisposableDatabaseUrl } from './databaseSafety.js'
 import { setDatabasePoolForTests } from './pool.js'
 
-// Roda em um PostgreSQL descartável, com as migrações 003 e 004 aplicadas.
+// Roda em um PostgreSQL descartável, com as migrações 003, 004 e 005 aplicadas.
 // Ver backend/database/POSTGRES_INTEGRATION_TESTS.md.
 
 // Nova a cada execução: nenhuma credencial de teste fica no repositório.
@@ -184,6 +184,19 @@ before(async () => {
     '002_password_recovery.sql',
     '003_user_access.sql',
     '004_flight_passengers.sql',
+    '005_operational_modules.sql',
+    '006_integrations.sql',
+    '007_operations_center.sql',
+    '008_attachments.sql',
+    '009_module_extensions.sql',
+    '010_monitoring.sql',
+    '011_delivery_forecast.sql',
+    '012_operational_transparency.sql',
+    '013_communications.sql',
+    '014_demands.sql',
+    '015_organizational_structure.sql',
+    '016_driver_portal.sql',
+    '017_driver_portal_settings.sql',
   ]) {
     await setup.query(
       readFileSync(resolve(process.cwd(), 'backend/database/schema', file), 'utf8'),
@@ -382,8 +395,16 @@ test('quem não é da SLM não abre solicitação em nome de outro setor, mesmo 
     200,
   )
 
-  // A permissão sozinha, sem a equipe, também não basta.
-  await setAccess(admin, fromCpc.id, { grantedPermissions: ['requests:create_on_behalf'] })
+  // A concessão sem elegibilidade é recusada e, forçada no banco, também não vale.
+  const refused = await setAccess(admin, fromCpc.id, {
+    grantedPermissions: ['requests:create_on_behalf'],
+  })
+  assert.equal(refused.status, 400)
+  await pool.query(
+    `UPDATE public.auth_user_access SET granted_permissions = '{requests:create_on_behalf}'
+      WHERE user_id = $1`,
+    [fromCpc.id],
+  )
   assert.equal((await policyRoute('/criar', body, fromCpc.cookie)).status, 403)
 })
 
@@ -398,7 +419,7 @@ test('usuário não autorizado não agenda', async () => {
 })
 
 // 6
-test('operador SLM abre em nome de outros setores, agenda e vê todas as solicitações', async () => {
+test('operador SLM com concessões abre em nome de outros setores, agenda e vê todas as solicitações', async () => {
   const operator = await createUser('operadora@example.gov.br', 'slm_operator', 'CPC')
   const owner = await createUser('solicitante-rh@example.gov.br', 'requester', 'RH')
   const { requestId } = await createFlightRequest(owner.id)
@@ -407,7 +428,16 @@ test('operador SLM abre em nome de outros setores, agenda e vê todas as solicit
   assert.equal(me.body.user.role, 'slm_operator')
   assert.equal(me.body.user.slmMember, true)
 
+  // O perfil não concede as permissões especiais.
   const body = { module: 'maintenance', ownSector: 'CPC', targetSector: 'RH' }
+  assert.equal((await policyRoute('/criar', body, operator.cookie)).status, 403)
+  assert.equal((await policyRoute('/agendar', { module: 'fleet' }, operator.cookie)).status, 403)
+
+  await setAccess(admin, operator.id, {
+    role: 'slm_operator',
+    slmMember: true,
+    grantedPermissions: ['requests:create_on_behalf', 'requests:schedule'],
+  })
   assert.equal((await policyRoute('/criar', body, operator.cookie)).status, 200)
   assert.equal((await policyRoute('/agendar', { module: 'fleet' }, operator.cookie)).status, 200)
   assert.equal(
@@ -605,7 +635,11 @@ test('alterações de permissão valem na sessão aberta, sem novo login', async
   await setAccess(admin, user.id, { grantedPermissions: [] })
   assert.equal((await call('/admin/users', { session: user })).status, 403)
 
-  await setAccess(admin, user.id, { role: 'slm_operator', slmMember: true })
+  await setAccess(admin, user.id, {
+    role: 'slm_operator',
+    slmMember: true,
+    grantedPermissions: ['requests:schedule'],
+  })
   assert.equal(
     (await policyRoute('/agendar', { module: 'maintenance' }, user.cookie)).status,
     200,
@@ -663,6 +697,23 @@ test('o último administrador não pode ser removido', async () => {
 
   const self = await setAccess(admin, adminId, { role: 'requester' })
   assert.equal(self.status, 403)
+
+  // Nem uma retirada gravada direto no banco tira do último administrador o essencial.
+  await pool.query(
+    `UPDATE public.auth_user_access
+        SET denied_permissions = '{users:read,users:approve,users:manage,audit:read,settings:read,settings:manage}'
+      WHERE user_id = $1`,
+    [adminId],
+  )
+  const lastAdmin = (await call('/auth/me', { session: admin })).body.user.permissions
+  for (const permission of ['users:read', 'users:approve', 'users:manage', 'audit:read', 'settings:read', 'settings:manage']) {
+    assert.ok(lastAdmin.includes(permission), permission)
+  }
+  assert.equal((await call('/admin/users', { session: admin })).status, 200)
+  await pool.query(
+    `UPDATE public.auth_user_access SET denied_permissions = '{}' WHERE user_id = $1`,
+    [adminId],
+  )
 
   const selfDeactivated = await call(`/admin/users/${adminId}/deactivate`, {
     method: 'POST',
@@ -867,6 +918,11 @@ test('quem só aprova cadastros aprova solicitantes, nunca perfis superiores', a
 test('equipe SLM: entra e sai pelo administrador, e o histórico permanece', async () => {
   const member = await createUser('integrante@example.gov.br', 'slm_operator', 'CPC')
   const body = { module: 'fleet', ownSector: 'CPC', targetSector: 'RH' }
+  await setAccess(admin, member.id, {
+    role: 'slm_operator',
+    slmMember: true,
+    grantedPermissions: ['requests:create_on_behalf'],
+  })
   assert.equal((await policyRoute('/criar', body, member.cookie)).status, 200)
 
   const invalid = await setAccess(admin, member.id, {
@@ -908,9 +964,17 @@ test('equipe SLM: entra e sai pelo administrador, e o histórico permanece', asy
 })
 
 test('histórico registra o que mudou e a concessão de CPF, sem dados pessoais', async () => {
-  const user = await createUser('historico@example.gov.br')
-  await setAccess(admin, user.id, { grantedPermissions: ['flights:cpf:read', 'reports:read'] })
-  await setAccess(admin, user.id, { grantedPermissions: ['reports:read'] })
+  const user = await createUser('historico@example.gov.br', 'slm_operator')
+  await setAccess(admin, user.id, {
+    role: 'slm_operator',
+    slmMember: true,
+    grantedPermissions: ['flights:cpf:read', 'reports:read'],
+  })
+  await setAccess(admin, user.id, {
+    role: 'slm_operator',
+    slmMember: true,
+    grantedPermissions: ['reports:read'],
+  })
 
   const { body, text } = await call(`/admin/users/${user.id}/history`, { session: admin })
   const actions = body.events.map((event: { action: string }) => event.action)
@@ -979,9 +1043,13 @@ function callRoute(route: { method: string; path: string }, session?: Session) {
 
 /** Deixa a conta somente com as permissões indicadas, além de nenhuma outra. */
 function accessExactly(permissions: readonly Permission[]) {
+  // As permissões especiais só são elegíveis dentro da equipe SLM.
+  const role = permissions.some(isRestrictedPermission) ? 'slm_operator' : 'requester'
   return {
+    role,
+    slmMember: role === 'slm_operator',
     grantedPermissions: [...permissions],
-    deniedPermissions: permissionsForProfile('requester').filter(
+    deniedPermissions: permissionsForProfile(role).filter(
       (permission) => !permissions.includes(permission),
     ),
   }
@@ -1093,11 +1161,15 @@ test('permissão individual retirada vale mais que o perfil, inclusive o de admi
 
   await setAccess(admin, second.id, {
     role: 'administrator',
-    deniedPermissions: ['audit:read', 'users:approve'],
+    deniedPermissions: ['reports:read', 'requests:schedule'],
   })
-  assert.equal((await call('/admin/audit', { session: second })).status, 403)
-  assert.equal((await call('/admin/registrations/pending', { session: second })).status, 403)
-  assert.equal((await call('/admin/users', { session: second })).status, 200)
+  const secondMe = await call('/auth/me', { session: second })
+  assert.equal(secondMe.body.user.permissions.includes('reports:read'), false)
+  assert.equal(
+    (await policyRoute('/agendar', { module: 'maintenance' }, second.cookie)).status,
+    403,
+  )
+  assert.equal((await call('/admin/audit', { session: second })).status, 200, 'essencial permanece')
 
   await setAccess(admin, second.id, { role: 'requester' })
 
@@ -1137,7 +1209,12 @@ test('solicitante não consulta solicitação de outra pessoa, nem conhecendo os
   assert.equal(list.text.includes('Passageira'), false)
 
   // Quem tem a permissão de CPF, sem read_all, também não alcança a de terceiros.
-  await setAccess(admin, other.id, { grantedPermissions: ['flights:cpf:read'] })
+  await setAccess(admin, other.id, {
+    role: 'slm_operator',
+    slmMember: true,
+    grantedPermissions: ['flights:cpf:read'],
+    deniedPermissions: ['requests:read_all'],
+  })
   const cpf = await call(`/flights/passengers/${passengerId}/cpf`, { session: other })
   assert.equal(cpf.status, 404)
   assert.equal(cpf.text.includes(fullCpf), false)
@@ -1154,6 +1231,11 @@ test('quem é do CPC e não está na SLM não executa operação exclusiva da eq
 
   // A equipe não depende do setor: integrante de outro setor pode.
   const fromRh = await createUser('slm-do-rh@example.gov.br', 'slm_operator', 'RH')
+  await setAccess(admin, fromRh.id, {
+    role: 'slm_operator',
+    slmMember: true,
+    grantedPermissions: ['requests:create_on_behalf'],
+  })
   assert.equal((await policyRoute('/exclusiva-slm', {}, fromRh.cookie)).status, 200)
   const ownership = await policyRoute(
     '/criar',
@@ -1322,4 +1404,405 @@ test('paginação com valores absurdos responde normalmente, sem chegar à consu
       assert.equal(response.body.page, 1, `${path} page=${page}`)
     }
   }
+})
+
+// --- Correção da migração 003: matriz de acesso definitiva ---
+
+async function myPermissions(session: Session): Promise<string[]> {
+  return (await call('/auth/me', { session })).body.user.permissions
+}
+
+async function currentAccess(userId: string) {
+  const { rows } = await pool.query(
+    `SELECT profile, slm_member, granted_permissions FROM public.auth_user_access WHERE user_id = $1`,
+    [userId],
+  )
+  return rows[0]
+}
+
+test('agendar: administrador sem SLM pode; operador só com concessão; solicitante nunca', async () => {
+  const schedule = (session: Session, module: string) =>
+    policyRoute('/agendar', { module }, session.cookie).then((response) => response.status)
+
+  const second = await createUser('admin-agenda@example.gov.br', 'administrator')
+  assert.equal((await call('/auth/me', { session: second })).body.user.slmMember, false)
+  assert.equal(await schedule(second, 'maintenance'), 200)
+  assert.equal(await schedule(second, 'fleet'), 200)
+
+  const operator = await createUser('operador-agenda@example.gov.br', 'slm_operator')
+  assert.equal(await schedule(operator, 'maintenance'), 403, 'sem concessão')
+  assert.equal(await schedule(operator, 'fleet'), 403, 'sem concessão')
+
+  await setAccess(admin, operator.id, {
+    role: 'slm_operator',
+    slmMember: true,
+    grantedPermissions: ['requests:schedule'],
+  })
+  assert.equal(await schedule(operator, 'maintenance'), 200)
+  assert.equal(await schedule(operator, 'fleet'), 200)
+
+  // Cada módulo exige sua própria permissão.
+  await setAccess(admin, operator.id, {
+    role: 'slm_operator',
+    slmMember: true,
+    grantedPermissions: ['requests:schedule'],
+    deniedPermissions: ['fleet:schedule'],
+  })
+  assert.equal(await schedule(operator, 'fleet'), 403)
+  assert.equal(await schedule(operator, 'maintenance'), 200)
+  await setAccess(admin, operator.id, {
+    role: 'slm_operator',
+    slmMember: true,
+    grantedPermissions: ['requests:schedule'],
+    deniedPermissions: ['maintenance:schedule'],
+  })
+  assert.equal(await schedule(operator, 'maintenance'), 403)
+  assert.equal(await schedule(operator, 'fleet'), 200)
+
+  const requester = await createUser('solicitante-agenda@example.gov.br')
+  const refused = await setAccess(admin, requester.id, {
+    grantedPermissions: ['requests:schedule', 'maintenance:schedule'],
+  })
+  assert.equal(refused.status, 400)
+  assert.equal(await schedule(requester, 'maintenance'), 403)
+
+  await setAccess(admin, second.id, { role: 'requester' })
+})
+
+test('em nome de outro setor: dentro e fora da SLM, com e sem concessão, inclusive administrador', async () => {
+  const onBehalf = (session: Session) =>
+    policyRoute('/criar', { module: 'maintenance', targetSector: 'Outro Setor' }, session.cookie)
+      .then((response) => response.status)
+  const grant: Permission[] = ['requests:create_on_behalf']
+
+  const second = await createUser('admin-outro-setor@example.gov.br', 'administrator')
+  assert.equal(await onBehalf(second), 403, 'administrador sem equipe nem concessão')
+
+  assert.equal(
+    (await setAccess(admin, second.id, { role: 'administrator', grantedPermissions: grant })).status,
+    400,
+    'concessão fora da equipe',
+  )
+  await setAccess(admin, second.id, { role: 'administrator', slmMember: true })
+  assert.equal(await onBehalf(second), 403, 'na equipe, sem concessão')
+
+  await setAccess(admin, second.id, { role: 'administrator', slmMember: true, grantedPermissions: grant })
+  assert.equal(await onBehalf(second), 200, 'na equipe, com concessão')
+
+  const operator = await createUser('operador-outro-setor@example.gov.br', 'slm_operator')
+  assert.equal(await onBehalf(operator), 403, 'perfil não concede')
+  await setAccess(admin, operator.id, { role: 'slm_operator', slmMember: true, grantedPermissions: grant })
+  assert.equal(await onBehalf(operator), 200)
+
+  await setAccess(admin, second.id, { role: 'requester' })
+})
+
+test('só Administrador e Operador SLM integram a equipe, na API e no banco', async () => {
+  const requester = await createUser('solicitante-equipe@example.gov.br')
+
+  const refused = await setAccess(admin, requester.id, { role: 'requester', slmMember: true })
+  assert.equal(refused.status, 400)
+
+  await assert.rejects(
+    () =>
+      pool.query(
+        `UPDATE public.auth_user_access SET slm_member = true WHERE user_id = $1`,
+        [requester.id],
+      ),
+    /check constraint/,
+  )
+})
+
+test('CPF: com e sem concessão, e a consulta de quem tem acesso fica auditada', async () => {
+  const owner = await createUser('titular-matriz@example.gov.br')
+  const { passengerId } = await createFlightRequest(owner.id)
+  const read = (session: Session) =>
+    call(`/flights/passengers/${passengerId}/cpf`, { session }).then((result) => result.status)
+
+  const operator = await createUser('operador-matriz@example.gov.br', 'slm_operator')
+  assert.equal(await read(operator), 403, 'operador sem concessão')
+  assert.equal(await read(admin), 403, 'administrador sem concessão')
+
+  const second = await createUser('admin-cpf@example.gov.br', 'administrator')
+  assert.equal(
+    (await setAccess(second, adminId, { role: 'administrator', grantedPermissions: ['flights:cpf:read'] })).status,
+    400,
+    'administrador fora da equipe não recebe',
+  )
+  await setAccess(second, adminId, {
+    role: 'administrator',
+    slmMember: true,
+    grantedPermissions: ['flights:cpf:read'],
+  })
+  assert.equal(await read(admin), 200, 'administrador na equipe, com concessão individual')
+  await setAccess(second, adminId, { role: 'administrator', slmMember: true })
+  assert.equal(await read(admin), 403, 'concessão retirada vale na mesma sessão')
+  await setAccess(second, adminId, { role: 'administrator' })
+
+  const refused = await setAccess(admin, owner.id, { grantedPermissions: ['flights:cpf:read'] })
+  assert.equal(refused.status, 400, 'solicitante não é elegível, nem para os próprios passageiros')
+  assert.equal(await read(owner), 403)
+
+  await setAccess(admin, second.id, { role: 'requester' })
+})
+
+test('sair da SLM revoga no servidor, mesmo com reenvio, e voltar não devolve', async () => {
+  const owner = await createUser('titular-saida@example.gov.br')
+  const { passengerId } = await createFlightRequest(owner.id)
+  const operator = await createUser('operador-saida@example.gov.br', 'slm_operator')
+  const special: Permission[] = ['flights:cpf:read', 'requests:schedule', 'requests:create_on_behalf']
+
+  await setAccess(admin, operator.id, {
+    role: 'slm_operator',
+    slmMember: true,
+    grantedPermissions: [...special, 'reports:read'],
+  })
+  assert.equal((await call(`/flights/passengers/${passengerId}/cpf`, { session: operator })).status, 200)
+
+  // O navegador ainda envia as concessões, como a tela faz ao salvar o formulário.
+  const removed = await setAccess(admin, operator.id, {
+    role: 'requester',
+    slmMember: false,
+    grantedPermissions: [...special, 'reports:read'],
+  })
+  assert.equal(removed.status, 200)
+  assert.deepEqual([...removed.body.user.revokedPermissions].sort(), [...special].sort())
+  assert.deepEqual(removed.body.user.grantedPermissions, ['reports:read'], 'as demais continuam')
+
+  const stored = await currentAccess(operator.id)
+  assert.deepEqual(stored.granted_permissions, ['reports:read'])
+  assert.equal(stored.slm_member, false)
+
+  const permissions = await myPermissions(operator)
+  for (const permission of special) {
+    assert.equal(permissions.includes(permission), false, permission)
+  }
+  assert.equal((await call(`/flights/passengers/${passengerId}/cpf`, { session: operator })).status, 403)
+
+  // Auditoria calculada pelo acesso efetivo, com o motivo.
+  const { rows } = await pool.query(
+    `SELECT action, details FROM public.auth_audit_events
+      WHERE target_user_id = $1 AND action IN ('user.cpf_access_revoked', 'user.permissions_changed')
+      ORDER BY id DESC LIMIT 2`,
+    [operator.id],
+  )
+  const revokedCpf = rows.find((row) => row.action === 'user.cpf_access_revoked')
+  const changed = rows.find((row) => row.action === 'user.permissions_changed')
+  assert.equal(revokedCpf.details.reason, 'slm_removed')
+  assert.equal(changed.details.reason, 'slm_removed')
+  assert.deepEqual([...changed.details.automaticallyRevoked].sort(), [...special].sort())
+
+  // Voltar à equipe não devolve nada.
+  await setAccess(admin, operator.id, { role: 'slm_operator', slmMember: true, grantedPermissions: ['reports:read'] })
+  const back = await myPermissions(operator)
+  for (const permission of special) {
+    assert.equal(back.includes(permission), false, permission)
+  }
+})
+
+test('rebaixar um administrador revoga o CPF, e ele não volta ao ser promovido de novo', async () => {
+  const target = await createUser('admin-rebaixado@example.gov.br', 'administrator')
+
+  await setAccess(admin, target.id, {
+    role: 'administrator',
+    slmMember: true,
+    grantedPermissions: ['flights:cpf:read'],
+  })
+  assert.ok((await myPermissions(target)).includes('flights:cpf:read'))
+
+  const demoted = await setAccess(admin, target.id, {
+    role: 'requester',
+    grantedPermissions: ['flights:cpf:read'],
+  })
+  assert.equal(demoted.status, 200)
+  assert.deepEqual(demoted.body.user.revokedPermissions, ['flights:cpf:read'])
+
+  await setAccess(admin, target.id, { role: 'administrator' })
+  assert.equal((await myPermissions(target)).includes('flights:cpf:read'), false)
+  await setAccess(admin, target.id, { role: 'requester' })
+})
+
+test('administrador que sai da SLM perde o CPF, com auditoria, e voltar não devolve', async () => {
+  const owner = await createUser('titular-admin-saida@example.gov.br')
+  const { passengerId } = await createFlightRequest(owner.id)
+  const target = await createUser('admin-saida@example.gov.br', 'administrator')
+  const read = () =>
+    call(`/flights/passengers/${passengerId}/cpf`, { session: target }).then((result) => result.status)
+
+  await setAccess(admin, target.id, {
+    role: 'administrator',
+    slmMember: true,
+    grantedPermissions: ['flights:cpf:read', 'requests:create_on_behalf', 'reports:read'],
+  })
+  assert.equal(await read(), 200)
+
+  // O navegador ainda reenvia a concessão ao salvar a saída da equipe.
+  const removed = await setAccess(admin, target.id, {
+    role: 'administrator',
+    slmMember: false,
+    grantedPermissions: ['flights:cpf:read', 'requests:create_on_behalf', 'reports:read'],
+  })
+  assert.equal(removed.status, 200)
+  assert.deepEqual(
+    [...removed.body.user.revokedPermissions].sort(),
+    ['flights:cpf:read', 'requests:create_on_behalf'],
+  )
+  assert.deepEqual((await currentAccess(target.id)).granted_permissions, ['reports:read'])
+  assert.equal(await read(), 403, 'vale na mesma sessão')
+
+  const { rows } = await pool.query(
+    `SELECT details->>'reason' AS reason FROM public.auth_audit_events
+      WHERE target_user_id = $1 AND action = 'user.cpf_access_revoked'
+      ORDER BY id DESC LIMIT 1`,
+    [target.id],
+  )
+  assert.equal(rows[0].reason, 'slm_removed')
+
+  // Fora da equipe, nem nova concessão pela API nem valor forçado no banco.
+  const refused = await setAccess(admin, target.id, {
+    role: 'administrator',
+    slmMember: false,
+    grantedPermissions: ['flights:cpf:read'],
+  })
+  assert.equal(refused.status, 400)
+  await pool.query(
+    `UPDATE public.auth_user_access SET granted_permissions = '{flights:cpf:read}' WHERE user_id = $1`,
+    [target.id],
+  )
+  assert.equal(await read(), 403)
+  await pool.query(
+    `UPDATE public.auth_user_access SET granted_permissions = '{}' WHERE user_id = $1`,
+    [target.id],
+  )
+
+  // Voltar à equipe não devolve; só uma nova concessão individual.
+  await setAccess(admin, target.id, { role: 'administrator', slmMember: true })
+  assert.equal(await read(), 403)
+  await setAccess(admin, target.id, {
+    role: 'administrator',
+    slmMember: true,
+    grantedPermissions: ['flights:cpf:read'],
+  })
+  assert.equal(await read(), 200)
+
+  // Desativar um administrador também revoga, e reativar não devolve.
+  const deactivated = await call(`/admin/users/${target.id}/deactivate`, { method: 'POST', session: admin })
+  assert.deepEqual(deactivated.body.user.revokedPermissions, ['flights:cpf:read'])
+  await call(`/admin/users/${target.id}/activate`, { method: 'POST', session: admin })
+  const session = await signIn('admin-saida@example.gov.br')
+  assert.equal((await myPermissions(session)).includes('flights:cpf:read'), false)
+
+  await setAccess(admin, target.id, { role: 'requester' })
+})
+
+test('ninguém concede CPF a si mesmo, nem o administrador', async () => {
+  const self = await setAccess(admin, adminId, {
+    role: 'administrator',
+    slmMember: true,
+    grantedPermissions: ['flights:cpf:read'],
+  })
+  assert.equal(self.status, 403)
+  assert.equal((await myPermissions(admin)).includes('flights:cpf:read'), false)
+})
+
+test('desativar revoga as permissões especiais, com auditoria, e reativar não devolve', async () => {
+  const operator = await createUser('operador-desativado@example.gov.br', 'slm_operator')
+  const email = 'operador-desativado@example.gov.br'
+  await setAccess(admin, operator.id, {
+    role: 'slm_operator',
+    slmMember: true,
+    grantedPermissions: ['flights:cpf:read', 'requests:schedule', 'reports:read'],
+  })
+
+  const deactivated = await call(`/admin/users/${operator.id}/deactivate`, {
+    method: 'POST',
+    session: admin,
+  })
+  assert.equal(deactivated.status, 200)
+  assert.deepEqual(
+    [...deactivated.body.user.revokedPermissions].sort(),
+    ['flights:cpf:read', 'requests:schedule'],
+  )
+  assert.deepEqual((await currentAccess(operator.id)).granted_permissions, ['reports:read'])
+
+  const { rows } = await pool.query(
+    `SELECT action, details->>'reason' AS reason FROM public.auth_audit_events
+      WHERE target_user_id = $1 AND action IN ('user.cpf_access_revoked', 'user.permissions_changed')
+      ORDER BY id DESC LIMIT 2`,
+    [operator.id],
+  )
+  assert.deepEqual(rows.map((row) => row.reason), ['account_deactivated', 'account_deactivated'])
+
+  await call(`/admin/users/${operator.id}/activate`, { method: 'POST', session: admin })
+  const session = await signIn(email)
+  const permissions = await myPermissions(session)
+  assert.equal(permissions.includes('flights:cpf:read'), false)
+  assert.equal(permissions.includes('requests:schedule'), false)
+  assert.ok(permissions.includes('reports:read'), 'as demais concessões permanecem')
+})
+
+test('nenhuma permissão essencial pode ser retirada de um administrador, e a retirada forçada é ignorada', async () => {
+  const second = await createUser('admin-essencial@example.gov.br', 'administrator')
+  const essentials: Permission[] = [
+    'users:read', 'users:approve', 'users:manage', 'audit:read', 'settings:read', 'settings:manage',
+  ]
+
+  for (const permission of essentials) {
+    const refused = await setAccess(admin, second.id, {
+      role: 'administrator',
+      deniedPermissions: [permission],
+    })
+    assert.equal(refused.status, 400, permission)
+    assert.ok((await myPermissions(second)).includes(permission), permission)
+  }
+
+  await pool.query(
+    `UPDATE public.auth_user_access SET denied_permissions = $2 WHERE user_id = $1`,
+    [second.id, essentials],
+  )
+  const forced = await myPermissions(second)
+  for (const permission of essentials) {
+    assert.ok(forced.includes(permission), permission)
+  }
+  assert.equal((await call('/admin/users', { session: second })).status, 200)
+
+  await setAccess(admin, second.id, { role: 'requester' })
+})
+
+test('as tabelas não podem divergir, e as operações legítimas continuam funcionando', async () => {
+  const user = await createUser('coerencia@example.gov.br')
+
+  await assert.rejects(
+    () => pool.query(`UPDATE public.auth_users SET role = 'admin' WHERE id = $1`, [user.id]),
+    /divergente/,
+  )
+  await assert.rejects(
+    () => pool.query(`UPDATE public.auth_user_access SET profile = 'administrator' WHERE user_id = $1`, [user.id]),
+    /divergente/,
+  )
+
+  const row = await pool.query(
+    `SELECT u.role, a.profile FROM public.auth_users u
+       JOIN public.auth_user_access a ON a.user_id = u.id WHERE u.id = $1`,
+    [user.id],
+  )
+  assert.deepEqual(row.rows[0], { role: 'operator', profile: 'requester' })
+
+  // Alterar as duas na mesma transação é aceito, porque a checagem é no fim dela.
+  const client = await pool.connect()
+  await client.query('BEGIN')
+  await client.query(`UPDATE public.auth_user_access SET profile = 'administrator' WHERE user_id = $1`, [user.id])
+  await client.query(`UPDATE public.auth_users SET role = 'admin' WHERE id = $1`, [user.id])
+  await client.query('COMMIT')
+  client.release()
+  assert.equal((await call('/auth/me', { session: user })).body.user.role, 'administrator')
+
+  // Perfil, aprovação e desativação passam pelo caminho normal.
+  assert.equal((await setAccess(admin, user.id, { role: 'requester' })).status, 200)
+  assert.equal(
+    (await call(`/admin/users/${user.id}/deactivate`, { method: 'POST', session: admin })).status,
+    200,
+  )
+  const approved = await createUser('coerencia-aprovada@example.gov.br', 'slm_operator')
+  assert.equal((await currentAccess(approved.id)).profile, 'slm_operator')
 })

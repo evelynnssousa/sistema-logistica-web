@@ -20,18 +20,42 @@ test('sem a tabela nova, o acesso vem das colunas antigas', () => {
 
   const operator = resolveAccess({ ...legacy, permissions: ['maintenance:write'] })
   assert.equal(operator?.role, 'slm_operator')
-  assert.equal(operator?.slmMember, true)
+  assert.equal(operator?.slmMember, false, 'ninguém entra na SLM sem um ato explícito')
 
   const requester = resolveAccess({ ...legacy, permissions: ['maintenance:read'] })
   assert.equal(requester?.role, 'requester')
   assert.equal(requester?.slmMember, false)
 })
 
-test('uma permissão de CPF antiga continua valendo, sem promover a conta', () => {
-  const access = resolveAccess({ ...legacy, permissions: ['flights:cpf:read'] })
+test('permissões antigas de CPF e armazém não valem, nem promovem a conta', () => {
+  const access = resolveAccess({
+    ...legacy,
+    permissions: ['flights:cpf:read', 'warehouse:write'],
+  })
 
-  assert.equal(access?.role, 'requester')
-  assert.ok(access?.permissions.includes('flights:cpf:read'))
+  assert.equal(access?.slmMember, false)
+  assert.equal(access?.permissions.includes('flights:cpf:read'), false)
+  assert.equal(access?.permissions.includes('warehouse:manage'), false)
+  assert.equal(access?.permissions.includes('requests:schedule'), false)
+  assert.equal(access?.permissions.includes('requests:create_on_behalf'), false)
+})
+
+test('linha alterada direto no banco não libera permissão especial sem elegibilidade', () => {
+  const forced = resolveAccess({
+    role: 'operator',
+    permissions: [],
+    access_profile: 'requester',
+    access_slm_member: true,
+    access_granted: ['requests:schedule', 'requests:create_on_behalf', 'flights:cpf:read'],
+    access_denied: [],
+  })
+
+  assert.deepEqual(forced?.grantedPermissions, [
+    'requests:schedule', 'requests:create_on_behalf', 'flights:cpf:read',
+  ])
+  for (const permission of ['requests:schedule', 'requests:create_on_behalf', 'flights:cpf:read'] as const) {
+    assert.equal(forced?.permissions.includes(permission), false, permission)
+  }
 })
 
 test('a linha nova prevalece sobre as colunas antigas', () => {
