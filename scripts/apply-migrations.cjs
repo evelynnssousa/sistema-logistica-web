@@ -11,6 +11,13 @@
  *
  * --sem-backup vale só para banco local. Em teste, banco remoto é sempre recusado.
  * Cada migração tem a própria transação: um erro desfaz só aquela, e as anteriores permanecem.
+ *
+ * Códigos de saída:
+ *   0  concluído, ou nada pendente
+ *   1  recusado antes de aplicar: nada mudou no banco
+ *   2  a aplicação começou e falhou: as anteriores permanecem, e as seguintes não rodaram
+ *   3  todas aplicadas, e a conferência final encontrou um problema
+ *   4  todas aplicadas, e a conferência final não conseguiu terminar
  */
 const { spawnSync } = require('node:child_process')
 const { readFileSync } = require('node:fs')
@@ -19,6 +26,9 @@ const { resolve } = require('node:path')
 const projectRoot = resolve(__dirname, '..')
 const confirmation = 'APLICAR-MIGRACOES'
 const isTestRun = process.env.NODE_ENV === 'test' || Boolean(process.env.NODE_TEST_CONTEXT)
+
+// Decide o código de saída de um erro inesperado: 1 só vale enquanto nada foi tentado no banco.
+let phase = 'before'
 
 // A presença de cada tabela é o único registro de migração que este banco tem.
 const migrations = [
@@ -194,6 +204,11 @@ async function main() {
   }
 
   const client = new Client(target.options)
+  // Sem isto, uma queda de conexão encerraria o processo com código 1, como se nada tivesse mudado.
+  let connectionLost = false
+  client.on('error', () => {
+    connectionLost = true
+  })
   await client.connect()
   console.log(`Banco: ${target.local ? 'LOCAL' : 'REMOTO'}`)
   // Sem --aplicar, o próprio banco recusa qualquer gravação nesta conexão.
@@ -239,22 +254,28 @@ async function main() {
     )).rows.map((row) => row.proname)
 
     const applied = []
+    phase = 'applying'
     for (const item of pending) {
       try {
         await client.query(readFileSync(resolve(projectRoot, 'backend/database/schema', `${item.file}.sql`), 'utf8'))
+        if (!(await exists(client, item.marker))) throw new Error('a tabela esperada não apareceu')
       } catch (error) {
         await client.query('ROLLBACK').catch(() => undefined)
         console.error(`ERRO      ${item.file}: ${error.code ?? ''} ${String(error.message).slice(0, 200)}`)
         console.error(`Aplicadas antes do erro: ${applied.map((entry) => entry.file).join(', ') || 'nenhuma'}.`)
-        console.error('Esta migração foi desfeita, e as seguintes não foram tentadas.')
+        console.error(
+          connectionLost
+            ? 'A conexão caiu: não há como saber aqui se esta migração terminou. Rode a conferência para ver o estado.'
+            : 'Esta migração foi desfeita, e as seguintes não foram tentadas.',
+        )
         process.exitCode = 2
         return
       }
-      if (!(await exists(client, item.marker))) throw new Error(`${item.file}: a tabela esperada não apareceu.`)
       applied.push(item)
       console.log(`aplicada  ${item.file}`)
     }
 
+    phase = 'verifying'
     console.log('--- Conferência final')
     const problems = await verify(client, applied, before)
     if (problems.length > 0) {
@@ -272,5 +293,10 @@ async function main() {
 
 main().catch((error) => {
   console.error(`Falha: ${error.message}`)
-  process.exitCode = 1
+  if (phase === 'verifying') {
+    console.error('As migrações ficaram aplicadas, mas a conferência final não terminou. Rode a conferência antes de usar.')
+    process.exitCode = 4
+  } else {
+    process.exitCode = phase === 'applying' ? 2 : 1
+  }
 })

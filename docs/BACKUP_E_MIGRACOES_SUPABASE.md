@@ -137,9 +137,12 @@ Para aplicar, exige Docker. O script gera o backup, testa a restauração e conf
 | Código de saída | Significado |
 |---|---|
 | 0 | Concluído, ou nada pendente |
-| 1 | Recusado antes de aplicar: nada mudou |
-| 2 | Erro em uma migração: ela foi desfeita, as anteriores permanecem e as seguintes não rodaram. Corrija e rode de novo, pois as já aplicadas são reconhecidas |
-| 3 | Aplicadas, mas a conferência final encontrou um problema. Revise antes de usar |
+| 1 | Recusado antes de aplicar: nada mudou no banco |
+| 2 | A aplicação começou e falhou. Cada migração tem a própria transação: a que falhou foi desfeita, as anteriores permanecem e as seguintes não rodaram. Corrija e rode de novo, pois as já aplicadas são reconhecidas. Se a mensagem disser que a conexão caiu, rode `npm run migrations:check` antes, para ver o estado |
+| 3 | Todas aplicadas, e a conferência final encontrou um problema. Revise antes de usar |
+| 4 | Todas aplicadas, e a conferência final não conseguiu terminar, como em uma queda de conexão. Rode `npm run migrations:check` e confira antes de usar |
+
+Se o processo for interrompido à força, como por Ctrl+C, o código é outro. A migração em andamento é desfeita pelo banco quando a conexão termina, e `npm run migrations:check` mostra o estado.
 
 `npm run test:migrations` prova esse caminho em um banco descartável, com os privilégios automáticos do Supabase.
 
