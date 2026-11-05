@@ -1,5 +1,7 @@
 # Relatório da auditoria geral do sistema SLM
 
+> **Atualização:** P-03 (sequências novas), a pausa do backup em P-10 e o código de saída em P-24 foram corrigidos depois desta auditoria, nos commits `7efc2ff`, `fdc87dd` e `65b8d66`. O restante do relatório descreve o estado de 05/11/2026, antes deles.
+
 | | |
 |---|---|
 | **Data** | 05/11/2026 |
@@ -187,7 +189,7 @@ As 7 capturas vistas seguem a identidade: sidebar preta, item ativo amarelo com 
 | `npm run test:integration` | Passou, 283 de 283 | PostgreSQL descartável |
 | `npm run test:backup` | Passou | Dados fictícios |
 | `npm run test:migrations` | Passou, 8 cenários | Não confere sequências (P-03) |
-| `npm run test:e2e` | Passou, 133 | Sem capturas |
+| `npm run test:e2e` | Passou, 139 | O número 133, citado antes, foi lido com a execução em andamento |
 | `npm run test:e2e` com capturas | Passou, 139 | 170 imagens, em pasta temporária |
 | Ensaio próprio com a cópia de 04/11 | 16 aplicadas, dados antigos idênticos | Restauração como papel sem superusuário |
 | Reversão de 017 a 002 no ensaio | 0 diferença de estrutura, dados e privilégios iguais | |
