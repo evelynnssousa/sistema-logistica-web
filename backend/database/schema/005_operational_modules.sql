@@ -243,6 +243,7 @@ REVOKE ALL PRIVILEGES ON TABLE
   public.inventory_check_items
 FROM PUBLIC;
 REVOKE ALL PRIVILEGES ON FUNCTION public.reject_history_change() FROM PUBLIC;
+REVOKE ALL PRIVILEGES ON SEQUENCE public.inventory_checks_protocolo_seq FROM PUBLIC;
 
 DO $migration$
 DECLARE
@@ -258,6 +259,7 @@ BEGIN
         'REVOKE ALL PRIVILEGES ON FUNCTION public.reject_history_change() FROM %I',
         api_role
       );
+      EXECUTE format('REVOKE ALL PRIVILEGES ON SEQUENCE public.inventory_checks_protocolo_seq FROM %I', api_role);
     END IF;
   END LOOP;
 END

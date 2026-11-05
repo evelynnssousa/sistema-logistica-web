@@ -276,7 +276,8 @@ SELECT u.id FROM public.auth_users u
 ### Riscos
 
 - **Bloqueio:** criar a chave estrangeira bloqueia escritas em `auth_users` por um instante. Com o volume atual, é imperceptível.
-- **Privilégios padrão:** o Supabase concede automaticamente acesso a `anon` e `authenticated` em tabelas novas. As três migrações retiram esse acesso, o que foi conferido. **Migrações futuras precisam fazer o mesmo.**
+- **Privilégios padrão:** o Supabase concede automaticamente acesso a `anon`, `authenticated` e `service_role` em tabelas, funções e sequências novas. As migrações retiram esse acesso, e a conferência final reprova tabela, função ou sequência nova que continue aberta. **Migrações futuras precisam fazer o mesmo.**
+- **Sequências anteriores às migrações:** `service_requests_protocolo_seq` e `material_requests_protocolo_seq` continuam acessíveis a `anon`, `authenticated` e `service_role`. As migrações não mudam isso, e a conferência final as mostra como aviso.
 - **CPF:** sozinha, a 004 guarda o número em texto. A aplicação só grava CPF com a 005 aplicada, cifrado com AES-256-GCM. Não insira passageiros entre as duas migrações: a 005 para com erro se encontrar algum.
 
 ## Testes e desenvolvimento

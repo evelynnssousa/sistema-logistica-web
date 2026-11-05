@@ -399,6 +399,13 @@ BEGIN
       END IF;
     END LOOP;
   END LOOP;
+
+  EXECUTE 'REVOKE ALL PRIVILEGES ON SEQUENCE public.demand_history_id_seq FROM PUBLIC';
+  FOREACH api_role IN ARRAY ARRAY['anon', 'authenticated', 'service_role']::name[] LOOP
+    IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = api_role) THEN
+      EXECUTE format('REVOKE ALL PRIVILEGES ON SEQUENCE public.demand_history_id_seq FROM %I', api_role);
+    END IF;
+  END LOOP;
 END
 $migration$;
 

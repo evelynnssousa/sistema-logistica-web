@@ -20,6 +20,14 @@ function run(args, url) {
 
 const apply = ['--aplicar', '--confirmar=APLICAR-MIGRACOES', '--sem-backup']
 
+const newSequences = [
+  'inventory_checks_protocolo_seq',
+  'integration_attempts_id_seq',
+  'technical_events_id_seq',
+  'availability_periods_id_seq',
+  'demand_history_id_seq',
+]
+
 const present = async (client, table) =>
   (await client.query(`SELECT to_regclass($1) IS NOT NULL AS found`, [`public.${table}`])).rows[0].found
 
@@ -39,6 +47,8 @@ const onCreatingTable = (table, command) => `
 async function prepare(url, extra) {
   const { Client } = require('pg')
   const client = new Client({ connectionString: url })
+  // O banco descartável pode parar com a conexão aberta, ao fim de um teste que falhou.
+  client.on('error', () => undefined)
   await client.connect()
   await client.query(`DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;`)
   await client.query(`
@@ -107,6 +117,31 @@ async function main() {
     assert.deepEqual(access.rows, [{ profile: 'administrator', slm_member: false }])
     console.log('✔ aplica as 16 migrações e a conferência final passa, com os privilégios do Supabase')
 
+    assert.match(applied.stdout, /Sequências novas acessíveis à API pública: nenhuma/)
+    for (const sequence of newSequences) {
+      for (const role of ['anon', 'authenticated', 'service_role']) {
+        const rights = await client.query(
+          `SELECT has_sequence_privilege($1, $2, 'USAGE') OR has_sequence_privilege($1, $2, 'SELECT')
+               OR has_sequence_privilege($1, $2, 'UPDATE') AS allowed`,
+          [role, `public.${sequence}`],
+        )
+        assert.equal(rights.rows[0].allowed, false, `${role} alcança ${sequence}`)
+      }
+      for (const role of ['anon', 'authenticated']) {
+        await client.query(`SET ROLE ${role}`)
+        await assert.rejects(client.query(`SELECT nextval('public.${sequence}')`), /permission denied/)
+        await client.query('RESET ROLE')
+      }
+      const open = await client.query(
+        `SELECT 1 FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) AS privilege
+          WHERE c.oid = $1::regclass AND privilege.grantee = 0`,
+        [`public.${sequence}`],
+      )
+      assert.equal(open.rows.length, 0, `PUBLIC alcança ${sequence}`)
+    }
+    assert.match(applied.stdout, /AVISO {5}Sequência anterior às migrações, sem alteração: service_requests_protocolo_seq \(anon, authenticated, service_role\)/)
+    console.log('✔ as 5 sequências novas ficam fechadas a anon, authenticated, service_role e PUBLIC; as 2 antigas viram aviso')
+
     const again = run(apply, url)
     assert.equal(again.status, 0, again.stderr)
     assert.match(again.stdout, /Nenhuma migração pendente/)
@@ -133,6 +168,16 @@ async function main() {
     assert.equal((await client.query(`SELECT to_regclass('public.request_attachments') AS t`)).rows[0].t, null, 'as seguintes não rodam')
     console.log('✔ erro no meio: desfaz aquela, mantém as anteriores e não tenta as seguintes')
     await client.end()
+
+    // A conferência precisa reprovar uma sequência nova aberta, para cada papel.
+    for (const role of ['anon', 'authenticated', 'service_role', 'PUBLIC']) {
+      client = await prepare(url, onCreatingTable('driver_occurrence_types', `GRANT USAGE ON SEQUENCE public.demand_history_id_seq TO ${role};`))
+      const leaked = run(apply, url)
+      assert.equal(leaked.status, 3, `${role}: ${leaked.stdout}\n${leaked.stderr}`)
+      assert.match(leaked.stderr, new RegExp(`Sequências novas acessíveis à API pública: demand_history_id_seq \\([^)]*${role}`))
+      await client.end()
+    }
+    console.log('✔ a conferência final reprova sequência nova aberta a anon, authenticated, service_role ou PUBLIC')
 
     // Queda de conexão no meio da 007: o próprio banco encerra a sessão que aplica.
     client = await prepare(url, onCreatingTable('system_settings', 'PERFORM pg_terminate_backend(pg_backend_pid());'))

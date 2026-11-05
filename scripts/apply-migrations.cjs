@@ -78,6 +78,30 @@ function connectionOptions(raw) {
   }
 }
 
+/** Quem, entre os papéis da API pública e PUBLIC, alcança cada sequência de public. */
+async function sequenceAccess(client) {
+  const rows = (await client.query(
+    `SELECT c.relname AS sequence, r.rolname AS role
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       JOIN pg_roles r ON r.rolname IN ('anon', 'authenticated', 'service_role')
+      WHERE n.nspname = 'public' AND c.relkind = 'S'
+        AND (has_sequence_privilege(r.oid, c.oid, 'USAGE')
+          OR has_sequence_privilege(r.oid, c.oid, 'SELECT')
+          OR has_sequence_privilege(r.oid, c.oid, 'UPDATE'))
+     UNION ALL
+     SELECT c.relname, 'PUBLIC'
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       CROSS JOIN LATERAL aclexplode(c.relacl) AS privilege
+      WHERE n.nspname = 'public' AND c.relkind = 'S' AND privilege.grantee = 0
+      ORDER BY 1, 2`,
+  )).rows
+  const access = new Map()
+  for (const { sequence, role } of rows) access.set(sequence, [...(access.get(sequence) ?? []), role])
+  return access
+}
+
 const exists = async (client, table) =>
   (await client.query(`SELECT to_regclass($1) IS NOT NULL AS present`, [`public.${table}`])).rows[0].present
 
@@ -166,6 +190,17 @@ async function verify(client, applied, before) {
   if (functions.length > 0) problems.push(`Funções novas executáveis pela API pública: ${functions.join(', ')}.`)
   else console.log('Funções novas executáveis pela API pública: nenhuma')
 
+  const access = await sequenceAccess(client)
+  const newSequences = [...access].filter(([sequence]) => !before.__sequences.includes(sequence))
+  if (newSequences.length > 0) {
+    problems.push(`Sequências novas acessíveis à API pública: ${newSequences.map(([sequence, roles]) => `${sequence} (${roles.join(', ')})`).join('; ')}.`)
+  } else {
+    console.log('Sequências novas acessíveis à API pública: nenhuma')
+  }
+  for (const [sequence, roles] of access) {
+    if (before.__sequences.includes(sequence)) console.log(`AVISO     Sequência anterior às migrações, sem alteração: ${sequence} (${roles.join(', ')})`)
+  }
+
   for (const item of applied) {
     if (!(await exists(client, item.marker))) problems.push(`${item.file}: a tabela ${item.marker} não existe.`)
   }
@@ -252,6 +287,11 @@ async function main() {
          JOIN pg_roles r ON r.rolname IN ('anon', 'authenticated', 'service_role')
         WHERE n.nspname = 'public' AND has_function_privilege(r.oid, p.oid, 'EXECUTE')`,
     )).rows.map((row) => row.proname)
+
+    before.__sequences = (await client.query(
+      `SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relkind = 'S'`,
+    )).rows.map((row) => row.relname)
 
     const applied = []
     phase = 'applying'

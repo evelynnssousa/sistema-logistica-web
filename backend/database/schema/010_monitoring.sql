@@ -47,6 +47,7 @@ ALTER TABLE public.availability_periods ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.access_reviews ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL PRIVILEGES ON TABLE public.technical_events, public.availability_periods, public.access_reviews FROM PUBLIC;
+REVOKE ALL PRIVILEGES ON SEQUENCE public.technical_events_id_seq, public.availability_periods_id_seq FROM PUBLIC;
 
 DO $migration$
 DECLARE
@@ -58,6 +59,7 @@ BEGIN
         'REVOKE ALL PRIVILEGES ON TABLE public.technical_events, public.availability_periods, public.access_reviews FROM %I',
         api_role
       );
+      EXECUTE format('REVOKE ALL PRIVILEGES ON SEQUENCE public.technical_events_id_seq, public.availability_periods_id_seq FROM %I', api_role);
     END IF;
   END LOOP;
 END
