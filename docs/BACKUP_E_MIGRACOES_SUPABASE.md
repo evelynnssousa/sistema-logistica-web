@@ -345,7 +345,7 @@ Como não cria tabela, o script a considera aplicada quando a 017 existe, nenhum
 
 Ninguém entra automaticamente na equipe SLM nem recebe `warehouse:manage`, CPF, agendamento ou abertura em nome de outro setor.
 
-**Atenção (P-08, 06/11/2026):** agendar e administrar o Almoxarifado, inclusive a previsão de entrega, passaram a exigir a equipe SLM também para o Administrador. Como a 003 coloca todos os administradores fora da equipe, **depois de migrar, marque "Equipe SLM" na tela do usuário para cada administrador que de fato opera pela SLM**. Os demais continuam administrando o sistema (usuários, configurações, auditoria), sem agendar nem gerir o Almoxarifado. `settings:read` e `settings:write` antigos viram concessões individuais. `auth_users`, sessões e auditoria não mudam.
+**Atenção (P-08, corrigido em 06/11/2026):** agendar e informar ou alterar a previsão de entrega exigem a equipe SLM também para o Administrador. Como a 003 coloca todos os administradores fora da equipe, **depois de migrar, quem agenda e informa previsões é o Operador SLM com as concessões**, ou um administrador marcado na equipe SLM por outro administrador. A administração do Almoxarifado (materiais, estoque, inventário, situação e entrega) continua com o perfil Administrador, dentro ou fora da equipe.
 
 **Depois de aplicar**, confira se não há divergências. O resultado precisa ser vazio:
 

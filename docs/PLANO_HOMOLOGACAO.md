@@ -64,7 +64,7 @@ Efeito das migrações sobre elas, se aplicadas no banco real (ensaiado sobre a 
 
 ## C. Administradora atual e habilitação dos operadores
 
-**Situação:** depois das migrações, a administradora continua administrando usuários, cadastros, configurações e auditoria, mas **não** agenda nem gerencia o Almoxarifado, porque não estará na equipe SLM (regra P-08). Ela também não pode alterar o próprio acesso. Isso não impede a homologação: quem agenda e opera são os operadores.
+**Situação:** depois das migrações, a administradora continua administrando usuários, cadastros, configurações, auditoria e o Almoxarifado (materiais, estoque, inventário, situação, entrega), mas **não** agenda nem informa ou altera a previsão de entrega, porque não estará na equipe SLM (regra P-08, ajustada em 06/11/2026). Ela também não pode alterar o próprio acesso. Isso não impede a homologação: quem agenda e opera são os operadores.
 
 **Procedimento, depois das migrações (vale para o projeto separado e para o banco real):**
 
@@ -79,7 +79,8 @@ Efeito das migrações sobre elas, se aplicadas no banco real (ensaiado sobre a 
 | Permissão (como aparece na tela) | Para quê | Sugestão para os testes |
 |---|---|---|
 | Realizar agendamentos | Agendar e reagendar Manutenção e Frota, atribuir motorista | Pelo menos 2 operadores |
-| Almoxarifado → Administrar o módulo | Materiais, estoque, pedidos, previsão e entrega | Pelo menos 1 |
+| Almoxarifado → Administrar o módulo | Materiais, estoque, inventário, pedidos e entrega | Pelo menos 1 |
+| Almoxarifado → Informar e alterar a previsão de entrega | Previsão de entrega (exige também "Administrar o módulo") | Pelo menos 1 |
 | Acessar a Central de Operações / Atribuir responsáveis, prioridades e prazos pela Central | Central SLM | Pelo menos 1 |
 | Consultar o CPF completo dos passageiros (auditado) | Passagens | 1, só se for necessário testar |
 | Abrir solicitações em nome de outros setores | Abertura para outro setor | 1 |
