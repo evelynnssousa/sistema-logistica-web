@@ -71,8 +71,9 @@ export default defineConfig({
         "form-action 'self'",
         "frame-ancestors 'none'",
         "img-src 'self' data:",
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-        'font-src https://fonts.gstatic.com',
+        "style-src 'self' 'unsafe-inline'",
+        // A fonte Inter vem do próprio sistema (@fontsource), sem origem externa.
+        "font-src 'self'",
       ].join('; '),
     },
   },
