@@ -84,7 +84,8 @@ async function scenarios({ browser, baseUrl, runId, password }) {
   const material = await api(admin, 'POST', '/warehouse/materials', { name: `Material Transparência ${runId.slice(0, 6)}`, unitId })
   assert.equal(material.status, 201)
 
-  // Agendar exige a concessão individual: o administrador já a tem pelo perfil.
+  // Agendar é da equipe SLM com concessão individual (P-08): a administradora, fora da equipe, não agenda.
+  const slm = await login('e2e-slm@slm-e2e.invalid')
   const requester = await login(requesterEmail)
 
   await step('os quatro formulários mostram o aviso institucional e o de privacidade antes do envio', async () => {
@@ -127,13 +128,19 @@ async function scenarios({ browser, baseUrl, runId, password }) {
   })
 
   await step('agendar fora do pedido pede motivo, e o histórico mostra a justificativa', async () => {
+    // A tela da administradora fora da SLM não oferece o agendamento, e a API recusa da mesma forma.
     await admin.goto(`/manutencao/${requestId}`)
-    const form = admin.locator('.detail-action', { hasText: 'Agendar' }).first()
+    await admin.locator('.request-timeline').waitFor()
+    assert.equal(await admin.locator('.detail-action h3', { hasText: 'Agendar' }).count(), 0, 'administradora sem o formulário de agendamento')
+    assert.equal((await api(admin, 'POST', `/maintenance/requests/${requestId}/schedule`, { dataAgendada: '2033-03-12T13:00:00.000Z', motivoCodigo: 'conflito_agenda' })).status, 403)
+
+    await slm.goto(`/manutencao/${requestId}`)
+    const form = slm.locator('.detail-action', { hasText: 'Agendar' }).first()
     await form.locator('input[type=datetime-local]').first().fill('2033-03-12T10:00')
     await form.locator('.ui-alert-warning', { hasText: 'Diferente do que foi solicitado' }).waitFor()
     await form.locator('select').last().selectOption('conflito_agenda')
     await form.locator('button[type=submit]').click()
-    await admin.locator('.request-timeline', { hasText: 'Conflito de agenda' }).waitFor()
+    await slm.locator('.request-timeline', { hasText: 'Conflito de agenda' }).waitFor()
   })
 
   await step('devolução: o solicitante vê o que corrigir e corrige só os campos indicados', async () => {

@@ -134,13 +134,20 @@ async function prepareDatabase(url, passwordHash) {
      VALUES ('Administradora E2E', 'e2e-admin@slm-e2e.invalid', 'TI', $1, 'approved', 'admin', now())`,
     [passwordHash],
   )
-  // P-08: agendar e administrar o Almoxarifado são atribuições da SLM. A administradora dos cenários
-  // integra a equipe, como a coordenação da SLM; fora dela, o perfil não dá essas permissões.
+  // Operadora da equipe SLM, com as concessões de agendar e de previsão de entrega (P-08). A
+  // administradora acima fica fora da equipe, como no banco real: ela administra o sistema e o
+  // Almoxarifado, mas não agenda nem informa previsão.
   if (!process.env.E2E_REAL_ENV) {
     await client.query(
-      `INSERT INTO public.auth_user_access (user_id, profile, slm_member)
-        SELECT id, 'administrator', true FROM public.auth_users WHERE email = 'e2e-admin@slm-e2e.invalid'
-        ON CONFLICT (user_id) DO UPDATE SET slm_member = true`,
+      `INSERT INTO public.auth_users
+        (full_name, email, sector, password_hash, status, role, decided_at)
+       VALUES ('Operadora SLM E2E', 'e2e-slm@slm-e2e.invalid', 'SLM', $1, 'approved', 'operator', now())`,
+      [passwordHash],
+    )
+    await client.query(
+      `INSERT INTO public.auth_user_access (user_id, profile, slm_member, granted_permissions)
+       SELECT id, 'slm_operator', true, ARRAY['requests:schedule', 'warehouse:manage', 'warehouse:forecast']
+         FROM public.auth_users WHERE email = 'e2e-slm@slm-e2e.invalid'`,
     )
   }
   // Contas do cenário demand-permissions, criadas aqui para não gastar o limite de cadastros por IP.

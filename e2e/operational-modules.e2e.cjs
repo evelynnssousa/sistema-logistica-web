@@ -21,6 +21,21 @@ async function run({ playwright, baseUrl, runId, password }) {
   const violations = []
   const baseOrigin = new URL(baseUrl).origin
 
+  // Chamada direta à API com a sessão e o token CSRF da página, para provar que a recusa não é só da tela.
+  const api = (page, method, path, body) =>
+    page.evaluate(
+      async ({ method, path, body }) => {
+        const me = await (await fetch('/api/auth/me')).json()
+        const response = await fetch(`/api${path}`, {
+          method,
+          headers: { 'content-type': 'application/json', 'x-csrf-token': me.csrfToken },
+          body: body === undefined ? undefined : JSON.stringify(body),
+        })
+        return { status: response.status }
+      },
+      { method, path, body },
+    )
+
   async function login(email) {
     const context = await browser.newContext({
       baseURL: baseUrl,
@@ -320,20 +335,31 @@ async function run({ playwright, baseUrl, runId, password }) {
       await status.locator('select').selectOption('atendido')
       await status.locator('button[type=submit]').click()
       await admin.locator('.detail-status', { hasText: 'Atendido' }).waitFor()
-      // Uma previsão não conclui a entrega: só o registro efetivo conclui.
-      const forecast = admin.locator('.detail-action', { has: admin.locator('h3', { hasText: 'previsão de entrega' }) })
+      // P-08: a administradora fora da SLM gere o pedido, mas a tela não oferece a previsão, e a API recusa.
+      assert.equal(await admin.locator('.detail-action h3', { hasText: 'previsão de entrega' }).count(), 0)
+      assert.ok(await admin.locator('.detail-action h3', { hasText: 'Registrar entrega' }).count(), 'a entrega continua com ela')
+      const requestId = path.split('/').pop()
+      assert.equal((await api(admin, 'PUT', `/warehouse/requests/${requestId}/delivery-forecast`, { date: '2031-03-10' })).status, 403)
+
+      // Uma previsão não conclui a entrega: só o registro efetivo conclui. Quem informa é a SLM.
+      const slm = await login('e2e-slm@slm-e2e.invalid')
+      await slm.goto(path)
+      await slm.waitForSelector('.warehouse-request-page')
+      const forecast = slm.locator('.detail-action', { has: slm.locator('h3', { hasText: 'previsão de entrega' }) })
       await forecast.locator('input[type=date]').fill('2031-03-10')
       await forecast.locator('button[type=submit]').click()
-      await admin.locator('[role=status]', { hasText: 'O solicitante será avisado' }).waitFor()
-      assert.ok((await admin.textContent('[aria-label="Entrega dos materiais"]')).includes('10/03/2031'))
-      assert.equal(await admin.locator('[aria-label="Entrega dos materiais"] [data-status=aguardando_entrega]').count(), 1)
+      await slm.locator('[role=status]', { hasText: 'O solicitante será avisado' }).waitFor()
+      assert.ok((await slm.textContent('[aria-label="Entrega dos materiais"]')).includes('10/03/2031'))
+      assert.equal(await slm.locator('[aria-label="Entrega dos materiais"] [data-status=aguardando_entrega]').count(), 1)
 
       // Alterar a data pede justificativa, que fica só no histórico interno.
       await forecast.locator('input[type=date]').fill('2031-03-20')
       await forecast.locator('textarea').fill('Fornecedor atrasou')
       await forecast.locator('button[type=submit]').click()
-      await admin.locator('[aria-label="Entrega dos materiais"] [data-status=entrega_reagendada]').waitFor()
-      await admin.locator('.detail-history', { hasText: 'Justificativa: Fornecedor atrasou' }).waitFor()
+      await slm.locator('[aria-label="Entrega dos materiais"] [data-status=entrega_reagendada]').waitFor()
+      await slm.locator('.detail-history', { hasText: 'Justificativa: Fornecedor atrasou' }).waitFor()
+      await admin.reload()
+      await admin.waitForSelector('.warehouse-request-page')
 
       await requester.goto(path)
       await requester.waitForSelector('.warehouse-request-page')
@@ -362,12 +388,14 @@ async function run({ playwright, baseUrl, runId, password }) {
       await typed.locator('.warehouse-cart-row input').first().fill('1')
       await typed.locator('button[type=submit]').click()
       await admin.waitForSelector('.warehouse-request-page')
-      const typedForecast = admin.locator('.detail-action', { has: admin.locator('h3', { hasText: 'previsão de entrega' }) })
+      const typedPath = new URL(admin.url()).pathname
+      await slm.goto(typedPath)
+      await slm.waitForSelector('.warehouse-request-page')
+      const typedForecast = slm.locator('.detail-action', { has: slm.locator('h3', { hasText: 'previsão de entrega' }) })
       await typedForecast.locator('input[type=date]').fill('2031-04-15')
       await typedForecast.locator('button[type=submit]').click()
-      await admin.locator('[role=status]', { hasText: 'O solicitante será avisado' }).waitFor()
-      await admin.locator('[aria-label="Comunicações do pedido"]', { hasText: 'Previsão de entrega' }).waitFor()
-      const typedPath = new URL(admin.url()).pathname
+      await slm.locator('[role=status]', { hasText: 'O solicitante será avisado' }).waitFor()
+      await slm.locator('[aria-label="Comunicações do pedido"]', { hasText: 'Previsão de entrega' }).waitFor()
 
       await requester.goto(typedPath)
       await requester.waitForSelector('.warehouse-request-page')

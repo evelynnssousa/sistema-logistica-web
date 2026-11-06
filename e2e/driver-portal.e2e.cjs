@@ -59,6 +59,8 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
 
   try {
     const admin = await login(adminEmail, '.topbar-logout')
+    // Agendar e atribuir motorista são da equipe SLM (P-08): a administradora fica fora dela.
+    const slm = await login('e2e-slm@slm-e2e.invalid', '.topbar-logout')
     const ids = {}
     for (const [key, email] of Object.entries(emails)) {
       ids[key] = (await api(admin, 'GET', `/admin/users?search=${encodeURIComponent(email)}`)).body.users[0].id
@@ -71,7 +73,7 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
         passageiros: [{ nome: 'Passageira E2E' }],
       })
       assert.equal(created.status, 201, JSON.stringify(created.body))
-      const scheduled = await api(admin, 'POST', `/fleet/requests/${created.body.id}/schedule`, { dataAgendada: when, confirmarConflito: true })
+      const scheduled = await api(slm, 'POST', `/fleet/requests/${created.body.id}/schedule`, { dataAgendada: when, confirmarConflito: true })
       assert.equal(scheduled.status, 200, JSON.stringify(scheduled.body))
       return created.body.id
     }
@@ -111,16 +113,17 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
     const tripOne = await newTrip('Fórum João Mendes', 2)
     const tripToCancel = await newTrip('Tribunal de Justiça', 3)
 
-    await step('administração: atribui o motorista na própria solicitação de Frota', async () => {
-      await admin.goto(`/frota/${tripOne}`)
-      const panel = admin.locator('[data-testid="trip-execution"]')
+    await step('SLM: atribui o motorista na própria solicitação de Frota; a administradora fora da equipe não atribui', async () => {
+      assert.equal((await api(admin, 'POST', `/fleet/requests/${tripOne}/driver`, { driverId: driverOneId })).status, 403, 'administradora fora da SLM')
+      await slm.goto(`/frota/${tripOne}`)
+      const panel = slm.locator('[data-testid="trip-execution"]')
       await panel.waitFor()
       await panel.locator('form select').first().selectOption({ label: 'Motorista E2E Um' })
       await panel.getByLabel(/Observações para o motorista/).fill('Retirar a chave na portaria.')
       await panel.getByRole('button', { name: 'Salvar atribuição' }).click()
       await panel.locator('dd', { hasText: 'Motorista E2E Um' }).waitFor()
-      await shot(admin, 'atribuicao')
-      assert.equal((await api(admin, 'POST', `/fleet/requests/${tripToCancel}/driver`, { driverId: driverOneId })).status, 200)
+      await shot(slm, 'atribuicao')
+      assert.equal((await api(slm, 'POST', `/fleet/requests/${tripToCancel}/driver`, { driverId: driverOneId })).status, 200)
       await admin.goto('/frota')
       await admin.waitForSelector('th:has-text("Motorista")')
       await admin.waitForSelector('td:has-text("Motorista E2E Um")')
@@ -284,7 +287,7 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
 
     await step('celular: sem rolagem lateral, com botões grandes e a paleta institucional', async () => {
       const tripMobile = await newTrip('Cartório de Registro com um nome bem longo para testar a quebra de linha na tela do celular', 1)
-      assert.equal((await api(admin, 'POST', `/fleet/requests/${tripMobile}/driver`, { driverId: driverOneId, notes: 'Orientação longa para o motorista, conferindo a quebra de linha no aparelho.' })).status, 200)
+      assert.equal((await api(slm, 'POST', `/fleet/requests/${tripMobile}/driver`, { driverId: driverOneId, notes: 'Orientação longa para o motorista, conferindo a quebra de linha no aparelho.' })).status, 200)
       const phone = await login(emails.um, '.driver-logout', { width: 390, height: 800 })
       const overflow = () => phone.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
       const card = phone.locator('[data-testid="driver-trip"]', { hasText: 'Cartório de Registro' })

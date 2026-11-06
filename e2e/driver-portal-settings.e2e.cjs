@@ -56,6 +56,8 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
 
   try {
     const admin = await login(adminEmail, '.topbar-logout')
+    // Agendar e atribuir motorista são da equipe SLM (P-08): a administradora fica fora dela.
+    const slm = await login('e2e-slm@slm-e2e.invalid', '.topbar-logout')
     const driverAccount = (await api(admin, 'GET', `/admin/users?search=${encodeURIComponent(driverEmail)}`)).body.users[0].id
     assert.equal((await api(admin, 'PUT', `/admin/users/${driverAccount}/access`, { role: 'driver', slmMember: false, grantedPermissions: [], deniedPermissions: [] })).status, 200)
     const driverId = (await api(admin, 'POST', '/fleet/drivers', { name: 'Motorista Config', userId: driverAccount })).body.id
@@ -70,8 +72,8 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
       })
       assert.equal(created.status, 201, JSON.stringify(created.body))
       const id = created.body.id
-      assert.equal((await api(admin, 'POST', `/fleet/requests/${id}/schedule`, { dataAgendada: when, confirmarConflito: true })).status, 200)
-      assert.equal((await api(admin, 'POST', `/fleet/requests/${id}/driver`, { driverId, confirmConflicts: true })).status, 200)
+      assert.equal((await api(slm, 'POST', `/fleet/requests/${id}/schedule`, { dataAgendada: when, confirmarConflito: true })).status, 200)
+      assert.equal((await api(slm, 'POST', `/fleet/requests/${id}/driver`, { driverId, confirmConflicts: true })).status, 200)
       return id
     }
 
