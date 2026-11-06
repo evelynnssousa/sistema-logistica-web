@@ -1,0 +1,176 @@
+import { accessSync, constants, statSync } from 'node:fs'
+import { attachmentDirectoryProblem, projectRoot } from '../attachments/storage.js'
+
+/**
+ * Conferência das variáveis de ambiente, para a implantação e para o início da API. Nunca
+ * devolve nem registra valores: só o nome da variável, a situação e o motivo.
+ *
+ *   erro   impede o uso seguro da função correspondente; em produção, corrigir antes de publicar
+ *   aviso  a função fica indisponível ou incompleta, sem risco de dado exposto
+ *   ok     presente e no formato esperado
+ */
+
+export type CheckLevel = 'ok' | 'aviso' | 'erro'
+
+export type EnvironmentFinding = {
+  variable: string
+  level: CheckLevel
+  message: string
+}
+
+type Environment = NodeJS.ProcessEnv
+
+const value = (environment: Environment, name: string) => environment[name]?.trim() ?? ''
+const isProduction = (environment: Environment) => environment.NODE_ENV === 'production'
+const isHttps = (raw: string) => {
+  try {
+    return new URL(raw).protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+const emailAddress = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/
+
+/** O remetente do Resend pode vir como "Nome <endereco@dominio>". */
+function senderAddress(raw: string) {
+  const match = /<([^<>]+)>\s*$/.exec(raw)
+  return (match ? match[1] : raw).trim()
+}
+
+/** 32 bytes em base64, como gera `openssl rand -base64 32`. */
+export function passengerKeyProblem(raw: string | undefined): string | null {
+  const encoded = raw?.trim()
+  if (!encoded) return 'ausente'
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) return 'não está em base64'
+  const key = Buffer.from(encoded, 'base64')
+  if (key.length !== 32) return `precisa ter 32 bytes; tem ${key.length}`
+  if (key.every((byte) => byte === key[0])) return 'não pode ser um valor repetido'
+  return null
+}
+
+function checkAttachments(environment: Environment, root: string): EnvironmentFinding {
+  const directory = value(environment, 'ATTACHMENTS_DIR')
+  const problem = attachmentDirectoryProblem(directory, root)
+  if (problem === 'ausente') {
+    return { variable: 'ATTACHMENTS_DIR', level: 'aviso', message: 'Ausente: envio de anexos indisponível (503).' }
+  }
+  if (problem) return { variable: 'ATTACHMENTS_DIR', level: 'erro', message: `Inválida: ${problem}. Anexos ficam indisponíveis.` }
+
+  try {
+    const stats = statSync(directory)
+    if (!stats.isDirectory()) {
+      return { variable: 'ATTACHMENTS_DIR', level: 'erro', message: 'O caminho existe e não é uma pasta.' }
+    }
+    accessSync(directory, constants.R_OK | constants.W_OK)
+    if ((stats.mode & 0o007) !== 0) {
+      return {
+        variable: 'ATTACHMENTS_DIR',
+        level: 'aviso',
+        message: 'A pasta é acessível a outros usuários da máquina. Use permissão 700.',
+      }
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return {
+        variable: 'ATTACHMENTS_DIR',
+        level: 'aviso',
+        message: 'A pasta ainda não existe; a API tenta criá-la com permissão 700 no primeiro uso.',
+      }
+    }
+    return { variable: 'ATTACHMENTS_DIR', level: 'erro', message: 'Sem permissão de leitura e escrita na pasta.' }
+  }
+  return { variable: 'ATTACHMENTS_DIR', level: 'ok', message: 'Pasta absoluta, fora do projeto e gravável.' }
+}
+
+export function checkEnvironment(
+  environment: Environment = process.env,
+  root: string = projectRoot,
+): EnvironmentFinding[] {
+  const production = isProduction(environment)
+  const findings: EnvironmentFinding[] = []
+  const add = (variable: string, level: CheckLevel, message: string) => findings.push({ variable, level, message })
+
+  add(
+    'DATABASE_URL',
+    value(environment, 'DATABASE_URL') ? 'ok' : 'erro',
+    value(environment, 'DATABASE_URL') ? 'Presente.' : 'Ausente: a API não acessa o banco.',
+  )
+
+  const passenger = passengerKeyProblem(environment.PASSENGER_DATA_KEY)
+  if (passenger === 'ausente') add('PASSENGER_DATA_KEY', 'aviso', 'Ausente: Passagens não aceita passageiros (503), e nenhum CPF é gravado.')
+  else if (passenger) add('PASSENGER_DATA_KEY', 'erro', `Inválida: ${passenger}. Passagens não aceita passageiros.`)
+  else add('PASSENGER_DATA_KEY', 'ok', 'Chave de 32 bytes. Confirme que há cópia segura fora do servidor e dos backups.')
+
+  findings.push(checkAttachments(environment, root))
+
+  const resendKey = value(environment, 'RESEND_API_KEY')
+  const resendFrom = value(environment, 'RESEND_FROM')
+  if (!resendKey || !resendFrom) {
+    add('RESEND_API_KEY / RESEND_FROM', 'aviso', 'Ausentes: nenhum e-mail sai, nem o de recuperação de senha.')
+  } else if (!emailAddress.test(senderAddress(resendFrom))) {
+    add('RESEND_FROM', 'erro', 'Remetente fora do formato "endereco@dominio" ou "Nome <endereco@dominio>".')
+  } else if (!resendKey.startsWith('re_')) {
+    add('RESEND_API_KEY', 'aviso', 'Não tem o prefixo das chaves do Resend ("re_"). Confira a chave.')
+  } else {
+    add('RESEND_API_KEY / RESEND_FROM', 'ok', 'Presentes. O envio real só é comprovado pelo roteiro de homologação.')
+  }
+
+  const pepper = value(environment, 'PASSWORD_RESET_PEPPER')
+  if (!pepper) add('PASSWORD_RESET_PEPPER', 'aviso', 'Ausente: a recuperação de senha fica desligada.')
+  else if (pepper.length < 32) add('PASSWORD_RESET_PEPPER', 'erro', 'Curta demais: use ao menos 32 caracteres aleatórios.')
+  else add('PASSWORD_RESET_PEPPER', 'ok', 'Presente.')
+
+  if (value(environment, 'NOTIFICATION_EMAILS_ENABLED') === 'true' && (!resendKey || !resendFrom)) {
+    add('NOTIFICATION_EMAILS_ENABLED', 'erro', 'Ligada sem RESEND_API_KEY e RESEND_FROM: as mensagens ficam "não configuradas".')
+  }
+
+  if (value(environment, 'GOOGLE_CALENDAR_ENABLED') === 'true') {
+    const missing = [
+      'GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL',
+      'GOOGLE_CALENDAR_PRIVATE_KEY',
+    ].filter((name) => !value(environment, name))
+    const calendars = ['GOOGLE_CALENDAR_ID_MAINTENANCE', 'GOOGLE_CALENDAR_ID_FLEET'].filter((name) => value(environment, name))
+    if (missing.length > 0) add('GOOGLE_CALENDAR_ENABLED', 'erro', `Ligada sem ${missing.join(' e ')}.`)
+    else if (calendars.length === 0) add('GOOGLE_CALENDAR_ENABLED', 'erro', 'Ligada sem nenhum calendário definido.')
+    else if (!value(environment, 'GOOGLE_CALENDAR_PRIVATE_KEY').includes('PRIVATE KEY')) {
+      add('GOOGLE_CALENDAR_PRIVATE_KEY', 'erro', 'Não parece uma chave PEM da conta de serviço.')
+    } else add('GOOGLE_CALENDAR_ENABLED', 'ok', `Credenciais presentes; calendários: ${calendars.length}.`)
+  }
+
+  for (const simulated of ['EMAIL_TRANSPORT', 'GOOGLE_CALENDAR_TRANSPORT']) {
+    if (production && value(environment, simulated) === 'simulated') {
+      add(simulated, 'erro', 'Transporte simulado em produção: é ignorado, mas não deve existir.')
+    }
+  }
+
+  const frontend = value(environment, 'FRONTEND_URL')
+  if (production) {
+    if (!frontend) add('FRONTEND_URL', 'erro', 'Ausente em produção: o CORS usaria o endereço de desenvolvimento.')
+    else if (!isHttps(frontend)) add('FRONTEND_URL', 'erro', 'Em produção, precisa ser https.')
+    else add('FRONTEND_URL', 'ok', 'Endereço https.')
+
+    const publicUrl = value(environment, 'APP_PUBLIC_URL')
+    if (!publicUrl) add('APP_PUBLIC_URL', 'aviso', 'Ausente: e-mails saem sem link e a recuperação usa código.')
+    else if (!isHttps(publicUrl)) add('APP_PUBLIC_URL', 'erro', 'Precisa ser https; sem isso, é ignorada.')
+    else add('APP_PUBLIC_URL', 'ok', 'Endereço https.')
+
+    if (value(environment, 'COOKIE_SECURE') === 'false') {
+      add('COOKIE_SECURE', 'aviso', 'Em produção o cookie é sempre Secure; o valor false é ignorado.')
+    }
+    if (value(environment, 'MONITORING_ENABLED') !== 'true') {
+      add('MONITORING_ENABLED', 'aviso', 'Desligado: a disponibilidade não é registrada.')
+    }
+    if (!value(environment, 'INSTITUTIONAL_EMAIL_DOMAINS')) {
+      add('INSTITUTIONAL_EMAIL_DOMAINS', 'aviso', 'Sem lista: qualquer domínio pode pedir cadastro, que continua exigindo aprovação.')
+    }
+    if (!value(environment, 'TRUST_PROXY')) {
+      add('TRUST_PROXY', 'aviso', 'Sem valor: atrás de proxy, os limites por IP valem para o proxy inteiro.')
+    }
+  }
+
+  return findings
+}
+
+export function hasBlockingProblem(findings: readonly EnvironmentFinding[]) {
+  return findings.some((finding) => finding.level === 'erro')
+}

@@ -10,6 +10,7 @@ import { shouldRunIntegrationWorker } from './integrations/config.js'
 import { startIntegrationWorker } from './integrations/worker.js'
 import { shouldRunMonitoring, startMonitoring } from './monitoring/healthChecks.js'
 import { logSecurityEvent } from './security/logger.js'
+import { checkEnvironment } from './config/environmentCheck.js'
 
 const PORT = Number(process.env.PORT) || 3000
 
@@ -20,6 +21,13 @@ app.listen(PORT, '0.0.0.0', () => {
       ? 'Banco de dados: REMOTO. As ações feitas nesta API gravam em dados reais.'
       : 'Banco de dados: local.',
   )
+
+  // Só nomes e situação, nunca valores. Não impede o início: cada função já recusa sem a sua configuração.
+  for (const finding of checkEnvironment()) {
+    if (finding.level !== 'ok') {
+      logSecurityEvent('environment_check', { variable: finding.variable, level: finding.level })
+    }
+  }
 
   if (!isPasswordRecoveryConfigured()) {
     logSecurityEvent('password_recovery_unconfigured')

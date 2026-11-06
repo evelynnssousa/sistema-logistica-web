@@ -55,12 +55,31 @@ export class LocalDiskStorage implements AttachmentStorage {
   }
 }
 
+/** Raiz do repositório, tanto em backend/src/attachments quanto em backend/dist/attachments. */
+export const projectRoot = resolve(__dirname, '..', '..', '..')
+
+/**
+ * Por que a pasta de anexos não serve, ou null se serve. Dentro do projeto, os documentos
+ * poderiam ir para o Git, para um pacote publicado ou para uma pasta servida pelo Vite.
+ */
+export function attachmentDirectoryProblem(directory: string | undefined, root = projectRoot): string | null {
+  const value = directory?.trim()
+  if (!value) return 'ausente'
+  if (!isAbsolute(value)) return 'precisa ser um caminho absoluto'
+  const normalized = resolve(value)
+  const base = resolve(root)
+  if (normalized === base || normalized.startsWith(`${base}${sep}`)) {
+    return 'não pode ficar dentro da pasta do projeto'
+  }
+  return null
+}
+
 /**
  * Sem ATTACHMENTS_DIR não há armazenamento: nada é gravado em uma pasta improvisada, nem no
  * banco. A pasta precisa ser absoluta e ficar fora do código publicado.
  */
 export function resolveAttachmentStorage(environment: NodeJS.ProcessEnv = process.env): AttachmentStorage | null {
   const directory = environment.ATTACHMENTS_DIR?.trim()
-  if (!directory || !isAbsolute(directory)) return null
+  if (!directory || attachmentDirectoryProblem(directory) !== null) return null
   return new LocalDiskStorage(directory)
 }
