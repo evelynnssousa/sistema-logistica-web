@@ -146,13 +146,6 @@ before(async () => {
      VALUES ('Administradora', 'transp-admin@example.gov.br', 'TI', $1, 'approved', 'admin', now())`,
     [await hashPassword(password)],
   )
-  // P-08: Almoxarifado e agendamento são atribuições da SLM. A administradora destes cenários
-  // integra a equipe; o administrador de fora dela tem testes próprios, que esperam recusa.
-  await pool.query(
-    `INSERT INTO public.auth_user_access (user_id, profile, slm_member)
-      SELECT id, 'administrator', true FROM public.auth_users WHERE email = 'transp-admin@example.gov.br'
-      ON CONFLICT (user_id) DO UPDATE SET slm_member = true`,
-  )
   setDatabasePoolForTests(pool)
   server = app.listen(0, '127.0.0.1')
   await once(server, 'listening')
@@ -929,3 +922,116 @@ test('controle interno do Almoxarifado: só a equipe, com justificativa de diver
 test('a migração 012 só é desfeita sem registros', async () => {
   await assert.rejects(pool.query(schema('012_operational_transparency.rollback.sql')), /interrompida/)
 })
+
+test('P-08: administrador fora da SLM mantém o controle do Almoxarifado; previsão só com a SLM', async () => {
+  // A administradora destes cenários é a conta inicial, fora da equipe SLM, como no banco real.
+  const me = (await call('/auth/me', { session: admin })).body.user
+  assert.equal(me.slmMember, false)
+  assert.ok(me.permissions.includes('warehouse:manage'))
+  assert.equal(me.permissions.includes('warehouse:forecast'), false)
+  assert.equal(me.permissions.includes('requests:schedule'), false)
+
+  const firstDate = '2031-03-10'
+  const secondDate = '2031-03-20'
+  const unit = await post('/settings/catalog/measurementUnits', admin, { label: 'Caixa P-08' })
+  assert.equal(unit.status, 201, unit.text)
+  const unitId = unit.body.option.id
+  const sector = await post('/settings/catalog/sectors', admin, { label: 'Setor P-08' })
+  assert.equal(sector.status, 201, sector.text)
+  const staff = async (email: string, grants: Permission[] = ['warehouse:manage', 'warehouse:forecast']) => {
+    const user = await createUser(email, 'slm_operator')
+    const result = await put(`/admin/users/${user.id}/access`, admin, { role: 'slm_operator', slmMember: true, grantedPermissions: grants, deniedPermissions: [] })
+    assert.equal(result.status, 200, result.text)
+    return user
+  }
+
+  // 1. Materiais: cadastra e edita.
+  const material = await post('/warehouse/materials', admin, { name: 'Toner P-08', unitId })
+  assert.equal(material.status, 201, material.text)
+  assert.equal((await patch(`/warehouse/materials/${material.body.id}`, admin, { name: 'Toner P-08 preto', unitId })).status, 200)
+
+  // 2. Estoque: entrada com justificativa, mínimo e consulta.
+  const movement = await post('/warehouse/stock-movements', admin, { materialId: material.body.id, tipo: 'entrada', quantidade: 4, justificativa: 'Saldo conferido' })
+  assert.equal(movement.status, 201, movement.text)
+  assert.equal((await put(`/warehouse/stock/${material.body.id}/minimum`, admin, { minimo: 1 })).status, 200)
+  assert.equal((await call('/warehouse/stock', { session: admin })).status, 200)
+  assert.equal((await call('/warehouse/stock-movements', { session: admin })).status, 200)
+  assert.equal((await call('/warehouse/control-form', { session: admin })).status, 200)
+  assert.equal((await call('/warehouse/control-records', { session: admin })).status, 200)
+
+  // 3. Inventário: nova conferência, contagem, fechamento e histórico.
+  const check = await post('/warehouse/inventory-checks', admin, {
+    title: 'Conferência P-08', referenceDate: '2027-02-01', items: [{ materialId: material.body.id, governmentQuantity: 4 }],
+  })
+  assert.equal(check.status, 201, check.text)
+  const counted = await put(`/warehouse/inventory-checks/${check.body.id}/items/${material.body.id}`, admin, { governmentQuantity: 4, countedQuantity: 4 })
+  assert.equal(counted.status, 200, counted.text)
+  const closed = await post(`/warehouse/inventory-checks/${check.body.id}/close`, admin, { outcome: 'concluida' })
+  assert.equal(closed.status, 200, closed.text)
+  assert.equal((await call('/warehouse/inventory-checks', { session: admin })).status, 200)
+  assert.ok((await call('/search?q=Conferência P-08', { session: admin })).body.results.inventoryChecks.total >= 1, 'pesquisa global de conferências')
+
+  // Pedido: externo, itens, situação, edição local e entrega.
+  const created = await post('/warehouse/external-requests', admin, {
+    externalReference: 'GOV-P08', externalRequester: 'Pessoa Externa', externalRequesterEmail: 'pedido-p08@example.gov.br',
+    sectorId: sector.body.option.id, note: 'Nota interna', items: [{ materialId: material.body.id, requested: 2, fulfilled: 0 }],
+  })
+  assert.equal(created.status, 201, created.text)
+  const path = `/warehouse/requests/${created.body.id}`
+  assert.equal((await patch(path, admin, { note: 'Registro local editado' })).status, 200)
+  assert.equal((await put(`${path}/items`, admin, { items: [{ materialId: material.body.id, requested: 2, fulfilled: 2 }] })).status, 200)
+  assert.equal((await post(`${path}/status`, admin, { status: 'atendido' })).status, 200)
+  assert.equal((await post(`${path}/deliver`, admin, { receivedBy: 'Pessoa Recebedora' })).status, 200)
+
+  // 4. Indicadores e relatórios.
+  assert.equal((await call('/reports/summary', { session: admin })).status, 200)
+  const report = await call('/reports/operational', { session: admin })
+  assert.equal(report.status, 200)
+  assert.ok(report.body.inventory, 'indicadores de inventário para quem administra')
+
+  // 6. Previsão: recusada ao administrador, pela API, com auditoria (9).
+  const asker = await createUser('pede-p08@example.gov.br')
+  const internal = await post('/warehouse/requests', asker, { items: [{ materialId: material.body.id, requested: 1 }] })
+  assert.equal(internal.status, 201, internal.text)
+  const open = internal.body.id as string
+  const refused = await put(`/warehouse/requests/${open}/delivery-forecast`, admin, { date: firstDate })
+  assert.equal(refused.status, 403)
+  const audit = await pool.query(
+    `SELECT result FROM public.auth_audit_events WHERE action = 'access.denied' AND actor_user_id = $1 AND target_resource_id = $2`,
+    [admin.id, open],
+  )
+  assert.deepEqual(audit.rows.map((row) => row.result), ['denied'])
+  const unchanged = await call(`/warehouse/requests/${open}`, { session: admin })
+  assert.equal(unchanged.body.request.deliveryForecast, null, 'a recusa não grava nada')
+
+  // 7. Operador SLM autorizado executa a ação restrita.
+  const slm = await staff('slm-p08@example.gov.br')
+  const allowed = await put(`/warehouse/requests/${open}/delivery-forecast`, slm, { date: firstDate })
+  assert.equal(allowed.status, 200, allowed.text)
+  // Operador da SLM só com a administração do módulo, sem a concessão da previsão, é recusado.
+  const withoutForecast = await staff('slm-sem-previsao-p08@example.gov.br', ['warehouse:manage'])
+  assert.equal((await put(`/warehouse/requests/${open}/delivery-forecast`, withoutForecast, { date: secondDate, justification: 'Tentativa sem concessão' })).status, 403)
+
+  // 8. Usuário comum: nada administrativo, nem por concessão da previsão.
+  const requester = await createUser('comum-p08@example.gov.br')
+  const requesterPermissions = (await call('/auth/me', { session: requester })).body.user.permissions as string[]
+  assert.equal(requesterPermissions.includes('warehouse:manage'), false)
+  assert.equal(requesterPermissions.includes('warehouse:forecast'), false)
+  assert.equal((await post('/warehouse/materials', requester, { name: 'Indevido', unitId })).status, 403)
+  assert.equal((await call('/warehouse/stock', { session: requester })).status, 403)
+  assert.equal((await put(`/warehouse/requests/${open}/delivery-forecast`, requester, { date: secondDate, justification: 'Indevido' })).status, 403)
+  assert.equal(
+    (await put(`/admin/users/${requester.id}/access`, admin, { role: 'requester', slmMember: false, grantedPermissions: ['warehouse:forecast'], deniedPermissions: [] })).status,
+    400,
+  )
+
+  // 10. A tela recebe do servidor o mesmo catálogo que ele aplica: a previsão é restrita e só elegível na SLM.
+  const catalog = (await call('/admin/permissions', { session: admin })).body
+  assert.ok(catalog.restricted.includes('warehouse:forecast'))
+  assert.equal(catalog.restricted.includes('warehouse:manage'), false)
+  const eligible = (role: string, slmMember: boolean) =>
+    catalog.eligibility.find((entry: { role: string; slmMember: boolean }) => entry.role === role && entry.slmMember === slmMember).eligible as string[]
+  assert.equal(eligible('administrator', false).includes('warehouse:forecast'), false)
+  assert.equal(eligible('administrator', true).includes('warehouse:forecast'), true)
+})
+

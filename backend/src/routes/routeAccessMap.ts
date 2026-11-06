@@ -118,7 +118,7 @@ export const routeAccessMap: readonly RouteAccess[] = [
   { method: 'PUT', path: '/warehouse/requests/:requestId/items', access: 'permission', requires: ['warehouse:manage'] },
   { method: 'POST', path: '/warehouse/requests/:requestId/status', access: 'permission', requires: ['warehouse:manage'] },
   { method: 'POST', path: '/warehouse/requests/:requestId/deliver', access: 'permission', requires: ['warehouse:manage'] },
-  { method: 'PUT', path: '/warehouse/requests/:requestId/delivery-forecast', access: 'permission', requires: ['warehouse:manage'] },
+  { method: 'PUT', path: '/warehouse/requests/:requestId/delivery-forecast', access: 'permission', requires: ['warehouse:manage', 'warehouse:forecast'] },
   { method: 'GET', path: '/warehouse/inventory-checks', access: 'permission', requires: ['warehouse:manage'] },
   { method: 'POST', path: '/warehouse/inventory-checks', access: 'permission', requires: ['warehouse:manage'] },
   { method: 'GET', path: '/warehouse/inventory-checks/:checkId', access: 'permission', requires: ['warehouse:manage'] },

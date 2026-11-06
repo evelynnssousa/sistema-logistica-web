@@ -50,6 +50,8 @@ const nextStatuses: Record<string, string[]> = {
 function WarehouseRequestPage() {
   const { requestId = '' } = useParams()
   const canManage = useHasPermission('warehouse:manage')
+  // Previsão de entrega: permissão própria, só da equipe SLM (P-08). O servidor confere de novo.
+  const canForecast = useHasPermission('warehouse:forecast')
   const [detail, setDetail] = useState<Detail | null>(null)
   const [materials, setMaterials] = useState<Material[]>([])
   const [items, setItems] = useState<ItemPayload[]>([])
@@ -327,7 +329,7 @@ function WarehouseRequestPage() {
 
       {canManage && (
         <section className="detail-actions" aria-label="Ações do pedido">
-          {open && (
+          {open && canForecast && (
             <form
               className="detail-action"
               onSubmit={submit(() =>

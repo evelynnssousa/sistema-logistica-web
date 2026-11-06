@@ -6,6 +6,7 @@ import {
   essentialAdministratorPermissions,
   grantsFromLegacyPermissions,
   isEligibleForRestrictedPermission,
+  isRestrictedPermission,
   isPermission,
   onlyKnownPermissions,
   permissionsForProfile,
@@ -81,11 +82,14 @@ test('a elegibilidade segue a matriz, e a equipe só vale para os perfis previst
   assert.equal(eligible('requests:schedule', 'administrator', false), false)
   assert.equal(eligible('requests:schedule', 'administrator', true), true)
   assert.equal(eligible('requests:schedule', 'slm_operator', true), true)
-  assert.equal(eligible('warehouse:manage', 'administrator', false), false)
-  assert.equal(eligible('warehouse:manage', 'administrator', true), true)
-  assert.equal(eligible('warehouse:manage', 'slm_operator', true), true)
-  assert.equal(eligible('warehouse:manage', 'slm_operator', false), false)
-  assert.equal(eligible('warehouse:manage', 'requester', true), false)
+  // Previsão de entrega: permissão própria, só da SLM. Administrar o Almoxarifado não é restrito.
+  assert.equal(eligible('warehouse:forecast', 'administrator', false), false)
+  assert.equal(eligible('warehouse:forecast', 'administrator', true), true)
+  assert.equal(eligible('warehouse:forecast', 'slm_operator', true), true)
+  assert.equal(eligible('warehouse:forecast', 'slm_operator', false), false)
+  assert.equal(eligible('warehouse:forecast', 'requester', true), false)
+  assert.equal(isRestrictedPermission('warehouse:manage'), false)
+  assert.equal(eligible('warehouse:manage', 'administrator', false), true)
   assert.equal(eligible('requests:schedule', 'slm_operator', false), false)
   assert.equal(eligible('requests:schedule', 'requester', true), false)
 
@@ -102,23 +106,37 @@ test('a elegibilidade segue a matriz, e a equipe só vale para os perfis previst
   assert.equal(eligible('reports:read', 'requester', false), true)
 })
 
-test('administrador fora da SLM não recebe atribuições operacionais da SLM pelo perfil', () => {
+test('administrador fora da SLM administra o Almoxarifado, mas não agenda nem altera previsão', () => {
   const outside = computeEffectivePermissions('administrator', [], [], false)
   const inside = computeEffectivePermissions('administrator', [], [], true)
-  for (const permission of ['requests:schedule', 'warehouse:manage'] as const) {
+  // Só agendar e previsão de entrega são da SLM (P-08).
+  for (const permission of ['requests:schedule', 'warehouse:forecast'] as const) {
     assert.equal(outside.includes(permission), false, `${permission}, fora da SLM`)
     assert.equal(inside.includes(permission), true, `${permission}, na equipe SLM`)
   }
   // Concessão gravada direto no banco também não vale fora da equipe.
   assert.equal(
-    computeEffectivePermissions('administrator', ['requests:schedule', 'warehouse:manage'], [], false)
-      .some((permission) => permission === 'requests:schedule' || permission === 'warehouse:manage'),
+    computeEffectivePermissions('administrator', ['requests:schedule', 'warehouse:forecast'], [], false)
+      .some((permission) => permission === 'requests:schedule' || permission === 'warehouse:forecast'),
     false,
   )
-  // As funções de administração do sistema continuam.
-  for (const permission of ['users:manage', 'settings:manage', 'audit:read', 'warehouse:read'] as const) {
-    assert.ok(outside.includes(permission), permission)
+  // Administração do Almoxarifado e do sistema continuam com o perfil, dentro ou fora da SLM.
+  for (const permission of ['warehouse:manage', 'warehouse:read', 'reports:read', 'users:manage', 'settings:manage', 'audit:read'] as const) {
+    assert.ok(outside.includes(permission), `${permission}, fora da SLM`)
+    assert.ok(inside.includes(permission), `${permission}, na equipe SLM`)
   }
+})
+
+test('usuário comum não recebe administração do Almoxarifado nem previsão', () => {
+  const requester = computeEffectivePermissions('requester', [], [], false)
+  assert.equal(requester.includes('warehouse:manage'), false)
+  assert.equal(requester.includes('warehouse:forecast'), false)
+  assert.equal(requester.includes('requests:schedule'), false)
+  // Concessão de previsão a quem não é da SLM não vale, nem marcada como SLM.
+  assert.equal(computeEffectivePermissions('requester', ['warehouse:forecast'], [], true).includes('warehouse:forecast'), false)
+  // O Operador SLM só recebe a previsão por concessão individual.
+  assert.equal(computeEffectivePermissions('slm_operator', [], [], true).includes('warehouse:forecast'), false)
+  assert.ok(computeEffectivePermissions('slm_operator', ['warehouse:forecast'], [], true).includes('warehouse:forecast'))
 })
 
 test('concessão gravada sem elegibilidade não vale, seja qual for a origem', () => {

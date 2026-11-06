@@ -94,7 +94,8 @@ async function createUser(email: string, role: 'requester' | 'slm_operator' = 'r
   return signIn(email)
 }
 
-async function staff(email: string, grants: Permission[] = ['warehouse:manage']): Promise<Session> {
+// Equipe SLM do Almoxarifado: administra o módulo e, por concessão própria, informa a previsão (P-08).
+async function staff(email: string, grants: Permission[] = ['warehouse:manage', 'warehouse:forecast']): Promise<Session> {
   const user = await createUser(email, 'slm_operator')
   const result = await call(`/admin/users/${user.id}/access`, {
     method: 'PUT',
@@ -185,13 +186,6 @@ before(async () => {
      VALUES ('Administradora', 'entrega-admin@example.gov.br', 'TI', $1, 'approved', 'admin', now())`,
     [await hashPassword(password)],
   )
-  // P-08: Almoxarifado e agendamento são atribuições da SLM. A administradora destes cenários
-  // integra a equipe; o administrador de fora dela tem testes próprios, que esperam recusa.
-  await pool.query(
-    `INSERT INTO public.auth_user_access (user_id, profile, slm_member)
-      SELECT id, 'administrator', true FROM public.auth_users WHERE email = 'entrega-admin@example.gov.br'
-      ON CONFLICT (user_id) DO UPDATE SET slm_member = true`,
-  )
 
   setDatabasePoolForTests(pool)
   server = app.listen(0, '127.0.0.1')
@@ -259,7 +253,7 @@ test('previsão: permissões, validações, histórico interno e comunicação �
   assert.equal((await put(forecastPath, requester, { date: firstDate })).status, 403)
   assert.equal((await put(forecastPath, operator, { date: firstDate })).status, 403)
 
-  // P-08: ser Administrador fora da equipe SLM não dá a previsão, nem com concessão pedida.
+  // P-08: o Administrador fora da equipe SLM administra o Almoxarifado, mas não informa a previsão.
   const outsider = await createUser('previsao-admin-externo@example.gov.br')
   const promoted = await put(`/admin/users/${outsider.id}/access`, admin, {
     role: 'administrator', slmMember: false, grantedPermissions: [], deniedPermissions: [],
@@ -267,31 +261,31 @@ test('previsão: permissões, validações, histórico interno e comunicação �
   assert.equal(promoted.status, 200, promoted.text)
   const external = await signIn('previsao-admin-externo@example.gov.br')
   const externalPermissions = (await call('/auth/me', { session: external })).body.user.permissions as string[]
-  assert.equal(externalPermissions.includes('warehouse:manage'), false)
-  assert.equal(externalPermissions.includes('users:manage'), true, 'continua administrando o sistema')
+  assert.equal(externalPermissions.includes('warehouse:manage'), true, 'administra o Almoxarifado')
+  assert.equal(externalPermissions.includes('warehouse:forecast'), false, 'sem a previsão')
   assert.equal((await put(forecastPath, external, { date: firstDate })).status, 403)
   const denied = await pool.query(
-    `SELECT details->>'operation' AS operation FROM public.auth_audit_events
+    `SELECT details->>'operation' AS operation, details->'missing' AS missing FROM public.auth_audit_events
       WHERE action = 'access.denied' AND actor_user_id = $1 AND target_resource_id = $2`,
     [external.id, id],
   )
   assert.deepEqual(denied.rows.map((row) => row.operation), ['warehouse.delivery_forecast'], 'recusa auditada')
-  assert.equal((await post('/warehouse/materials', external, { name: 'Material externo', unitId })).status, 403)
-  assert.equal((await post(`${path}/status`, external, { status: 'atendido' })).status, 403)
+  assert.deepEqual(denied.rows[0].missing, ['warehouse:forecast'])
   const refusedGrant = await put(`/admin/users/${outsider.id}/access`, admin, {
-    role: 'administrator', slmMember: false, grantedPermissions: ['warehouse:manage'], deniedPermissions: [],
+    role: 'administrator', slmMember: false, grantedPermissions: ['warehouse:forecast'], deniedPermissions: [],
   })
-  assert.equal(refusedGrant.status, 400, 'concessão fora da equipe é recusada')
-  // Na equipe SLM, o mesmo administrador passa a poder, e a troca fica na auditoria.
+  assert.equal(refusedGrant.status, 400, 'concessão da previsão fora da equipe é recusada')
+  // Na equipe SLM, o mesmo administrador passa a ter a previsão pelo perfil, e a troca fica na auditoria.
   assert.equal((await put(`/admin/users/${outsider.id}/access`, admin, {
     role: 'administrator', slmMember: true, grantedPermissions: [], deniedPermissions: [],
   })).status, 200)
+  const insideTeam = await signIn('previsao-admin-externo@example.gov.br')
+  assert.equal(((await call('/auth/me', { session: insideTeam })).body.user.permissions as string[]).includes('warehouse:forecast'), true)
   const audited = await pool.query(
     `SELECT count(*)::int AS n FROM public.auth_audit_events WHERE target_user_id = $1`,
     [outsider.id],
   )
   assert.ok(audited.rows[0].n >= 2, 'mudanças de acesso auditadas')
-  assert.equal((await call(path, { session: await signIn('previsao-admin-externo@example.gov.br') })).status, 200)
   await put(`/admin/users/${outsider.id}/access`, admin, { role: 'requester', slmMember: false, grantedPermissions: [], deniedPermissions: [] })
   assert.equal((await put(forecastPath, manager, { date: '2020-01-01' })).status, 400)
   assert.equal((await put(forecastPath, manager, { date: '31/12/2031' })).status, 400)

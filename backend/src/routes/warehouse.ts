@@ -474,7 +474,8 @@ router.post(
 
 router.put(
   '/warehouse/requests/:requestId/delivery-forecast',
-  requireAuditedPermission(['warehouse:manage'], 'warehouse.delivery_forecast'),
+  // Administrar o Almoxarifado não basta: a previsão exige a permissão própria, só da equipe SLM (P-08).
+  requireAuditedPermission(['warehouse:manage', 'warehouse:forecast'], 'warehouse.delivery_forecast'),
   guarded(async (request, response) => {
     const id = idParam(request, 'requestId')
     const result = await warehouse.setDeliveryForecast(

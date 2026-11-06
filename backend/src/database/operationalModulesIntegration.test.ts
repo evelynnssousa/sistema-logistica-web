@@ -185,13 +185,6 @@ before(async () => {
      VALUES ('Administradora', 'modulos-admin@example.gov.br', 'TI', $1, 'approved', 'admin', now())`,
     [await hashPassword(password)],
   )
-  // P-08: Almoxarifado e agendamento são atribuições da SLM. A administradora destes cenários
-  // integra a equipe; o administrador de fora dela tem testes próprios, que esperam recusa.
-  await pool.query(
-    `INSERT INTO public.auth_user_access (user_id, profile, slm_member)
-      SELECT id, 'administrator', true FROM public.auth_users WHERE email = 'modulos-admin@example.gov.br'
-      ON CONFLICT (user_id) DO UPDATE SET slm_member = true`,
-  )
 
   setDatabasePoolForTests(pool)
   server = app.listen(0, '127.0.0.1')
@@ -483,9 +476,10 @@ test('agendar: Solicitante nunca; Operador SLM com concessão; Administrador só
 
   assert.equal((await post(path, requester, body)).status, 403)
   assert.equal((await post(path, operatorWithout, body)).status, 403)
-  // Responsável precisa ser elegível.
-  assert.equal((await post(path, admin, { ...body, responsavelId: requester.id })).status, 400)
-  assert.equal((await post(path, admin, { ...body, responsavelId: operatorWithout.id })).status, 200)
+  // Responsável precisa ser elegível. Quem agenda é da SLM, com a concessão (P-08).
+  const scheduler = await staff('ag-agendador@example.gov.br', ['requests:schedule'])
+  assert.equal((await post(path, scheduler, { ...body, responsavelId: requester.id })).status, 400)
+  assert.equal((await post(path, scheduler, { ...body, responsavelId: operatorWithout.id })).status, 200)
 
   const operatorRevoked = await staff('ag-revogada@example.gov.br', ['requests:schedule'])
   await setAccess(operatorRevoked.id, { role: 'slm_operator', slmMember: true })
@@ -514,7 +508,7 @@ test('agendar: Solicitante nunca; Operador SLM com concessão; Administrador só
   assert.ok(denied.rows[0].at instanceof Date)
 
   const assignees = await call('/operations/assignees', { session: operatorWithout })
-  assert.ok(assignees.body.assignees.some((item: { id: string }) => item.id === admin.id))
+  assert.ok(assignees.body.assignees.some((item: { id: string }) => item.id === scheduler.id))
   assert.equal(assignees.body.assignees.some((item: { id: string }) => item.id === requester.id), false)
   assert.equal(JSON.stringify(assignees.body).includes('@'), false)
 })
@@ -791,8 +785,9 @@ test('registros de status antigo aparecem traduzidos e seguem o fluxo', async ()
   const filtered = await call('/maintenance/requests?status=aguardando_agendamento', { session: requester })
   assert.ok(filtered.body.requests.some((item: { id: string }) => item.id === rows[0].id))
 
+  const scheduler = await staff('legado-agendador@example.gov.br', ['requests:schedule'])
   assert.equal(
-    (await post(`${path}/schedule`, admin, { dataAgendada: '2027-05-01T12:00:00.000Z' })).body.status,
+    (await post(`${path}/schedule`, scheduler, { dataAgendada: '2027-05-01T12:00:00.000Z' })).body.status,
     'agendado',
   )
 })

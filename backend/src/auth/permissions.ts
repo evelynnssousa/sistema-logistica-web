@@ -101,6 +101,7 @@ export const permissionGroups = [
     permissions: [
       { key: 'warehouse:read', label: 'Acessar o módulo' },
       { key: 'warehouse:manage', label: 'Administrar o módulo' },
+      { key: 'warehouse:forecast', label: 'Informar e alterar a previsão de entrega (exige equipe SLM)' },
     ],
   },
   {
@@ -171,14 +172,15 @@ export function isPermission(value: unknown): value is Permission {
 /**
  * Permissões especiais: só valem para quem é elegível, seja qual for a origem. Nenhum
  * perfil concede abertura em nome de outro setor, CPF nem a Central da SLM. Agendar e
- * administrar o Almoxarifado (inclusive a previsão de entrega) são atribuições operacionais
- * da SLM: o perfil Administrador só as concede a quem integra a equipe SLM, e ser
- * administrador fora da SLM não basta (auditoria de 05/11/2026, P-08). Para os demais
- * elegíveis, tudo depende de concessão individual.
+ * informar ou alterar a previsão de entrega são atribuições da SLM: o perfil Administrador
+ * só as concede a quem integra a equipe SLM (auditoria de 05/11/2026, P-08). A administração
+ * do Almoxarifado (warehouse:manage: materiais, estoque, inventário, situação, entrega) não é
+ * restrita: o Administrador fora da SLM a mantém. Para os demais elegíveis, tudo depende de
+ * concessão individual.
  */
 export const restrictedPermissions = [
   'requests:schedule',
-  'warehouse:manage',
+  'warehouse:forecast',
   'requests:create_on_behalf',
   'flights:cpf:read',
   'slm_central:read',
@@ -207,7 +209,7 @@ export function isEligibleForRestrictedPermission(
   ) {
     return isSlmStaff
   }
-  if (permission === 'requests:schedule' || permission === 'warehouse:manage') {
+  if (permission === 'requests:schedule' || permission === 'warehouse:forecast') {
     return isSlmStaff
   }
   return true

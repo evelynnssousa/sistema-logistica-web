@@ -165,13 +165,6 @@ before(async () => {
      VALUES ('Administradora', 'comunica-admin@example.gov.br', 'TI', $1, 'approved', 'admin', now())`,
     [await hashPassword(password)],
   )
-  // P-08: Almoxarifado e agendamento são atribuições da SLM. A administradora destes cenários
-  // integra a equipe; o administrador de fora dela tem testes próprios, que esperam recusa.
-  await pool.query(
-    `INSERT INTO public.auth_user_access (user_id, profile, slm_member)
-      SELECT id, 'administrator', true FROM public.auth_users WHERE email = 'comunica-admin@example.gov.br'
-      ON CONFLICT (user_id) DO UPDATE SET slm_member = true`,
-  )
   setDatabasePoolForTests(pool)
   server = app.listen(0, '127.0.0.1')
   await once(server, 'listening')

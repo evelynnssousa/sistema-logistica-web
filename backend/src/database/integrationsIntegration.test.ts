@@ -239,13 +239,6 @@ before(async () => {
      VALUES ('Administradora', 'rotinas-admin@example.gov.br', 'TI', $1, 'approved', 'admin', now())`,
     [await hashPassword(password)],
   )
-  // P-08: Almoxarifado e agendamento são atribuições da SLM. A administradora destes cenários
-  // integra a equipe; o administrador de fora dela tem testes próprios, que esperam recusa.
-  await pool.query(
-    `INSERT INTO public.auth_user_access (user_id, profile, slm_member)
-      SELECT id, 'administrator', true FROM public.auth_users WHERE email = 'rotinas-admin@example.gov.br'
-      ON CONFLICT (user_id) DO UPDATE SET slm_member = true`,
-  )
 
   setDatabasePoolForTests(pool)
   server = app.listen(0, '127.0.0.1')
@@ -902,8 +895,9 @@ test('conflitos: mesmo responsável ou veículo pedem confirmação, e a escolha
   // Outro responsável, no mesmo horário: sem regra de equipe, é permitido.
   assert.equal((await post(`/fleet/requests/${third.body.id}/schedule`, secondOperator, { motivoCodigo: 'conflito_agenda', dataAgendada: start, dataFim: end })).status, 200)
 
-  // Mesmo veículo, com escrita diferente.
-  const vehicle = await post(`/fleet/requests/${fourth.body.id}/schedule`, admin, {
+  // Mesmo veículo, com escrita diferente. Quem agenda é da SLM, com a concessão (P-08).
+  const vehicleScheduler = await staff('conflito-veiculo@example.gov.br')
+  const vehicle = await post(`/fleet/requests/${fourth.body.id}/schedule`, vehicleScheduler, {
     motivoCodigo: 'conflito_agenda',
     dataAgendada: '2031-08-10T14:00:00.000Z',
   })
@@ -912,7 +906,7 @@ test('conflitos: mesmo responsável ou veículo pedem confirmação, e a escolha
   assert.equal(vehicle.body.conflicts[0].reason, 'vehicle')
 
   // Quem agenda decide: a confirmação é aceita e fica no histórico.
-  const confirmed = await post(`/fleet/requests/${fourth.body.id}/schedule`, admin, {
+  const confirmed = await post(`/fleet/requests/${fourth.body.id}/schedule`, vehicleScheduler, {
     motivoCodigo: 'conflito_agenda',
     dataAgendada: '2031-08-10T14:00:00.000Z',
     confirmarConflito: true,
@@ -926,7 +920,7 @@ test('conflitos: mesmo responsável ou veículo pedem confirmação, e a escolha
   await post(`/fleet/requests/${third.body.id}/cancel`, secondOperator, { motivo: 'Desmarcado' })
   await post(`/fleet/requests/${fourth.body.id}/cancel`, admin, { motivo: 'Desmarcado' })
   const again = await post('/fleet/requests', requester, fleetBody({ veiculo: 'Van 01' }))
-  assert.equal((await post(`/fleet/requests/${again.body.id}/schedule`, admin, {
+  assert.equal((await post(`/fleet/requests/${again.body.id}/schedule`, vehicleScheduler, {
     motivoCodigo: 'conflito_agenda',
     dataAgendada: start,
   })).status, 200)
