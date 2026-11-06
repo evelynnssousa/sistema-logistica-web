@@ -131,6 +131,20 @@ async function twoStepBackup(url) {
     renameSync(`${file}.guardado`, `${file}.manifesto.json`)
     await refused(['--aplicar', confirm, '--backup=/nao/existe.dump'], /não foi encontrado/, 'arquivo inexistente')
 
+    // Pooler do Supabase: mesmo host e mesmo banco para projetos diferentes; só o usuário muda.
+    // Com dados idênticos, a identidade do banco é o que recusa a cópia.
+    const otherPassword = 'outra-senha-de-teste'
+    await client.query(`DROP ROLE IF EXISTS outro_projeto; CREATE ROLE outro_projeto LOGIN SUPERUSER PASSWORD '${otherPassword}'`)
+    const otherUrl = new URL(url)
+    otherUrl.username = 'outro_projeto'
+    otherUrl.password = otherPassword
+    const otherProject = run(second, otherUrl.toString(), extra)
+    assert.equal(otherProject.status, 1, `${otherProject.stdout}\n${otherProject.stderr}`)
+    assert.match(otherProject.stderr, /Este backup é de outro banco/)
+    assert.equal(await present(client, 'password_recovery_codes'), false, 'outro projeto: nada é aplicado')
+    await client.query('DROP ROLE outro_projeto')
+    console.log('✔ cópia de outro projeto no mesmo host e banco (outro usuário) é recusada')
+
     const account = `(SELECT id FROM public.auth_users WHERE email = 'migra-admin@example.gov.br')`
     await client.query(`UPDATE public.auth_users SET sector = 'Outro' WHERE id = ${account}`)
     assert.ok(existsSync(file))

@@ -320,8 +320,9 @@ async function verify(client, applied, before) {
 
 function createVerifiedBackup() {
   const environment = { ...process.env }
-  // Só os testes escolhem outra pasta, para não misturar cópias fictícias com as reais.
-  const destination = isTestRun && process.env.SLM_BACKUP_DIR ? ['--out', process.env.SLM_BACKUP_DIR] : []
+  // Os testes e a homologação (scripts/homologacao.cjs) usam pasta própria, para não misturar com as cópias do banco real.
+  const ownFolder = isTestRun || process.env.SLM_TARGET === 'homologacao'
+  const destination = ownFolder && process.env.SLM_BACKUP_DIR ? ['--out', process.env.SLM_BACKUP_DIR] : []
   console.log('Gerando o backup...')
   const backup = spawnSync(process.execPath, [resolve(projectRoot, 'scripts/backup-database.cjs'), ...destination], { cwd: projectRoot, env: environment, encoding: 'utf8' })
   if (backup.status !== 0) throw new Error('O backup falhou. Nada foi aplicado.')
@@ -430,7 +431,10 @@ async function main() {
     const lock = await client.query(`SELECT pg_try_advisory_lock(hashtext('slm:aplicar-migracoes')) AS ok`)
     if (!lock.rows[0].ok) throw new Error('Já há uma aplicação em andamento. Nada foi aplicado.')
 
-    const databaseId = sha256(`${target.host}/${new URL(target.options.connectionString).pathname}`)
+    // No pooler do Supabase, projetos da mesma região têm o mesmo host e o mesmo banco ("postgres"):
+    // quem distingue o projeto é o usuário (postgres.<ref>). A senha nunca entra na identidade.
+    const connection = new URL(target.options.connectionString)
+    const databaseId = sha256(`${connection.username}@${target.host}/${connection.pathname}`)
     if (!withoutBackup && !backupArg) {
       await prepareBackup(client, databaseId)
       process.exitCode = 5
