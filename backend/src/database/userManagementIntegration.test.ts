@@ -197,6 +197,7 @@ before(async () => {
     '015_organizational_structure.sql',
     '016_driver_portal.sql',
     '017_driver_portal_settings.sql',
+    '018_public_api_privileges.sql',
   ]) {
     await setup.query(
       readFileSync(resolve(process.cwd(), 'backend/database/schema', file), 'utf8'),
@@ -1420,12 +1421,21 @@ async function currentAccess(userId: string) {
   return rows[0]
 }
 
-test('agendar: administrador sem SLM pode; operador só com concessão; solicitante nunca', async () => {
+test('agendar: administrador sem SLM não pode; da SLM pode; operador só com concessão; solicitante nunca', async () => {
   const schedule = (session: Session, module: string) =>
     policyRoute('/agendar', { module }, session.cookie).then((response) => response.status)
 
+  // P-08: o perfil Administrador, sozinho, não dá atribuições operacionais da SLM.
   const second = await createUser('admin-agenda@example.gov.br', 'administrator')
   assert.equal((await call('/auth/me', { session: second })).body.user.slmMember, false)
+  assert.equal(await schedule(second, 'maintenance'), 403)
+  assert.equal(await schedule(second, 'fleet'), 403)
+  assert.equal(
+    (await setAccess(admin, second.id, { role: 'administrator', grantedPermissions: ['requests:schedule'] })).status,
+    400,
+    'concessão de agendamento fora da equipe',
+  )
+  await setAccess(admin, second.id, { role: 'administrator', slmMember: true })
   assert.equal(await schedule(second, 'maintenance'), 200)
   assert.equal(await schedule(second, 'fleet'), 200)
 

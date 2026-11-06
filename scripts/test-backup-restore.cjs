@@ -31,6 +31,7 @@ const migrations = [
   '015_organizational_structure.sql',
   '016_driver_portal.sql',
   '017_driver_portal_settings.sql',
+  '018_public_api_privileges.sql',
 ]
 
 function run(script, args, environment) {

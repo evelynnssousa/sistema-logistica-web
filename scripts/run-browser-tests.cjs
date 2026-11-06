@@ -112,6 +112,7 @@ async function prepareDatabase(url, passwordHash) {
     '015_organizational_structure.sql',
     '016_driver_portal.sql',
     '017_driver_portal_settings.sql',
+    '018_public_api_privileges.sql',
     // E2E_REAL_ENV reproduz o desenvolvimento: só as migrações presentes no banco real e a tela do Vite.
   ].filter((file) => !process.env.E2E_REAL_ENV || /^00[12]_/.test(file))) {
     const client = new Client({ connectionString: url })
@@ -133,6 +134,15 @@ async function prepareDatabase(url, passwordHash) {
      VALUES ('Administradora E2E', 'e2e-admin@slm-e2e.invalid', 'TI', $1, 'approved', 'admin', now())`,
     [passwordHash],
   )
+  // P-08: agendar e administrar o Almoxarifado são atribuições da SLM. A administradora dos cenários
+  // integra a equipe, como a coordenação da SLM; fora dela, o perfil não dá essas permissões.
+  if (!process.env.E2E_REAL_ENV) {
+    await client.query(
+      `INSERT INTO public.auth_user_access (user_id, profile, slm_member)
+        SELECT id, 'administrator', true FROM public.auth_users WHERE email = 'e2e-admin@slm-e2e.invalid'
+        ON CONFLICT (user_id) DO UPDATE SET slm_member = true`,
+    )
+  }
   // Contas do cenário demand-permissions, criadas aqui para não gastar o limite de cadastros por IP.
   for (const key of ['servidor', 'chefe', 'diretor']) {
     await client.query(

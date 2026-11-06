@@ -4,8 +4,7 @@
 -- quando uma solicitação é lida: só sai pela rota própria, autorizada e auditada.
 --
 -- Depende de service_requests. É apenas aditiva. Para desfazer, se ainda não houver
--- passageiros cadastrados:
---   DROP TABLE public.flight_request_passengers;
+-- passageiros cadastrados: 004_flight_passengers.rollback.sql.
 BEGIN;
 
 CREATE TABLE public.flight_request_passengers (

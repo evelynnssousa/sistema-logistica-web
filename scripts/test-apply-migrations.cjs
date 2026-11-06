@@ -29,6 +29,23 @@ const newSequences = [
   'demand_history_id_seq',
 ]
 
+const legacyTables = [
+  'materials', 'material_requests', 'material_request_items', 'request_forms',
+  'request_history', 'service_requests', 'setores', 'stock_movements',
+]
+const legacySequences = ['service_requests_protocolo_seq', 'material_requests_protocolo_seq']
+const tablePrivileges = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']
+
+/** Privilégios de um papel em uma tabela, pelo próprio catálogo do banco. */
+async function tableRights(client, role, table) {
+  const rights = []
+  for (const privilege of tablePrivileges) {
+    const { rows } = await client.query(`SELECT has_table_privilege($1, $2, $3) AS allowed`, [role, `public.${table}`, privilege])
+    if (rows[0].allowed) rights.push(privilege)
+  }
+  return rights
+}
+
 const present = async (client, table) =>
   (await client.query(`SELECT to_regclass($1) IS NOT NULL AS found`, [`public.${table}`])).rows[0].found
 
@@ -126,9 +143,9 @@ async function twoStepBackup(url) {
     const applied = run(second, url, extra)
     assert.equal(applied.status, 0, `${applied.stdout}\n${applied.stderr}`)
     assert.match(applied.stdout, /Backup conferido/)
-    assert.match(applied.stdout, /16 migrações aplicadas/)
+    assert.match(applied.stdout, /17 migrações aplicadas/)
     assert.equal(await present(client, 'driver_occurrence_types'), true)
-    console.log('✔ com arquivo e dados iguais, a segunda etapa aplica as 16 migrações')
+    console.log('✔ com arquivo e dados iguais, a segunda etapa aplica as 17 migrações')
   } finally {
     await client.end().catch(() => undefined)
     rmSync(directory, { recursive: true, force: true })
@@ -150,6 +167,7 @@ async function main() {
     assert.match(check.stdout, /PENDENTE {2}002_password_recovery/)
     assert.match(check.stdout, /PENDENTE {2}016_driver_portal/)
     assert.match(check.stdout, /PENDENTE {2}017_driver_portal_settings/)
+    assert.match(check.stdout, /PENDENTE {2}018_public_api_privileges/)
     assert.match(check.stdout, /Nada foi alterado/)
     assert.equal((await client.query(`SELECT to_regclass('public.auth_user_access') AS t`)).rows[0].t, null, 'conferir não altera')
     console.log('✔ sem opções, só confere e não altera nada')
@@ -169,9 +187,14 @@ async function main() {
     assert.match(remote.stderr, /Recusado/)
     console.log('✔ em teste, banco remoto é recusado')
 
+    // Antes da 018, o ensaio reproduz o banco real: as tabelas da versão anterior abertas a anon.
+    assert.ok((await tableRights(client, 'anon', 'materials')).includes('TRUNCATE'), 'ensaio: anon começa com TRUNCATE')
+
     const applied = run(apply, url)
     assert.equal(applied.status, 0, `${applied.stdout}\n${applied.stderr}`)
-    assert.match(applied.stdout, /16 migrações aplicadas/)
+    assert.match(applied.stdout, /17 migrações aplicadas/)
+    assert.match(applied.stdout, /aplicada {2}018_public_api_privileges/)
+    assert.match(applied.stdout, /Objetos de public acessíveis à API pública: nenhum/)
     assert.match(applied.stdout, /Tabelas novas acessíveis à API pública: nenhuma/)
     assert.match(applied.stdout, /Funções novas executáveis pela API pública: nenhuma/)
     assert.ok(!`${applied.stdout}${applied.stderr}`.includes(secret), 'a senha não pode aparecer')
@@ -179,7 +202,7 @@ async function main() {
     assert.equal(account.rows[0].n, 1)
     const access = await client.query(`SELECT profile, slm_member FROM public.auth_user_access`)
     assert.deepEqual(access.rows, [{ profile: 'administrator', slm_member: false }])
-    console.log('✔ aplica as 16 migrações e a conferência final passa, com os privilégios do Supabase')
+    console.log('✔ aplica as 17 migrações e a conferência final passa, com os privilégios do Supabase')
 
     assert.match(applied.stdout, /Sequências novas acessíveis à API pública: nenhuma/)
     for (const sequence of newSequences) {
@@ -203,8 +226,70 @@ async function main() {
       )
       assert.equal(open.rows.length, 0, `PUBLIC alcança ${sequence}`)
     }
-    assert.match(applied.stdout, /AVISO {5}Sequência anterior às migrações, sem alteração: service_requests_protocolo_seq \(anon, authenticated, service_role\)/)
-    console.log('✔ as 5 sequências novas ficam fechadas a anon, authenticated, service_role e PUBLIC; as 2 antigas viram aviso')
+    assert.doesNotMatch(applied.stdout, /AVISO {5}Sequência anterior/)
+    console.log('✔ as 5 sequências novas ficam fechadas a anon, authenticated, service_role e PUBLIC')
+
+    // P-02: depois da 018, nenhum papel da API pública alcança as tabelas e sequências antigas.
+    for (const role of ['anon', 'authenticated', 'service_role']) {
+      for (const table of legacyTables) {
+        assert.deepEqual(await tableRights(client, role, table), [], `${role} ainda alcança ${table}`)
+      }
+      for (const sequence of [...legacySequences, ...newSequences]) {
+        const rights = await client.query(
+          `SELECT has_sequence_privilege($1, $2, 'USAGE') OR has_sequence_privilege($1, $2, 'SELECT')
+               OR has_sequence_privilege($1, $2, 'UPDATE') AS allowed`,
+          [role, `public.${sequence}`],
+        )
+        assert.equal(rights.rows[0].allowed, false, `${role} alcança ${sequence}`)
+      }
+      const functions = await client.query(
+        `SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'public' AND has_function_privilege($1, p.oid, 'EXECUTE')`,
+        [role],
+      )
+      assert.deepEqual(functions.rows, [], `${role} executa funções de public`)
+    }
+    // Teste negativo direto, como cada papel: ler, gravar, esvaziar e numerar são recusados.
+    // row_security = on, como na API do Supabase: com off, o banco recusa antes por causa da RLS.
+    await client.query('SET row_security = on')
+    for (const role of ['anon', 'authenticated', 'service_role']) {
+      await client.query(`SET ROLE ${role}`)
+      for (const table of legacyTables) {
+        await assert.rejects(client.query(`SELECT 1 FROM public.${table} LIMIT 1`), /permission denied/, `${role} lê ${table}`)
+        await assert.rejects(client.query(`TRUNCATE public.${table} CASCADE`), /permission denied/, `${role} esvazia ${table}`)
+      }
+      await assert.rejects(client.query(`INSERT INTO public.setores (nome) VALUES ('Invasor')`), /permission denied/)
+      await assert.rejects(client.query(`DELETE FROM public.auth_users`), /permission denied/)
+      for (const sequence of legacySequences) {
+        await assert.rejects(client.query(`SELECT nextval('public.${sequence}')`), /permission denied/)
+      }
+      await client.query('RESET ROLE')
+    }
+    const pinned = await client.query(
+      `SELECT proname, proconfig FROM pg_proc WHERE proname IN ('apply_stock_movement', 'set_updated_at') ORDER BY 1`,
+    )
+    for (const row of pinned.rows) assert.deepEqual(row.proconfig, ['search_path=pg_catalog, public'], row.proname)
+    // O gatilho antigo continua funcionando com o search_path fixo, e a API (dona) segue lendo.
+    await client.query(`INSERT INTO public.setores (nome) VALUES ('Setor da 018')`)
+    assert.equal((await client.query(`SELECT count(*)::int AS n FROM public.setores WHERE nome = 'Setor da 018'`)).rows[0].n, 1)
+    await client.query(`DELETE FROM public.setores WHERE nome = 'Setor da 018'`)
+    console.log('✔ 018: anon, authenticated e service_role não leem, gravam, esvaziam nem numeram nada em public')
+
+    // Reversão devolve exatamente o estado anterior, e reaplicar volta a fechar.
+    const schemaFile = (name) => readFileSync(resolve(projectRoot, 'backend/database/schema', name), 'utf8')
+    await client.query(schemaFile('018_public_api_privileges.rollback.sql'))
+    assert.ok((await tableRights(client, 'anon', 'materials')).includes('TRUNCATE'), 'reversão devolve o privilégio anterior')
+    assert.deepEqual(await tableRights(client, 'anon', 'demands'), [], 'reversão não abre tabelas novas')
+    const reverted = run([], url)
+    assert.equal(reverted.status, 0, reverted.stderr)
+    assert.match(reverted.stdout, /presente {2}017_driver_portal_settings/)
+    assert.match(reverted.stdout, /PENDENTE {2}018_public_api_privileges/)
+    const reapplied = run(apply, url)
+    assert.equal(reapplied.status, 0, `${reapplied.stdout}\n${reapplied.stderr}`)
+    assert.match(reapplied.stdout, /1 migrações aplicadas/)
+    await client.query(schemaFile('018_public_api_privileges.sql'))
+    assert.deepEqual(await tableRights(client, 'anon', 'materials'), [], 'aplicar de novo não muda nada')
+    console.log('✔ 018: reversão restaura o estado anterior, a conferência a vê pendente, e reaplicar é idempotente')
 
     const again = run(apply, url)
     assert.equal(again.status, 0, again.stderr)
@@ -235,15 +320,28 @@ async function main() {
 
     await twoStepBackup(url)
 
-    // A conferência precisa reprovar uma sequência nova aberta, para cada papel.
+    // Algo que reabra uma sequência durante a 018 precisa ser detectado, para cada papel.
     for (const role of ['anon', 'authenticated', 'service_role', 'PUBLIC']) {
-      client = await prepare(url, onCreatingTable('driver_occurrence_types', `GRANT USAGE ON SEQUENCE public.demand_history_id_seq TO ${role};`))
+      client = await prepare(url, `
+        CREATE FUNCTION public.test_on_alter() RETURNS event_trigger LANGUAGE plpgsql AS $test$
+        BEGIN
+          IF to_regclass('public.demand_history_id_seq') IS NOT NULL THEN
+            GRANT USAGE ON SEQUENCE public.demand_history_id_seq TO ${role};
+          END IF;
+        END
+        $test$;
+        CREATE EVENT TRIGGER test_on_alter ON ddl_command_end WHEN TAG IN ('ALTER FUNCTION')
+          EXECUTE FUNCTION public.test_on_alter();
+      `)
       const leaked = run(apply, url)
-      assert.equal(leaked.status, 3, `${role}: ${leaked.stdout}\n${leaked.stderr}`)
-      assert.match(leaked.stderr, new RegExp(`Sequências novas acessíveis à API pública: demand_history_id_seq \\([^)]*${role}`))
+      assert.equal(leaked.status, 2, `${role}: ${leaked.stdout}\n${leaked.stderr}`)
+      assert.match(leaked.stderr, /ERRO {6}018_public_api_privileges.*ainda há objetos abertos à API pública/)
+      const check = run([], url)
+      assert.match(check.stdout, /PENDENTE {2}018_public_api_privileges/, role)
+      await client.query('DROP EVENT TRIGGER test_on_alter')
       await client.end()
     }
-    console.log('✔ a conferência final reprova sequência nova aberta a anon, authenticated, service_role ou PUBLIC')
+    console.log('✔ sequência reaberta a anon, authenticated, service_role ou PUBLIC deixa a 018 pendente e sai com 2')
 
     // Queda de conexão no meio da 007: o próprio banco encerra a sessão que aplica.
     client = await prepare(url, onCreatingTable('system_settings', 'PERFORM pg_terminate_backend(pg_backend_pid());'))
@@ -260,8 +358,44 @@ async function main() {
     assert.equal(resumed.status, 0, `${resumed.stdout}\n${resumed.stderr}`)
     assert.match(resumed.stdout, /presente {2}006_integrations/)
     assert.match(resumed.stdout, /aplicada {2}007_operations_center/)
-    assert.match(resumed.stdout, /11 migrações aplicadas/)
+    assert.match(resumed.stdout, /12 migrações aplicadas/)
     console.log('✔ rodar de novo retoma de onde parou, sem repetir as aplicadas')
+    await client.end()
+
+    // Reversões da 002 e da 004, criadas em 06/11/2026: recusam quando perderiam dados.
+    client = await prepare(url)
+    const sql = (name) => readFileSync(resolve(projectRoot, 'backend/database/schema', name), 'utf8')
+    for (const name of ['002_password_recovery.sql', '003_user_access.sql', '004_flight_passengers.sql']) await client.query(sql(name))
+    const adminId = (await client.query(`SELECT id FROM public.auth_users LIMIT 1`)).rows[0].id
+    await client.query(
+      `INSERT INTO public.password_recovery_codes (user_id, code_hash, expires_at) VALUES ($1, $2, now() + interval '10 minutes')`,
+      [adminId, 'a'.repeat(64)],
+    )
+    await assert.rejects(client.query(sql('002_password_recovery.rollback.sql')), /recuperação de senha em andamento/)
+    await client.query('ROLLBACK') // o script recusado deixa a própria transação aberta e abortada
+    assert.equal(await present(client, 'password_recovery_codes'), true)
+    await client.query(`UPDATE public.password_recovery_codes SET consumed_at = now()`)
+    const request = await client.query(
+      `INSERT INTO public.service_requests (tipo, solicitante_id, titulo) VALUES ('passagem', $1, 'Viagem fictícia') RETURNING id`,
+      [adminId],
+    )
+    await client.query(`INSERT INTO public.flight_request_passengers (request_id, full_name, cpf) VALUES ($1, 'Pessoa Fictícia', '12345678909')`, [request.rows[0].id])
+    await assert.rejects(client.query(sql('004_flight_passengers.rollback.sql')), /Já há passageiros/)
+    await client.query('ROLLBACK') // o script recusado deixa a própria transação aberta e abortada
+    assert.equal(await present(client, 'flight_request_passengers'), true)
+    await client.query(`DELETE FROM public.flight_request_passengers`)
+    await client.query(`DELETE FROM public.service_requests`)
+    await client.query(sql('005_operational_modules.sql'))
+    await assert.rejects(client.query(sql('004_flight_passengers.rollback.sql')), /Desfaça a 005 antes/)
+    await client.query('ROLLBACK') // o script recusado deixa a própria transação aberta e abortada
+    await client.query(sql('005_operational_modules.rollback.sql'))
+    await client.query(sql('004_flight_passengers.rollback.sql'))
+    assert.equal(await present(client, 'flight_request_passengers'), false)
+    await client.query(sql('002_password_recovery.rollback.sql'))
+    assert.equal(await present(client, 'password_recovery_codes'), false)
+    await client.query(sql('004_flight_passengers.sql'))
+    await client.query(sql('002_password_recovery.sql'))
+    console.log('✔ reversões da 002 e da 004 recusam com dados em uso e desfazem por completo sem eles')
     await client.end()
 
     // A última migração deixa a conferência sem uma tabela que ela consulta.

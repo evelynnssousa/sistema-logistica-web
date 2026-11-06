@@ -54,6 +54,8 @@ const migrations = [
   { file: '015_organizational_structure', marker: 'user_directorate_links' },
   { file: '016_driver_portal', marker: 'fleet_drivers' },
   { file: '017_driver_portal_settings', marker: 'driver_occurrence_types' },
+  // Não cria tabela: vale como aplicada quando a 017 existe e nada de public está aberto à API pública.
+  { file: '018_public_api_privileges', marker: 'driver_occurrence_types', closesPublicApi: true },
 ]
 
 function readDatabaseUrl() {
@@ -110,6 +112,64 @@ async function sequenceAccess(client) {
 
 const exists = async (client, table) =>
   (await client.query(`SELECT to_regclass($1) IS NOT NULL AS present`, [`public.${table}`])).rows[0].present
+
+/**
+ * Tudo em public que anon, authenticated, service_role ou PUBLIC alcançam: tabelas, sequências e
+ * funções. A 018 fecha tudo; depois dela, a lista precisa ficar vazia.
+ */
+async function publicApiExposure(client) {
+  const rows = (await client.query(
+    `SELECT DISTINCT 'tabela ' || c.relname || ' (' || r.rolname || ')' AS item
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       JOIN pg_roles r ON r.rolname IN ('anon', 'authenticated', 'service_role')
+      WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm')
+        AND (has_table_privilege(r.oid, c.oid, 'SELECT') OR has_table_privilege(r.oid, c.oid, 'INSERT')
+          OR has_table_privilege(r.oid, c.oid, 'UPDATE') OR has_table_privilege(r.oid, c.oid, 'DELETE')
+          OR has_table_privilege(r.oid, c.oid, 'TRUNCATE') OR has_table_privilege(r.oid, c.oid, 'REFERENCES')
+          OR has_table_privilege(r.oid, c.oid, 'TRIGGER'))
+     UNION
+     SELECT DISTINCT 'tabela ' || c.relname || ' (PUBLIC)'
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       CROSS JOIN LATERAL aclexplode(c.relacl) AS privilege
+      WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'S') AND privilege.grantee = 0
+     UNION
+     SELECT DISTINCT 'função ' || p.proname || ' (' || r.rolname || ')'
+       FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+       JOIN pg_roles r ON r.rolname IN ('anon', 'authenticated', 'service_role')
+      WHERE n.nspname = 'public' AND has_function_privilege(r.oid, p.oid, 'EXECUTE')
+     UNION
+     SELECT DISTINCT 'função ' || p.proname || ' (PUBLIC)'
+       FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+       CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) AS privilege
+      WHERE n.nspname = 'public' AND privilege.grantee = 0
+     ORDER BY 1`,
+  )).rows.map((row) => row.item)
+  for (const [sequence, roles] of await sequenceAccess(client)) {
+    for (const role of roles) rows.push(`sequência ${sequence} (${role})`)
+  }
+  return [...new Set(rows)].sort()
+}
+
+/** Funções da versão anterior que a 018 passa a executar com search_path fixo. */
+async function legacyFunctionsPinned(client) {
+  const { rows } = await client.query(
+    `SELECT count(*)::int AS pinned FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.proname IN ('apply_stock_movement', 'set_updated_at')
+        AND 'search_path=pg_catalog, public' = ANY (coalesce(p.proconfig, ARRAY[]::text[]))`,
+  )
+  return rows[0].pinned === 2
+}
+
+/** Se a migração está aplicada: a tabela marcadora existe e, para a 018, nada está aberto. */
+async function isApplied(client, item) {
+  if (!(await exists(client, item.marker))) return false
+  if (!item.closesPublicApi) return true
+  return (await publicApiExposure(client)).length === 0 && (await legacyFunctionsPinned(client))
+}
 
 /** O que faria uma migração parar com erro, conferido antes de tocar em qualquer coisa. */
 async function blockers(client, pending) {
@@ -247,6 +307,12 @@ async function verify(client, applied, before) {
   for (const item of applied) {
     if (!(await exists(client, item.marker))) problems.push(`${item.file}: a tabela ${item.marker} não existe.`)
   }
+
+  if (applied.some((item) => item.closesPublicApi) || (await exists(client, 'driver_occurrence_types'))) {
+    const exposed = await publicApiExposure(client)
+    if (exposed.length > 0) problems.push(`Objetos de public acessíveis à API pública: ${exposed.join('; ')}.`)
+    else console.log('Objetos de public acessíveis à API pública: nenhum')
+  }
   return problems
 }
 
@@ -338,7 +404,7 @@ async function main() {
   if (!apply) await client.query('BEGIN TRANSACTION READ ONLY')
   try {
     const states = []
-    for (const item of migrations) states.push({ ...item, present: await exists(client, item.marker) })
+    for (const item of migrations) states.push({ ...item, present: await isApplied(client, item) })
     const firstPending = states.findIndex((item) => !item.present)
     const pending = states.filter((item) => !item.present)
     if (firstPending >= 0 && states.slice(firstPending).some((item) => item.present)) {
@@ -392,7 +458,9 @@ async function main() {
     for (const item of pending) {
       try {
         await client.query(readFileSync(resolve(projectRoot, 'backend/database/schema', `${item.file}.sql`), 'utf8'))
-        if (!(await exists(client, item.marker))) throw new Error('a tabela esperada não apareceu')
+        if (!(await isApplied(client, item))) {
+          throw new Error(item.closesPublicApi ? 'ainda há objetos abertos à API pública' : 'a tabela esperada não apareceu')
+        }
       } catch (error) {
         await client.query('ROLLBACK').catch(() => undefined)
         console.error(`ERRO      ${item.file}: ${error.code ?? ''} ${String(error.message).slice(0, 200)}`)
