@@ -26,6 +26,7 @@
     "test:backup": "node scripts/test-backup-restore.cjs && node scripts/test-attachments-backup.cjs",
     "test:migrations": "node scripts/test-apply-migrations.cjs",
     "migrations:check": "node scripts/apply-migrations.cjs",
+    "db:inspect": "node scripts/inspect-database.cjs",
     "config:check": "tsx backend/src/cli/check-environment.ts",
     "audit:all": "npm audit && npm --prefix frontend audit",
     "verify": "npm run typecheck:backend && npm run typecheck:frontend && npm run lint:frontend && npm run test:backend && npm run build:backend && npm run build:frontend",
