@@ -1,0 +1,182 @@
+# Plano para iniciar a homologação
+
+Preparado em 06/11/2026. Complementa `docs/auditoria/PRE_MIGRACAO_2026-11-06.md`. Instruções para a TI em `docs/INSTRUCOES_TI_HOMOLOGACAO.md`. Roteiro de testes em `docs/ROTEIRO_HOMOLOGACAO_SLM.md` (51 casos, preservado sem alteração).
+
+**Nada foi aplicado no banco real, nenhuma conta foi alterada ou excluída e nada foi publicado.**
+
+## Recomendação
+
+**Homologar em um projeto Supabase separado, vazio, e deixar o banco real como está até a entrada em produção.**
+
+| | Projeto separado (recomendado) | Migrar o banco real agora |
+|---|---|---|
+| Banco que poderá ser o de produção | Intocado | Recebe as 17 migrações e todos os dados de teste |
+| Dados pessoais na homologação | Só das contas criadas para homologar | As 7 contas atuais, inclusive as fictícias |
+| Depois da homologação | O projeto de homologação pode ser mantido para testes futuros ou apagado | Limpar os dados de teste exige exclusões, com sua autorização |
+| Backup externo | Não é pré-requisito para começar (o banco real não muda) | **Obrigatório antes** de aplicar |
+| Reversão | Desnecessária: recria-se o projeto | Reversões ou restauração do backup |
+| O que muda no banco real | Nada, até a produção. Lá, aplicam-se as mesmas 17 migrações, já homologadas | Já fica migrado |
+| Tempo para começar | Criar o projeto (minutos) e preparar o acesso | Cópia externa + aplicação + acesso |
+
+O procedimento do projeto separado foi ensaiado nesta etapa num PostgreSQL 17 descartável que reproduz um projeto Supabase novo (`postgres` sem superusuário): o esquema base (001) e as 17 migrações aplicaram com saída 0 e conferência final sem problemas (64 tabelas, todas com RLS, nada aberto à API pública).
+
+**Em qualquer das duas opções, o gargalo é o acesso dos operadores** (seção D): sem um ambiente da TI, eles não têm como abrir o sistema.
+
+## A. Backup já realizado
+
+| Item | Situação |
+|---|---|
+| Arquivo | `backups/slm-completo-2026-11-06T13-04-28-246Z.dump` e `.sha256` |
+| Integridade | `sha256sum -c` respondeu **OK** em 06/11; restauração testada com contagens idênticas |
+| Proteção | Permissão `600` (só o dono), pasta `700`, ignorada pelo Git: nunca vai ao GitHub |
+| Envio | Não foi enviado a nenhum serviço |
+
+**Você, quando a TI indicar a pasta institucional** (comandos no terminal do Codespace, na pasta do projeto):
+
+```bash
+cd backups
+gpg --symmetric --cipher-algo AES256 slm-completo-2026-11-06T13-04-28-246Z.dump
+#   o gpg pede uma senha: forte, entregue à TI para o cofre, nunca junto da cópia
+sha256sum slm-completo-2026-11-06T13-04-28-246Z.dump.gpg > slm-completo-2026-11-06T13-04-28-246Z.dump.gpg.sha256
+```
+
+Baixe os dois arquivos `.gpg` e `.gpg.sha256` pelo explorador do VS Code (botão direito → Download), grave-os na pasta institucional e peça à TI para conferir com `sha256sum -c`. Os arquivos originais continuam no Codespace; nada é apagado.
+
+Se você escolher migrar o banco real (em vez do projeto separado), a primeira etapa do script gera **outra** cópia, com o registro exigido pela segunda etapa; essa nova cópia também precisa ir para a pasta institucional antes de aplicar.
+
+## B. Contas no banco real
+
+Levantamento somente leitura de 06/11. Sem nomes e e-mails; a referência são os 8 primeiros caracteres do identificador interno. Para ver quem é cada pessoa, use a tela **Cadastros pendentes**, com a sua conta de administradora.
+
+| Ref. | Situação | Domínio | Setor de lotação | Cadastro | Observação | Decisão necessária |
+|---|---|---|---|---|---|---|
+| `cadc056e` | Ativa, administradora | `jucesp.sp.gov.br` | CPC | 20/10/2026 | Conta inicial, 134 logins, último em 05/11 | Ver seção C |
+| `c0762467` | Pendente | `jucesp.sp.gov.br` | Coordenadoria de Patrimônios e Contratos | 04/11/2026 13:21 | — | Aprovar? Com qual perfil? É um dos 4 operadores da SLM? |
+| `5255e49a` | Pendente | **`jucespmail.sp.gov.br`** | Coordenadoria de Patrimônios e Contratos | 05/11/2026 11:29 | Único com esse domínio, um minuto antes de outros dois cadastros | Confirmar se o domínio é institucional e se não é a mesma pessoa de outro cadastro |
+| `fdd991a2` | Pendente | `jucesp.sp.gov.br` | Coordenadoria de Patrimônios e Contratos | 05/11/2026 11:30 | — | Aprovar? Com qual perfil? |
+| `9c837395` | Pendente | `jucesp.sp.gov.br` | Coordenadoria de Patrimônios e Contratos | 05/11/2026 11:30 | — | Aprovar? Com qual perfil? |
+| `27f07d91` | Inativa, operador antigo | `example.gov.br` (fictício) | RH | 03/11/2026 | Criada por engano no incidente de 03/11; nunca entrou; tem 8 permissões antigas de escrita | Manter inativa ou excluir (exclusão só com sua autorização) |
+| `a544cbb3` | Rejeitada | `example.gov.br` (fictício) | CPC | 03/11/2026 | Criada por engano no incidente de 03/11 | Manter rejeitada ou excluir |
+
+Efeito das migrações sobre elas, se aplicadas no banco real (ensaiado sobre a cópia): a administradora vira **Administrador, fora da equipe SLM**; a conta fictícia inativa vira **Solicitante sem permissões**, sem perder o histórico; pendentes e rejeitada não mudam.
+
+**Com o projeto separado**, nenhuma dessas contas é copiada: cada operador cria a conta de novo no ambiente de homologação, e as decisões acima ficam para a produção.
+
+## C. Administradora atual e habilitação dos operadores
+
+**Situação:** depois das migrações, a administradora continua administrando usuários, cadastros, configurações e auditoria, mas **não** agenda nem gerencia o Almoxarifado, porque não estará na equipe SLM (regra P-08). Ela também não pode alterar o próprio acesso. Isso não impede a homologação: quem agenda e opera são os operadores.
+
+**Procedimento, depois das migrações (vale para o projeto separado e para o banco real):**
+
+1. **Administradora:**
+   - **No projeto separado**, ela é criada com o comando da seção E, passo 3.
+   - **No banco real**, ela entra com a conta atual.
+2. **Cada operador** abre o endereço de homologação, clica em **Criar conta** e se cadastra com o e-mail institucional. No banco real, os cadastros que já existem podem ser usados, se forem dos operadores.
+3. **Administradora → Administração → Cadastros pendentes →** em cada operador:
+   - **Perfil ao aprovar:** `Operador SLM`. A equipe SLM fica marcada automaticamente, porque o perfil exige.
+   - **Permissões adicionais:** marque o que esse operador fará na homologação:
+
+| Permissão (como aparece na tela) | Para quê | Sugestão para os testes |
+|---|---|---|
+| Realizar agendamentos | Agendar e reagendar Manutenção e Frota, atribuir motorista | Pelo menos 2 operadores |
+| Almoxarifado → Administrar o módulo | Materiais, estoque, pedidos, previsão e entrega | Pelo menos 1 |
+| Acessar a Central de Operações / Atribuir responsáveis, prioridades e prazos pela Central | Central SLM | Pelo menos 1 |
+| Consultar o CPF completo dos passageiros (auditado) | Passagens | 1, só se for necessário testar |
+| Abrir solicitações em nome de outros setores | Abertura para outro setor | 1 |
+
+   - Deixe **pelo menos um operador sem "Realizar agendamentos"**, para os testes negativos C6 e A6 do roteiro.
+   - Clique em **Aprovar**.
+4. **Conferência:**
+   - cada operador abre **Minha conta** e confere as permissões;
+   - a administradora preenche a tabela "Concessões por operador" no início do roteiro;
+   - em **Usuários**, o histórico de cada conta mostra quem aprovou e quando.
+5. **Contas extras para o roteiro:**
+   - uma de **Solicitante** de outro setor, nomeada "Homologação – Solicitante";
+   - uma de **Motorista**, para o caso D4.
+
+   Na aprovação, use os perfis `Solicitante` e `Motorista`.
+6. **Se for preciso uma administradora na equipe SLM:** aprove primeiro um segundo administrador. Ele marca a administradora na equipe SLM na tela do usuário (**Perfil e equipe SLM**), e vice-versa. Isso não é necessário para a homologação.
+
+**Recuperação de senha:** sem o Resend configurado, "Esqueci a senha" não envia e-mail. Oriente os operadores a guardar a senha. Para a administradora existe o comando `backend/src/cli/reset-initial-admin-password.ts`.
+
+## D. Acesso dos quatro operadores
+
+| Opção | Situação | Depende de |
+|---|---|---|
+| **1. Servidor interno de homologação, com HTTPS na rede da JUCESP (recomendado)** | Instruções completas em `INSTRUCOES_TI_HOMOLOGACAO.md`, item 2 | TI |
+| 2. Hospedagem em nuvem contratada, com acesso restrito | Mesmos passos | TI e contratação |
+| 3. Homologação assistida na sua sessão | Paliativo: cada operador usa a própria conta, na sua presença, no seu computador | Você |
+| ~~Codespace público~~ | **Descartado:** exporia o ambiente de desenvolvimento na internet | — |
+
+## E. Comandos exatos do projeto separado
+
+**Você ou a TI cria o projeto** `slm-homologacao` no Supabase (região São Paulo) e copia o endereço do **session pooler** (porta 5432, sem `sslmode`).
+
+**Você, no Codespace**, uma única vez, grava o endereço em `backend/.env.homologacao`. O Git ignora esse arquivo; ele **não** substitui o `backend/.env`.
+
+```bash
+printf 'DATABASE_URL=%s\n' '<cole o endereço do session pooler>' > backend/.env.homologacao && chmod 600 backend/.env.homologacao
+```
+
+Em cada comando abaixo, `H` aponta só aquele comando para o banco de homologação. O banco real continua no `backend/.env` e não é tocado:
+
+```bash
+H() { DATABASE_URL="$(grep '^DATABASE_URL=' backend/.env.homologacao | cut -d= -f2-)" "$@"; }
+```
+
+**1. Esquema base no projeto vazio** (cria as 11 tabelas da versão anterior, sem dados):
+
+```bash
+H sh -c 'docker run --rm -i --network host -e DATABASE_URL -e PGSSLMODE=verify-full -e PGSSLROOTCERT=/c/prod-ca-2021.crt \
+  -v "$PWD/backend/certificates:/c:ro" -v "$PWD/backend/database/schema:/s:ro" postgres:17 \
+  sh -c '"'"'psql "$DATABASE_URL" -q -v ON_ERROR_STOP=1 -1 -f /s/001_public_schema_snapshot.sql'"'"''
+```
+
+O comando roda em transação única: se o projeto já tiver as tabelas (ou se apontar para o banco errado, que já as tem), ele falha logo e não altera nada. Validado em banco descartável em 06/11.
+
+**2. As 17 migrações**, nas duas etapas, porque o banco é remoto:
+
+```bash
+H node scripts/apply-migrations.cjs --aplicar --confirmar=APLICAR-MIGRACOES
+#   saída 5: backup do projeto de homologação (ainda vazio) gerado e testado; anote o arquivo
+H node scripts/apply-migrations.cjs --aplicar --confirmar=APLICAR-MIGRACOES --backup=backups/<arquivo>.dump
+#   saída 0: "Concluído: 17 migrações aplicadas"
+H npm run migrations:check                  # "Nenhuma migração pendente."
+H npm run db:inspect                        # 64 tabelas com RLS; nenhum privilégio dos papéis da API
+```
+
+O script registra a identidade do banco no backup. Uma cópia do projeto de homologação nunca é aceita para o banco real, e vice-versa.
+
+**3. Administradora inicial do projeto de homologação** (pede nome, e-mail, setor e senha, sem exibir a senha):
+
+```bash
+H npx tsx backend/src/cli/create-initial-admin.ts
+```
+
+**4. Uso até a TI entregar o servidor** (opção 3 da seção D), com a API e a tela na sua sessão:
+
+```bash
+H npm run dev:backend          # terminal 1. A mensagem "Banco de dados: REMOTO" é esperada
+npm run dev:frontend           # terminal 2
+```
+
+**Atenção:** sem o `H` na frente, `npm run dev:backend` usa o `backend/.env`, que é o **banco real**.
+
+## F. Quem faz o quê
+
+| # | Ação | Quem | Bloqueia o início? |
+|---|---|---|---|
+| 1 | Decidir: projeto separado (recomendado) ou banco real | **Você** | Sim |
+| 2 | Encaminhar `INSTRUCOES_TI_HOMOLOGACAO.md` à TI | **Você** | Sim |
+| 3 | Pasta institucional restrita para o backup, e senha no cofre | **TI** | Só se migrar o banco real |
+| 4 | Cifrar e gravar a cópia na pasta (seção A) | **Você** | Só se migrar o banco real |
+| 5 | Criar o projeto Supabase de homologação | **TI** ou **você** | Sim (opção recomendada) |
+| 6 | Aplicar 001 e as 17 migrações no projeto de homologação (seção E) | **Você**, ou eu, se liberar a ferramenta | Sim |
+| 7 | Servidor de homologação com HTTPS na rede interna | **TI** | Sim, para os operadores acessarem sozinhos |
+| 8 | Gerar `PASSENGER_DATA_KEY` e definir `ATTACHMENTS_DIR` no servidor de homologação | **TI** | Não (Passagens e anexos ficam pendentes no roteiro) |
+| 9 | Criar a administradora e aprovar os 4 operadores (seção C) | **Você** | Sim |
+| 10 | Decidir sobre os 4 pendentes e as 2 fictícias do banco real | **Você** | Não, se usar o projeto separado |
+| 11 | Executar o roteiro de 51 casos | **4 operadores** | — |
+| 12 | Avaliar os resultados e corrigir os erros apontados | Desenvolvimento | — |
+
+**Caminho mais rápido:** 1 → 2 → 5 → 6 → 9, e a homologação começa assistida na sua sessão (opção 3) enquanto a TI prepara o servidor (7). Nada disso altera o banco real.
