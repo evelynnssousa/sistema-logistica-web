@@ -110,57 +110,43 @@ Efeito das migrações sobre elas, se aplicadas no banco real (ensaiado sobre a 
 
 ## E. Comandos exatos do projeto separado
 
-**Você ou a TI cria o projeto** `slm-homologacao` no Supabase (região São Paulo) e copia o endereço do **session pooler** (porta 5432, sem `sslmode`).
+*Atualizado em 06/11/2026 (Supercomando 11): o projeto é `jucesp-logistica-homologacao`, referência `rrqulhpnghoetgrdswqr`. Os comandos passam por `scripts/homologacao.cjs`, que substitui a função `H` da versão anterior desta seção. Relatório: `docs/auditoria/PREPARACAO_HOMOLOGACAO_2026-11-06.md`.*
 
-**Você, no Codespace**, uma única vez, grava o endereço em `backend/.env.homologacao`. O Git ignora esse arquivo; ele **não** substitui o `backend/.env`.
+**Credencial:** segredo do Codespaces `SLM_HOMOLOG_DATABASE_URL`, com o endereço do **Session pooler** (porta 5432, usuário `postgres.rrqulhpnghoetgrdswqr`). Passo a passo no relatório. Nunca colar a senha na conversa nem em arquivo versionado.
 
-```bash
-printf 'DATABASE_URL=%s\n' '<cole o endereço do session pooler>' > backend/.env.homologacao && chmod 600 backend/.env.homologacao
-```
-
-Em cada comando abaixo, `H` aponta só aquele comando para o banco de homologação. O banco real continua no `backend/.env` e não é tocado:
+O script só executa quando o destino é exatamente esse projeto e não é o do `backend/.env`. Ele nunca mostra a senha nem o endereço.
 
 ```bash
-H() { DATABASE_URL="$(grep '^DATABASE_URL=' backend/.env.homologacao | cut -d= -f2-)" "$@"; }
+npm run homolog -- verificar
+#   só leitura: projeto, TLS, papel, versão, extensões e situação ("VAZIO")
+
+npm run homolog -- estrutura --confirmar=HOMOLOGACAO-rrqulhpnghoetgrdswqr
+#   grava: estrutura inicial (001), em transação única, só com public vazio
+
+npm run homolog -- -- node scripts/apply-migrations.cjs --aplicar --confirmar=APLICAR-MIGRACOES
+#   saída 5: backup do banco de homologação em backups/homologacao/, testado
+
+npm run homolog -- -- node scripts/apply-migrations.cjs --aplicar --confirmar=APLICAR-MIGRACOES --backup=backups/homologacao/<arquivo>.dump
+#   saída 0: 17 migrações
+
+npm run homolog -- -- npm run migrations:check
+#   "Nenhuma migração pendente."
+
+npm run homolog -- -- npm run db:inspect
+#   conferência posterior, só leitura
+
+npm run homolog -- -- npx tsx backend/src/cli/create-initial-admin.ts
+#   administradora da homologação
 ```
 
-**1. Esquema base no projeto vazio** (cria as 11 tabelas da versão anterior, sem dados):
+**Uso assistido** (opção 3 da seção D), em portas próprias. A API e a tela de desenvolvimento ligadas ao banco real (3000 e 5173) não mudam:
 
 ```bash
-H sh -c 'docker run --rm -i --network host -e DATABASE_URL -e PGSSLMODE=verify-full -e PGSSLROOTCERT=/c/prod-ca-2021.crt \
-  -v "$PWD/backend/certificates:/c:ro" -v "$PWD/backend/database/schema:/s:ro" postgres:17 \
-  sh -c '"'"'psql "$DATABASE_URL" -q -v ON_ERROR_STOP=1 -1 -f /s/001_public_schema_snapshot.sql'"'"''
+npm run homolog -- -- npm run dev:backend     # terminal 1: API da homologação na porta 3100
+npm run homolog -- -- npm run dev:frontend    # terminal 2: tela da homologação na porta 5174
 ```
 
-O comando roda em transação única: se o projeto já tiver as tabelas (ou se apontar para o banco errado, que já as tem), ele falha logo e não altera nada. Validado em banco descartável em 06/11.
-
-**2. As 17 migrações**, nas duas etapas, porque o banco é remoto:
-
-```bash
-H node scripts/apply-migrations.cjs --aplicar --confirmar=APLICAR-MIGRACOES
-#   saída 5: backup do projeto de homologação (ainda vazio) gerado e testado; anote o arquivo
-H node scripts/apply-migrations.cjs --aplicar --confirmar=APLICAR-MIGRACOES --backup=backups/<arquivo>.dump
-#   saída 0: "Concluído: 17 migrações aplicadas"
-H npm run migrations:check                  # "Nenhuma migração pendente."
-H npm run db:inspect                        # 64 tabelas com RLS; nenhum privilégio dos papéis da API
-```
-
-O script registra a identidade do banco no backup. Uma cópia do projeto de homologação nunca é aceita para o banco real, e vice-versa.
-
-**3. Administradora inicial do projeto de homologação** (pede nome, e-mail, setor e senha, sem exibir a senha):
-
-```bash
-H npx tsx backend/src/cli/create-initial-admin.ts
-```
-
-**4. Uso até a TI entregar o servidor** (opção 3 da seção D), com a API e a tela na sua sessão:
-
-```bash
-H npm run dev:backend          # terminal 1. A mensagem "Banco de dados: REMOTO" é esperada
-npm run dev:frontend           # terminal 2
-```
-
-**Atenção:** sem o `H` na frente, `npm run dev:backend` usa o `backend/.env`, que é o **banco real**.
+**Atenção:** sem `npm run homolog -- --` na frente, os comandos usam o `backend/.env`, que é o **banco real**.
 
 ## F. Quem faz o quê
 
