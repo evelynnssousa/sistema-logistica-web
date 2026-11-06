@@ -443,8 +443,13 @@ export const fetchDemandAttachmentLimits = (id: string) =>
     `/demands/${id}/attachment-limits`,
   )
 
-export const uploadDemandAttachment = (id: string, file: File, category: 'documento' | 'comprovante' = 'documento') =>
-  apiRequest<Envelope & { id: string }>(`/demands/${id}/attachments${queryString({ categoria: category })}`, {
+export const uploadDemandAttachment = (
+  id: string,
+  file: File,
+  category: 'documento' | 'comprovante' = 'documento',
+  subtaskId?: string,
+) =>
+  apiRequest<Envelope & { id: string }>(`/demands/${id}/attachments${queryString({ categoria: category, etapa: subtaskId || undefined })}`, {
     method: 'POST',
     body: file,
     headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) },

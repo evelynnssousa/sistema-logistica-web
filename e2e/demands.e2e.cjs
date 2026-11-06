@@ -212,6 +212,17 @@ async function scenarios({ browser, baseUrl, runId, password, screenshotDirector
     await lead.getByRole('button', { name: 'Criar etapa' }).click()
     await lead.waitForSelector('.demand-subtasks >> text=Coletar contratos')
 
+    // P-15: o anexo pode ser vinculado a uma etapa pela tela, e a lista mostra a etapa.
+    await lead.getByLabel('Etapa do anexo (opcional)').selectOption({ label: 'Coletar contratos' })
+    await lead.locator('#demand-attachments').locator('..').locator('input[type="file"]')
+      .setInputFiles({ name: 'contrato-etapa.pdf', mimeType: 'application/pdf', buffer: pdf })
+    await lead.waitForSelector('.demand-attachments li:has-text("contrato-etapa.pdf") >> text=Etapa: Coletar contratos')
+    const linked = (await api(lead, 'GET', `/demands/${demandId}`)).body.attachments
+      .find((item) => item.name === 'contrato-etapa.pdf')
+    const stepId = (await api(lead, 'GET', `/demands/${demandId}`)).body.subtasks
+      .find((item) => item.title === 'Coletar contratos').id
+    assert.equal(linked.subtaskId, stepId)
+
     await lead.getByRole('button', { name: 'Concluir' }).first().click()
     await lead.locator('.ui-modal').getByLabel('O que foi realizado').fill('Tudo entregue')
     await lead.locator('.ui-modal').getByRole('button', { name: 'Concluir' }).click()

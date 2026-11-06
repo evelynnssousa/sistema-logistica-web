@@ -575,6 +575,9 @@ function AttachmentsCard({ data, onReload }: { data: Detail; onReload: Reload })
   const [busy, setBusy] = useState(false)
   const [removing, setRemoving] = useState<string | null>(null)
   const [limits, setLimits] = useState<{ maxFileMb: number; storageConfigured: boolean } | null>(null)
+  // Etapa opcional do anexo. Vazio: o anexo fica só na demanda.
+  const [subtaskId, setSubtaskId] = useState('')
+  const subtaskTitle = (id: string | null) => (id ? data.subtasks.find((item) => item.id === id)?.title ?? null : null)
 
   useEffect(() => {
     let active = true
@@ -593,7 +596,7 @@ function AttachmentsCard({ data, onReload }: { data: Detail; onReload: Reload })
     setBusy(true)
     setError('')
     try {
-      for (const file of files) await uploadDemandAttachment(data.demand.id, file)
+      for (const file of files) await uploadDemandAttachment(data.demand.id, file, 'documento', subtaskId || undefined)
       await onReload()
     } catch (err) {
       setError(errorMessage(err, 'Não foi possível enviar o arquivo.'))
@@ -621,6 +624,7 @@ function AttachmentsCard({ data, onReload }: { data: Detail; onReload: Reload })
                 <strong>{item.name}</strong>
                 <small className="demand-muted">
                   {item.category === 'comprovante' ? 'Comprovante · ' : ''}
+                  {subtaskTitle(item.subtaskId) ? `Etapa: ${subtaskTitle(item.subtaskId)} · ` : ''}
                   {sizeLabel(item.sizeBytes)} · {item.uploadedBy} · {formatDateTime(item.uploadedAt)}
                 </small>
                 {item.removedAt && (
@@ -649,6 +653,17 @@ function AttachmentsCard({ data, onReload }: { data: Detail; onReload: Reload })
             </li>
           ))}
         </ul>
+      )}
+      {data.access.attach && data.subtasks.length > 0 && (
+        <label className="maintenance-form-field">
+          <span>Etapa do anexo (opcional)</span>
+          <select value={subtaskId} disabled={busy} onChange={(event) => setSubtaskId(event.target.value)}>
+            <option value="">Só a demanda</option>
+            {data.subtasks.map((item) => (
+              <option key={item.id} value={item.id}>{item.title}</option>
+            ))}
+          </select>
+        </label>
       )}
       {data.access.attach && (
         <label className="maintenance-form-field">

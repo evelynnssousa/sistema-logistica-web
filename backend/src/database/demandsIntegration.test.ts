@@ -897,6 +897,21 @@ test('anexos: validação, acesso, download e remoção lógica registrados', as
 
   const capacity = await get('/attachments/capacity', admin)
   assert.ok(capacity.body.files >= 1, 'o anexo entra na conta da capacidade')
+
+  // P-15: anexo vinculado a uma etapa, como a tela passa a enviar.
+  const step = await post(`/demands/${id}/subtasks`, leadA, { title: 'Etapa com anexo' })
+  assert.equal(step.status, 201, step.text)
+  const stepId = (await detail(id)).subtasks.find((item: { title: string }) => item.title === 'Etapa com anexo').id
+  const toStep = (target: string) =>
+    call(`/demands/${id}/attachments?etapa=${target}`, { method: 'POST', session: leadA, raw: pdf, fileName: 'etapa.pdf' })
+  assert.equal((await toStep(stepId)).status, 201)
+  const linked = (await detail(id)).attachments.find((item: { name: string }) => item.name === 'etapa.pdf')
+  assert.equal(linked.subtaskId, stepId)
+  assert.equal((await toStep('nao-e-uuid')).status, 400)
+  const other = await createDemand()
+  await post(`/demands/${other.id}/subtasks`, leadA, { title: 'Etapa de outra demanda' })
+  const foreignStep = (await detail(other.id)).subtasks[0].id
+  assert.equal((await toStep(foreignStep)).status, 404, 'etapa de outra demanda é recusada')
 })
 
 test('filtros combinados e ordenação', async () => {
