@@ -214,7 +214,7 @@ async function scenarios({ browser, baseUrl, runId, password, screenshotDirector
 
     // P-15: o anexo pode ser vinculado a uma etapa pela tela, e a lista mostra a etapa.
     await lead.getByLabel('Etapa do anexo (opcional)').selectOption({ label: 'Coletar contratos' })
-    await lead.locator('#demand-attachments').locator('..').locator('input[type="file"]')
+    await lead.locator('section[aria-labelledby="demand-attachments"] input[type="file"]')
       .setInputFiles({ name: 'contrato-etapa.pdf', mimeType: 'application/pdf', buffer: pdf })
     await lead.waitForSelector('.demand-attachments li:has-text("contrato-etapa.pdf") >> text=Etapa: Coletar contratos')
     const linked = (await api(lead, 'GET', `/demands/${demandId}`)).body.attachments
