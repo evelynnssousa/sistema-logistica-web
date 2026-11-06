@@ -16,6 +16,7 @@ import { formatReportDate, historyLine } from '../reports/requestReport.js'
 import { defaultForms, validateCustomValues } from '../requests/formRules.js'
 import type { ManagedFormContent } from '../requests/formRules.js'
 import { requireCsrf } from '../middleware/requireCsrf.js'
+import { requireAuditedPermission } from '../middleware/requireAuditedPermission.js'
 import { requirePermission } from '../middleware/requirePermission.js'
 import {
   asBody,
@@ -473,7 +474,7 @@ router.post(
 
 router.put(
   '/warehouse/requests/:requestId/delivery-forecast',
-  manage,
+  requireAuditedPermission(['warehouse:manage'], 'warehouse.delivery_forecast'),
   guarded(async (request, response) => {
     const id = idParam(request, 'requestId')
     const result = await warehouse.setDeliveryForecast(

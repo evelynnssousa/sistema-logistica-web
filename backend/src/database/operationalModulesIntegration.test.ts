@@ -185,6 +185,13 @@ before(async () => {
      VALUES ('Administradora', 'modulos-admin@example.gov.br', 'TI', $1, 'approved', 'admin', now())`,
     [await hashPassword(password)],
   )
+  // P-08: Almoxarifado e agendamento são atribuições da SLM. A administradora destes cenários
+  // integra a equipe; o administrador de fora dela tem testes próprios, que esperam recusa.
+  await pool.query(
+    `INSERT INTO public.auth_user_access (user_id, profile, slm_member)
+      SELECT id, 'administrator', true FROM public.auth_users WHERE email = 'modulos-admin@example.gov.br'
+      ON CONFLICT (user_id) DO UPDATE SET slm_member = true`,
+  )
 
   setDatabasePoolForTests(pool)
   server = app.listen(0, '127.0.0.1')
@@ -467,7 +474,7 @@ test('abrir em nome de outro setor exige equipe SLM e concessão, mesmo para adm
   assert.equal(detail.body.request.openedBy, 'Pessoa nome-com')
 })
 
-test('agendar: Solicitante nunca; Operador SLM com concessão; Administrador pelo perfil', async () => {
+test('agendar: Solicitante nunca; Operador SLM com concessão; Administrador só na equipe SLM', async () => {
   const requester = await createUser('ag-solicitante@example.gov.br')
   const operatorWithout = await staff('ag-sem@example.gov.br')
   const created = await post('/maintenance/requests', requester, maintenanceBody())
@@ -486,6 +493,25 @@ test('agendar: Solicitante nunca; Operador SLM com concessão; Administrador pel
     (await post(path, operatorRevoked, { ...body, comentario: 'Novo horário' })).status,
     403,
   )
+
+  // P-08: Administrador fora da equipe SLM não agenda, e a recusa não altera a solicitação.
+  const outsider = await createUser('ag-admin-externo@example.gov.br')
+  assert.equal((await setAccess(outsider.id, { role: 'administrator' })).status, 200)
+  const external = await signIn('ag-admin-externo@example.gov.br')
+  const before = await call(`/maintenance/requests/${created.body.id}`, { session: admin })
+  assert.equal((await post(path, external, { ...body, comentario: 'Tentativa externa' })).status, 403)
+  assert.equal((await post(path, external, { dataAgendada: '2027-04-01T13:00:00.000Z' })).status, 403)
+  const after = await call(`/maintenance/requests/${created.body.id}`, { session: admin })
+  assert.equal(JSON.stringify(after.body.request), JSON.stringify(before.body.request), 'nada muda')
+  // A tentativa recusada fica na auditoria: quem, qual operação, qual registro e quando.
+  const denied = await pool.query<{ operation: string; at: Date }>(
+    `SELECT details->>'operation' AS operation, occurred_at AS at FROM public.auth_audit_events
+      WHERE action = 'access.denied' AND result = 'denied' AND actor_user_id = $1 AND target_resource_id = $2`,
+    [external.id, created.body.id],
+  )
+  assert.equal(denied.rows.length, 2)
+  assert.equal(denied.rows[0].operation, 'maintenance.schedule')
+  assert.ok(denied.rows[0].at instanceof Date)
 
   const assignees = await call('/operations/assignees', { session: operatorWithout })
   assert.ok(assignees.body.assignees.some((item: { id: string }) => item.id === admin.id))

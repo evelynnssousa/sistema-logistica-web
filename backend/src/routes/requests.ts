@@ -39,6 +39,7 @@ import {
 import type { TripType } from '../requests/validation.js'
 import type { FormKey } from '../requests/settingsRules.js'
 import { requireCsrf } from '../middleware/requireCsrf.js'
+import { requireAuditedPermission } from '../middleware/requireAuditedPermission.js'
 import { requirePermission } from '../middleware/requirePermission.js'
 import {
   asBody,
@@ -643,8 +644,7 @@ export function registerRequestRoutes(router: Router, module: RequestModule) {
 
   router.post(
     `${prefix}/:requestId/schedule`,
-    requirePermission('requests:schedule'),
-    requirePermission(`${module}:schedule` as Permission),
+    requireAuditedPermission(['requests:schedule', `${module}:schedule` as Permission], `${module}.schedule`),
     guarded(async (request, response) => {
       const identity = identityOf(response)
       if (!canScheduleRequest(identity, module)) throw forbidden()

@@ -14,6 +14,7 @@ import { forbidden, ModuleError, notFound, sendModuleError } from '../database/m
 import { getDatabasePool } from '../database/pool.js'
 import { readSystemSettings } from '../database/settingsRepository.js'
 import { requireCsrf } from '../middleware/requireCsrf.js'
+import { requireAuditedPermission } from '../middleware/requireAuditedPermission.js'
 import { requirePermission } from '../middleware/requirePermission.js'
 import { recordTechnicalEvent } from '../monitoring/technicalEvents.js'
 import { driverPortalView, portalAttachmentKinds } from '../requests/driverPortalRules.js'
@@ -326,8 +327,7 @@ router.get(
 // Quem agenda atribui, com a mesma regra. O motorista não tem nenhuma das duas permissões.
 router.post(
   '/fleet/requests/:requestId/driver',
-  requirePermission('requests:schedule'),
-  requirePermission('fleet:schedule'),
+  requireAuditedPermission(['requests:schedule', 'fleet:schedule'], 'fleet.driver_assign'),
   guarded(async (request, response) => {
     const identity = identityOf(response)
     if (!canScheduleRequest(identity, 'fleet')) throw forbidden()

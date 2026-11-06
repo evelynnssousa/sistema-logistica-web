@@ -146,6 +146,13 @@ before(async () => {
      VALUES ('Administradora', 'transp-admin@example.gov.br', 'TI', $1, 'approved', 'admin', now())`,
     [await hashPassword(password)],
   )
+  // P-08: Almoxarifado e agendamento são atribuições da SLM. A administradora destes cenários
+  // integra a equipe; o administrador de fora dela tem testes próprios, que esperam recusa.
+  await pool.query(
+    `INSERT INTO public.auth_user_access (user_id, profile, slm_member)
+      SELECT id, 'administrator', true FROM public.auth_users WHERE email = 'transp-admin@example.gov.br'
+      ON CONFLICT (user_id) DO UPDATE SET slm_member = true`,
+  )
   setDatabasePoolForTests(pool)
   server = app.listen(0, '127.0.0.1')
   await once(server, 'listening')
@@ -332,6 +339,14 @@ test('devolução: mesmo protocolo, só os campos indicados, dados anteriores pr
   })
   assert.equal(returned.status, 201, returned.text)
   assert.equal((await post(`${path}/return`, operator, { tipo: 'correcao', motivo: 'De novo', campos: ['sala'] })).status, 409, 'uma devolução aberta por vez')
+  // Operação sensível: fica na auditoria com quem fez, o resultado e o momento.
+  const returnAudit = await pool.query<{ actor: string; result: string; at: Date }>(
+    `SELECT actor_user_id::text AS actor, result, occurred_at AS at FROM public.auth_audit_events
+      WHERE action = 'request.returned' ORDER BY occurred_at DESC LIMIT 1`,
+  )
+  assert.equal(returnAudit.rows[0]?.actor, operator.id)
+  assert.equal(returnAudit.rows[0]?.result, 'success')
+  assert.ok(returnAudit.rows[0]?.at instanceof Date)
 
   const seen = await call(path, { session: requester })
   assert.equal(seen.body.request.protocol, protocol, 'o protocolo é o mesmo')

@@ -34,6 +34,8 @@ const auditActions = {
   cpf_access_revoked: 'user.cpf_access_revoked',
   cpf_read: 'flights.cpf_read',
   cpf_read_denied: 'flights.cpf_read_denied',
+  // Tentativa recusada de operação sensível (agendar, atribuir motorista, previsão de entrega).
+  sensitive_operation_denied: 'access.denied',
   sessions_revoked: 'auth.sessions_revoked',
   request_created: 'request.created',
   request_updated: 'request.updated',

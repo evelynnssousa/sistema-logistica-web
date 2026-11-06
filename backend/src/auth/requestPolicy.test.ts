@@ -99,11 +99,15 @@ test('abrir em nome de outro setor exige equipe, perfil elegível e concessão, 
   )
 })
 
-test('agendar: administrador pelo perfil, operador só com concessão, solicitante nunca', () => {
+test('agendar: administrador da SLM pelo perfil, operador só com concessão, solicitante nunca', () => {
   const grant = { granted: ['requests:schedule'] as Permission[] }
 
-  assert.equal(canScheduleRequest(identity('administrator'), 'maintenance'), true, 'fora da SLM')
-  assert.equal(canScheduleRequest(identity('administrator'), 'fleet'), true)
+  // P-08: ser administrador fora da SLM não basta, nem com concessão gravada.
+  assert.equal(canScheduleRequest(identity('administrator'), 'maintenance'), false, 'fora da SLM')
+  assert.equal(canScheduleRequest(identity('administrator'), 'fleet'), false, 'fora da SLM')
+  assert.equal(canScheduleRequest(identity('administrator', grant), 'maintenance'), false, 'concessão fora da SLM')
+  assert.equal(canScheduleRequest(identity('administrator', { slmMember: true }), 'maintenance'), true, 'na SLM')
+  assert.equal(canScheduleRequest(identity('administrator', { slmMember: true }), 'fleet'), true, 'na SLM')
 
   assert.equal(canScheduleRequest(identity('slm_operator'), 'maintenance'), false, 'sem concessão')
   assert.equal(canScheduleRequest(identity('slm_operator', grant), 'maintenance'), true)
@@ -149,11 +153,11 @@ test('agendar exige a permissão do módulo, e ela sozinha não basta', () => {
     false,
   )
   assert.equal(
-    canScheduleRequest(identity('administrator', { denied: ['maintenance:schedule'] }), 'maintenance'),
+    canScheduleRequest(identity('administrator', { slmMember: true, denied: ['maintenance:schedule'] }), 'maintenance'),
     false,
   )
   assert.equal(
-    canScheduleRequest(identity('administrator', { denied: ['maintenance:schedule'] }), 'fleet'),
+    canScheduleRequest(identity('administrator', { slmMember: true, denied: ['maintenance:schedule'] }), 'fleet'),
     true,
   )
 

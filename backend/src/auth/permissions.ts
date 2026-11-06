@@ -170,11 +170,15 @@ export function isPermission(value: unknown): value is Permission {
 
 /**
  * Permissões especiais: só valem para quem é elegível, seja qual for a origem. Nenhum
- * perfil concede abertura em nome de outro setor, CPF nem a Central da SLM; agendar vem do
- * perfil só para o Administrador. Para os demais elegíveis, tudo depende de concessão individual.
+ * perfil concede abertura em nome de outro setor, CPF nem a Central da SLM. Agendar e
+ * administrar o Almoxarifado (inclusive a previsão de entrega) são atribuições operacionais
+ * da SLM: o perfil Administrador só as concede a quem integra a equipe SLM, e ser
+ * administrador fora da SLM não basta (auditoria de 05/11/2026, P-08). Para os demais
+ * elegíveis, tudo depende de concessão individual.
  */
 export const restrictedPermissions = [
   'requests:schedule',
+  'warehouse:manage',
   'requests:create_on_behalf',
   'flights:cpf:read',
   'slm_central:read',
@@ -203,8 +207,8 @@ export function isEligibleForRestrictedPermission(
   ) {
     return isSlmStaff
   }
-  if (permission === 'requests:schedule') {
-    return role === 'administrator' || isSlmStaff
+  if (permission === 'requests:schedule' || permission === 'warehouse:manage') {
+    return isSlmStaff
   }
   return true
 }

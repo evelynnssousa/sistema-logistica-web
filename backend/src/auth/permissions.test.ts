@@ -77,8 +77,15 @@ test('o administrador agenda pelo perfil, sem CPF e sem abrir em nome de outro s
 test('a elegibilidade segue a matriz, e a equipe só vale para os perfis previstos', () => {
   const eligible = isEligibleForRestrictedPermission
 
-  assert.equal(eligible('requests:schedule', 'administrator', false), true)
+  // P-08: administrador fora da SLM não agenda nem administra o Almoxarifado.
+  assert.equal(eligible('requests:schedule', 'administrator', false), false)
+  assert.equal(eligible('requests:schedule', 'administrator', true), true)
   assert.equal(eligible('requests:schedule', 'slm_operator', true), true)
+  assert.equal(eligible('warehouse:manage', 'administrator', false), false)
+  assert.equal(eligible('warehouse:manage', 'administrator', true), true)
+  assert.equal(eligible('warehouse:manage', 'slm_operator', true), true)
+  assert.equal(eligible('warehouse:manage', 'slm_operator', false), false)
+  assert.equal(eligible('warehouse:manage', 'requester', true), false)
   assert.equal(eligible('requests:schedule', 'slm_operator', false), false)
   assert.equal(eligible('requests:schedule', 'requester', true), false)
 
@@ -93,6 +100,25 @@ test('a elegibilidade segue a matriz, e a equipe só vale para os perfis previst
   assert.equal(eligible('flights:cpf:read', 'slm_operator', false), false)
   assert.equal(eligible('flights:cpf:read', 'requester', false), false)
   assert.equal(eligible('reports:read', 'requester', false), true)
+})
+
+test('administrador fora da SLM não recebe atribuições operacionais da SLM pelo perfil', () => {
+  const outside = computeEffectivePermissions('administrator', [], [], false)
+  const inside = computeEffectivePermissions('administrator', [], [], true)
+  for (const permission of ['requests:schedule', 'warehouse:manage'] as const) {
+    assert.equal(outside.includes(permission), false, `${permission}, fora da SLM`)
+    assert.equal(inside.includes(permission), true, `${permission}, na equipe SLM`)
+  }
+  // Concessão gravada direto no banco também não vale fora da equipe.
+  assert.equal(
+    computeEffectivePermissions('administrator', ['requests:schedule', 'warehouse:manage'], [], false)
+      .some((permission) => permission === 'requests:schedule' || permission === 'warehouse:manage'),
+    false,
+  )
+  // As funções de administração do sistema continuam.
+  for (const permission of ['users:manage', 'settings:manage', 'audit:read', 'warehouse:read'] as const) {
+    assert.ok(outside.includes(permission), permission)
+  }
 })
 
 test('concessão gravada sem elegibilidade não vale, seja qual for a origem', () => {
