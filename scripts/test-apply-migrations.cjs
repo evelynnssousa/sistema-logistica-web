@@ -34,7 +34,8 @@ const legacyTables = [
   'request_history', 'service_requests', 'setores', 'stock_movements',
 ]
 const legacySequences = ['service_requests_protocolo_seq', 'material_requests_protocolo_seq']
-const tablePrivileges = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']
+// MAINTAIN: PostgreSQL 17, como o Supabase real e o banco descartável dos testes.
+const tablePrivileges = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN']
 
 /** Privilégios de um papel em uma tabela, pelo próprio catálogo do banco. */
 async function tableRights(client, role, table) {
@@ -189,6 +190,7 @@ async function main() {
 
     // Antes da 018, o ensaio reproduz o banco real: as tabelas da versão anterior abertas a anon.
     assert.ok((await tableRights(client, 'anon', 'materials')).includes('TRUNCATE'), 'ensaio: anon começa com TRUNCATE')
+    assert.ok((await tableRights(client, 'anon', 'materials')).includes('MAINTAIN'), 'ensaio: anon começa com MAINTAIN, como no banco real')
 
     const applied = run(apply, url)
     assert.equal(applied.status, 0, `${applied.stdout}\n${applied.stderr}`)

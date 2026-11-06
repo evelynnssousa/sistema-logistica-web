@@ -127,7 +127,9 @@ async function publicApiExposure(client) {
         AND (has_table_privilege(r.oid, c.oid, 'SELECT') OR has_table_privilege(r.oid, c.oid, 'INSERT')
           OR has_table_privilege(r.oid, c.oid, 'UPDATE') OR has_table_privilege(r.oid, c.oid, 'DELETE')
           OR has_table_privilege(r.oid, c.oid, 'TRUNCATE') OR has_table_privilege(r.oid, c.oid, 'REFERENCES')
-          OR has_table_privilege(r.oid, c.oid, 'TRIGGER'))
+          OR has_table_privilege(r.oid, c.oid, 'TRIGGER')
+          -- MAINTAIN existe a partir do PostgreSQL 17, versão do Supabase atual.
+          OR (current_setting('server_version_num')::int >= 170000 AND has_table_privilege(r.oid, c.oid, 'MAINTAIN')))
      UNION
      SELECT DISTINCT 'tabela ' || c.relname || ' (PUBLIC)'
        FROM pg_class c
