@@ -259,7 +259,7 @@ Conferência dos critérios contra o código, feita em 04/11/2026 a pedido da re
 
 **Teste existente alterado, por necessidade:** o passo de entrega em `e2e/operational-modules.e2e.cjs`, porque o formulário ganhou campos.
 
-**Limite:** os campos próprios de cada formulário continuam definidos no código da tela. A API confere os obrigatórios criados no editor e os fixos de cada módulo; marcar como obrigatório um campo fixo opcional só vale na tela.
+**Limite:** os campos próprios de cada formulário continuam definidos no código da tela. A API confere os obrigatórios criados no editor, os fixos de cada módulo e, desde a publicação do formulário, também o campo fixo opcional marcado como obrigatório (`missingStandardField`, em `backend/src/requests/formRules.ts`; teste "sala ficou obrigatória" em `transparencyIntegration.test.ts`). A exceção é o campo fixo com regra condicional de exibição, que continua conferido só na tela. *(Atualizado em 06/11/2026: a frase anterior dizia que essa obrigatoriedade "só vale na tela", o que deixou de ser verdade e gerou o achado P-13.)*
 
 **Questões novas, além das 11 acima, a alinhar com a responsável:**
 
@@ -270,6 +270,6 @@ Conferência dos critérios contra o código, feita em 04/11/2026 a pedido da re
 
 ## Próximos blocos
 
-- **Aplicação das migrações 002 a 011 no banco real**, com autorização e backup, seguindo `BACKUP_E_MIGRACOES_SUPABASE.md`.
+- **Aplicação das migrações 002 a 018 no banco real**, com autorização e backup, seguindo `BACKUP_E_MIGRACOES_SUPABASE.md`.
 - **Validação das integrações:** homologação com credenciais institucionais, conforme `INTEGRACOES_E_AUTOMACOES.md`.
 - **Fora dos supercomandos, sem data:** resolver as questões em aberto.

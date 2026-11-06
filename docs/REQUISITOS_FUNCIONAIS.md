@@ -9,6 +9,7 @@ Regras definidas pela instituição, na forma em que foram recebidas. O que esti
 - Pertencer à SLM independe do setor de lotação.
 - Somente integrantes da SLM individualmente autorizados abrem solicitações em nome de outros setores e realizam agendamentos, conforme as permissões concedidas.
 - O perfil Administrador não concede automaticamente todas as permissões restritas.
+- Agendar (`requests:schedule`) e administrar o Almoxarifado (`warehouse:manage`, que inclui a previsão de entrega) são atribuições operacionais da SLM: o Administrador só as recebe se integrar a equipe SLM, e o Operador SLM, por concessão individual. Ser administrador fora da SLM não basta, nem com concessão gravada no banco (auditoria de 05/11/2026, P-08; corrigido em 06/11/2026).
 - O perfil Solicitante não pode integrar a SLM.
 - A autorização é verificada no backend.
 - O administrador não altera o próprio acesso para contornar as regras.
@@ -64,7 +65,7 @@ Setores, andares, tipos de serviço e outras opções compartilhadas: inclusão,
 - O JUCESP não afirma estar integrado ao sistema governamental.
 - Catálogo de materiais, unidade de medida e itens ativos e inativos.
 - Conferência de inventário: quantidade do sistema governamental, contagem interna, diferença, situação e histórico.
-- Previsão de entrega: só o dia, sem horário, informada e alterada por quem tem `warehouse:manage`. A alteração exige justificativa, e cada previsão fica em um histórico interno que não muda, com autoria, data e horário.
+- Previsão de entrega: só o dia, sem horário, informada e alterada por quem tem `warehouse:manage`, que exige a equipe SLM. A alteração exige justificativa, e cada previsão fica em um histórico interno que não muda, com autoria, data e horário.
 - O solicitante é avisado por e-mail e na central de notificações, uma vez por mudança real, e consulta protocolo, materiais, previsão, situação e data efetiva, sem justificativas nem observações.
 - Relatórios: entradas e saídas do estoque interno por material, para quem administra o módulo.
 - Situação da entrega: Aguardando entrega, Entrega reagendada ou Entregue. Só o registro da entrega conclui: uma previsão, mesmo vencida, não conta como entrega.

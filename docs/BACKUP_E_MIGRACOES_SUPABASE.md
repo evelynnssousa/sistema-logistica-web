@@ -109,6 +109,45 @@ docker stop slm-restauro
 
 Compare as contagens com as do banco de origem. Como o banco usa `tmpfs`, os dados somem ao parar o container.
 
+### Cópia externa e recuperação (P-10)
+
+Achado da auditoria: as cópias estavam só em `backups/`, no próprio Codespace. Uma cópia na mesma máquina não protege contra a perda da máquina. O procedimento abaixo vale para o banco real e para a produção. **Nenhuma cópia foi enviada para fora nem apagada nesta etapa:** o destino depende de decisão institucional.
+
+**Os anexos não estão no `pg_dump`.** Ficam em `ATTACHMENTS_DIR` e têm cópia própria:
+
+```bash
+npm run backup:attachments                       # pacote .tar.gz, manifesto com SHA-256 de cada arquivo e .sha256
+npm run backup:attachments:verify -- backups/slm-anexos-<data>.tar.gz
+```
+
+A verificação confere o SHA-256 do pacote, restaura em pasta temporária e confere cada arquivo. Para restaurar de verdade, use `--restaurar-em <pasta-vazia>`; o script nunca escreve sobre uma pasta com conteúdo. `npm run test:backup` testa os dois caminhos com dados fictícios, inclusive cópia adulterada.
+
+**Passo a passo da cópia externa:**
+
+1. Gere as cópias: `npm run backup:database` e, se houver anexos, `npm run backup:attachments`.
+2. Teste as cópias: `npm run backup:verify -- <arquivo.dump>` e `npm run backup:attachments:verify -- <arquivo.tar.gz>`. Só uma cópia aprovada segue.
+3. Cifre cada arquivo antes de sair da máquina, com senha guardada em cofre da instituição, separada da cópia:
+   `gpg --symmetric --cipher-algo AES256 <arquivo>` (gera `<arquivo>.gpg`).
+4. Leve o `.gpg` e o `.sha256` para o destino externo aprovado (unidade institucional, armazenamento da TI). **Não use e-mail, chat nem o repositório.**
+5. No destino, confira: `sha256sum -c <arquivo>.gpg.sha256` (gere esse arquivo no passo 3 com `sha256sum <arquivo>.gpg > <arquivo>.gpg.sha256`).
+6. Registre data, arquivo, SHA-256, destino e quem fez. Só então a cópia conta como externa.
+
+**Retenção proposta (a confirmar com a TI):** 7 diárias, 4 semanais e 12 mensais, mais a cópia de antes de cada migração, guardada até a migração seguinte ser aprovada. Nenhuma cópia é apagada antes de existir outra mais nova, verificada e já no destino externo. A chave `PASSENGER_DATA_KEY` e a senha das cópias ficam em cofre, separadas das cópias.
+
+**Integridade:** cada cópia tem SHA-256 gerado na criação; a verificação recalcula e compara antes de restaurar. Uma cópia só é confiável depois de restaurada com sucesso (passo 2) e com o SHA-256 conferido no destino (passo 5).
+
+**Recuperação, em ordem:**
+
+1. Pare a API, para não haver gravação durante a recuperação.
+2. Escolha a cópia mais recente com SHA-256 conferido. Decifre com `gpg --decrypt`.
+3. Teste a cópia em banco descartável (`npm run backup:verify`) e confira as contagens.
+4. **Banco:** restaurar sobre o Supabase real é uma decisão da responsável e da TI, com autorização expressa, porque substitui os dados atuais. O caminho é `pg_restore --clean --if-exists --no-owner` contra o session pooler, como `postgres`, a partir da cópia aprovada; os privilégios padrão de `supabase_admin` não são restaurados e precisam ser conferidos depois (`npm run migrations:check` e a consulta de divergências acima). Alternativa sem sobrescrever: restaurar em projeto Supabase novo e apontar `DATABASE_URL` para ele.
+5. **Anexos:** `npm run backup:attachments:verify -- <arquivo> --restaurar-em <pasta-vazia>` e aponte `ATTACHMENTS_DIR` para essa pasta, ou mova o conteúdo, com a API parada.
+6. Confira a chave: um passageiro de teste lido com o CPF mascarado prova que `PASSENGER_DATA_KEY` é a mesma da cópia.
+7. Suba a API, confira `/api/health`, o login e um anexo antigo.
+
+**O que foi comprovado e o que não foi:** a geração, a verificação e a restauração foram testadas em banco e pastas descartáveis (`npm run test:backup`, `npm run test:migrations`). A cópia de 04/11 do banco real restaurou no ensaio da auditoria. **Nunca foi testada** a restauração sobre um projeto Supabase, nem a cópia em destino externo: ambas dependem de infraestrutura e autorização. A rotina automática também depende do agendador da TI (ver `PRODUCAO.md`).
+
 ### O que precisa ser preservado
 
 - **Dados:** as 11 tabelas de `public`, principalmente `auth_users` (com os hashes de senha), `auth_audit_events` e `auth_sessions`.
@@ -283,6 +322,12 @@ Aplique depois da 015, com backup e autorização, como as demais. Cria `fleet_d
 
 Aplique depois da 016, com backup e autorização, como as demais. Cria `driver_occurrence_types`, com os seis tipos iniciais. Em `request_occurrences`, acrescenta `categoria_nome` e `justificativa` e troca a lista fixa de `categoria` por chave estrangeira para o cadastro. Acrescenta `execucao_registro`, vazia, em `service_requests`. Ocorrências já gravadas recebem em `categoria_nome` o nome que aparecia quando foram registradas. Os parâmetros usam `system_settings` e `settings_change_history`, que já existem, e nenhum é gravado pela migração: valem os padrões até alguém salvar. Sem ela, a Frota segue igual, mas com a 016 aplicada o portal responde 503, por isso as duas devem ir juntas, como o script já faz. Reverter: `017_driver_portal_settings.rollback.sql`, que para se já houver execução registrada, justificativa ou ocorrência com tipo novo. Os parâmetros e o histórico permanecem.
 
+### Migração 018: fecha a API pública do Supabase (P-02)
+
+Aplique depois da 017, com backup e autorização, como as demais; o script já a inclui. Não cria tabela nem toca em dados. Retira de `anon`, `authenticated`, `service_role` e `PUBLIC` todos os privilégios em tabelas, sequências e funções de `public`: na prática, os das 8 tabelas da versão anterior (`materials`, `material_requests`, `material_request_items`, `request_forms`, `request_history`, `service_requests`, `setores`, `stock_movements`), das sequências `service_requests_protocolo_seq` e `material_requests_protocolo_seq` e das funções `apply_stock_movement` e `set_updated_at`, que também passam a ter `search_path` fixo. RLS já negava leitura e escrita a `anon` e `authenticated`, mas não `TRUNCATE`, e `service_role` ignora RLS. A API conecta como dona das tabelas e não depende desses privilégios.
+
+Como não cria tabela, o script a considera aplicada quando a 017 existe, nenhum objeto de `public` está aberto à API pública e as duas funções têm `search_path` fixo. Se alguém reabrir um privilégio depois, ela volta a aparecer como pendente, e aplicar de novo não tem outro efeito. Reverter: `018_public_api_privileges.rollback.sql`, que devolve exatamente os privilégios anteriores, conferidos no banco real em 05/11/2026. `npm run test:migrations` comprova, em banco descartável com os papéis do Supabase: antes, `anon` tem `TRUNCATE` em `materials`; depois, os três papéis não leem, gravam, esvaziam nem numeram nada, inclusive executando os comandos como cada papel; a reversão restaura o estado anterior.
+
 **Conceda a Central individualmente.** Nem o perfil Administrador recebe `slm_central:read` e `slm_central:manage`: é preciso incluir as quatro pessoas na equipe SLM e conceder a cada uma, pela tela do usuário.
 
 ### O que a 003 faz com cada conta
@@ -294,7 +339,9 @@ Aplique depois da 016, com backup e autorização, como as demais. Cria `driver_
 | **`role = operator` aprovada, com escrita em módulo** | **A migração para com erro.** Defina a equipe SLM antes, para ninguém perder o acesso sem aviso |
 | Pendente ou rejeitada | Sem linha; ganha ao ser aprovada |
 
-Ninguém entra automaticamente na equipe SLM nem recebe `warehouse:manage`, CPF, agendamento ou abertura em nome de outro setor. `settings:read` e `settings:write` antigos viram concessões individuais. `auth_users`, sessões e auditoria não mudam.
+Ninguém entra automaticamente na equipe SLM nem recebe `warehouse:manage`, CPF, agendamento ou abertura em nome de outro setor.
+
+**Atenção (P-08, 06/11/2026):** agendar e administrar o Almoxarifado, inclusive a previsão de entrega, passaram a exigir a equipe SLM também para o Administrador. Como a 003 coloca todos os administradores fora da equipe, **depois de migrar, marque "Equipe SLM" na tela do usuário para cada administrador que de fato opera pela SLM**. Os demais continuam administrando o sistema (usuários, configurações, auditoria), sem agendar nem gerir o Almoxarifado. `settings:read` e `settings:write` antigos viram concessões individuais. `auth_users`, sessões e auditoria não mudam.
 
 **Depois de aplicar**, confira se não há divergências. O resultado precisa ser vazio:
 
@@ -311,7 +358,7 @@ SELECT u.id FROM public.auth_users u
 
 - **Bloqueio:** criar a chave estrangeira bloqueia escritas em `auth_users` por um instante. Com o volume atual, é imperceptível.
 - **Privilégios padrão:** o Supabase concede automaticamente acesso a `anon`, `authenticated` e `service_role` em tabelas, funções e sequências novas. As migrações retiram esse acesso, e a conferência final reprova tabela, função ou sequência nova que continue aberta. **Migrações futuras precisam fazer o mesmo.**
-- **Sequências anteriores às migrações:** `service_requests_protocolo_seq` e `material_requests_protocolo_seq` continuam acessíveis a `anon`, `authenticated` e `service_role`. As migrações não mudam isso, e a conferência final as mostra como aviso.
+- **Objetos anteriores às migrações:** as 8 tabelas, as 2 sequências e as 2 funções da versão anterior ficam acessíveis à API pública até a 018. Depois dela, a conferência final reprova qualquer objeto de `public` aberto a `anon`, `authenticated`, `service_role` ou `PUBLIC`.
 - **CPF:** sozinha, a 004 guarda o número em texto. A aplicação só grava CPF com a 005 aplicada, cifrado com AES-256-GCM. Não insira passageiros entre as duas migrações: a 005 para com erro se encontrar algum.
 
 ## Testes e desenvolvimento
