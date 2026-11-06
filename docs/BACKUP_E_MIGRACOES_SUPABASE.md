@@ -164,6 +164,10 @@ Nenhuma foi aplicada. O banco também não tem tabela de registro de migrações
 
 Faça um backup antes e aplique uma de cada vez, conferindo o resultado. Cada arquivo já tem sua própria transação. O script abaixo faz isso.
 
+### Inspecionar antes e depois
+
+`npm run db:inspect` mostra, em transação somente leitura, a estrutura, os donos, a RLS, os privilégios dos papéis da API do Supabase, as funções, os gatilhos, as contagens e as contas por perfil e situação (só contagens e domínios, sem dados pessoais). Use antes de aplicar e depois, junto com `npm run migrations:check`.
+
 ### Aplicar com o script
 
 Exige Docker. Prefira um horário sem uso e pare a API e a tela ligadas ao banco real antes de começar: qualquer dado novo depois do backup faz o script recusar a cópia. Rode no terminal do Codespaces, ou no prompt do Claude Code com o prefixo `!`, que não faz parte do comando.

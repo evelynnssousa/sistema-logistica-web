@@ -1,5 +1,7 @@
 # Relatório de estabilização e preparação para homologação
 
+> **Atualização (06/11, tarde):** a pré-migração do banco real, com leitura, backup, ensaio sobre a cópia e o ponto de autorização, está em `PRE_MIGRACAO_2026-11-06.md`. O roteiro da SLM está em `docs/ROTEIRO_HOMOLOGACAO_SLM.md`. O restante deste relatório descreve o estado da manhã de 06/11.
+
 | | |
 |---|---|
 | **Data** | 06/11/2026 |
