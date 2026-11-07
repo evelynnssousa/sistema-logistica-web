@@ -79,7 +79,7 @@ Efeito das migrações sobre elas, se aplicadas no banco real (ensaiado sobre a 
 | Permissão (como aparece na tela) | Para quê | Sugestão para os testes |
 |---|---|---|
 | Realizar agendamentos | Agendar e reagendar Manutenção e Frota, atribuir motorista | Pelo menos 2 operadores |
-| Almoxarifado → Administrar o módulo | Materiais, estoque, inventário, pedidos e entrega | Pelo menos 1 |
+| Almoxarifado → Administrar o módulo (só Administrador e Operador SLM) | Materiais, estoque, inventário, pedidos e entrega. A tela bloqueia e o servidor recusa para Solicitante e Motorista | Pelo menos 1 |
 | Almoxarifado → Informar e alterar a previsão de entrega | Previsão de entrega (exige também "Administrar o módulo") | Pelo menos 1 |
 | Acessar a Central de Operações / Atribuir responsáveis, prioridades e prazos pela Central | Central SLM | Pelo menos 1 |
 | Consultar o CPF completo dos passageiros (auditado) | Passagens | 1, só se for necessário testar |
@@ -95,7 +95,8 @@ Efeito das migrações sobre elas, se aplicadas no banco real (ensaiado sobre a 
    - uma de **Solicitante** de outro setor, nomeada "Homologação – Solicitante";
    - uma de **Motorista**, para o caso D4.
 
-   Na aprovação, use os perfis `Solicitante` e `Motorista`.
+   Na aprovação, use os perfis `Solicitante` e `Motorista`. Não é possível conceder "Almoxarifado → Administrar o módulo" a nenhuma das duas: a tela bloqueia a opção e o servidor recusa e registra a tentativa na auditoria.
+7. **Setores fictícios (aprovados em 06/11/2026, Supercomando 17):** `HOMOLOG – Setor A` e `HOMOLOG – Setor B`. Cadastre os dois pela interface administrativa, nos dois catálogos: **Configurações → Setores** e **Controle de Demandas → Configurações → Setores**. Não crie setores direto no banco.
 6. **Se for preciso uma administradora na equipe SLM:** aprove primeiro um segundo administrador. Ele marca a administradora na equipe SLM na tela do usuário (**Perfil e equipe SLM**), e vice-versa. Isso não é necessário para a homologação.
 
 **Recuperação de senha:** sem o Resend configurado, "Esqueci a senha" não envia e-mail. Oriente os operadores a guardar a senha. Para a administradora existe o comando `backend/src/cli/reset-initial-admin-password.ts`.

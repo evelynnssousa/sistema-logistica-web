@@ -4,20 +4,28 @@ Padrões da interface. Tokens e estilos em `frontend/src/styles/theme.css`, carr
 
 ## Paleta
 
+Identidade executiva, adotada em 2026-11-07. Ela substitui a antiga, de preto e amarelo. As cores existem só como tokens em `theme.css`. As variáveis antigas `--jucesp-*` de `App.css` apontam para esses tokens, então não há uma segunda paleta.
+
 | Token | Valor | Uso |
 |---|---|---|
-| `--black` | `#000000` | Menu lateral, abas, cartões de destaque, botão Sair |
-| `--yellow` | `#FBB900` | Item ativo, botão principal, ícones sobre preto |
-| `--white` | `#FFFFFF` | Cartões e campos |
-| `--graphite` | `#162235` | Tom já usado no projeto: barras de gráfico, cartão de usuário, cartões |
-| `--blue` | `#034EA2` | Só links, foco e avisos informativos. Nunca como destaque dominante |
-| `--page` | `#F4F4F1` | Fundo das páginas |
-| `--success`, `--danger`, `--warning` | `#146C43`, `#B42318`, `#7A4B00` | Estados, sempre com ícone e texto |
+| `--executive` | `#17365D` | Menu lateral, abas de módulo, cartão de indicador escuro, títulos (`--heading`), gráficos |
+| `--institutional` | `#034EA2` | Ações: botão principal, item ativo do menu e das abas, links, foco, informação |
+| `--accent` | `#FBB900` | Só detalhe: traço do item ativo, faixa do cartão de entrada, marca de destaque, foco sobre fundo escuro |
+| `--page` | `#F1F4F8` | Fundo geral |
+| `--surface` | `#FFFFFF` | Cartões, campos, tabelas e modais |
+| `--text` | `#475467` | Texto e rótulos |
+| `--text-muted` | `#667085` | Texto secundário (4,5:1 sobre o fundo geral) |
+| `--border` | `#E4E9F0` | Bordas de cartões e divisórias |
+| `--border-strong` | `#8A94A6` | Contorno de campos e botões secundários (3:1, o mínimo do WCAG para controles) |
+| `--success`, `--info`, `--warning`, `--danger` | verde `#146C43`, azul `#034EA2`, laranja `#B54708`, vermelho `#B42318` | Situações, sempre com ícone e texto. Nunca amarelo |
 
-Regras de contraste:
+`theme.css` também guarda os tokens de tipografia (`--font-*`), forma (`--radius*`), profundidade (`--shadow*`), espaço (`--space-*`) e interação (`--focus-ring*`, `--transition`).
 
-- Amarelo nunca é cor de texto sobre branco. Sobre amarelo, o texto e o ícone são pretos.
-- O logotipo oficial tem letras pretas, por isso fica sempre sobre fundo branco. Suas cores não foram alteradas.
+Regras:
+
+- Preto não é cor de área. Amarelo não é fundo de botão, de aba nem de cartão, e nunca é cor de texto sobre branco.
+- Botão principal: azul institucional com texto branco. Botão secundário: branco, com contorno `--border-strong` e texto azul executivo.
+- O logotipo oficial tem letras pretas, por isso fica sempre sobre fundo branco. Ele não foi alterado.
 
 ## Ícones
 
@@ -36,7 +44,7 @@ Use sempre `components/ui/Icon.tsx`, que associa um nome de significado ao desen
 | Componente | Finalidade |
 |---|---|
 | `PageHeader` | Título, descrição e ações. Sem o nome do sistema: `eyebrow` só para o contexto do registro aberto |
-| `StatCard` | Indicador em preto, amarelo, grafite ou branco |
+| `StatCard` | Indicador nos tons `black` (azul executivo), `yellow` (azul institucional), `graphite` (branco com faixa executiva) e `white`. Os nomes dos tons ficaram por compatibilidade |
 | `Alert`, `EmptyState`, `Loading` | Mensagens, estados vazios com ilustração e carregamento |
 | `FilterBar`, `FilterSelect`, `SearchField`, `PeriodFields` | Filtros suspensos, com "Limpar filtros" |
 | `usePeriodFilter` | Períodos prontos e datas personalizadas |
@@ -45,17 +53,17 @@ Use sempre `components/ui/Icon.tsx`, que associa um nome de significado ao desen
 | `Modal`, `useConfirm` | Janela com `<dialog>` nativo: prende o foco e fecha com Esc |
 | `BarChart`, `MonthlyChart` | Gráficos de uma série e uma cor, com valores em texto |
 
-Botões: `ui-button-primary` amarelo, `maintenance-secondary-button` com contorno preto, `ui-button-danger` vermelho.
+Botões: `ui-button-primary` azul institucional, `maintenance-secondary-button` branco com contorno discreto, `ui-button-danger` vermelho.
 
 ## Gráficos
 
 - Só dados reais das APIs. Sem dados, estado vazio.
-- Uma série, uma cor (grafite). Identidade e valor sempre em texto.
+- Uma série, uma cor (azul executivo). Identidade e valor sempre em texto.
 - Barras não mudam de cor conforme o valor. Colunas mensais mostram o valor ao passar o mouse ou focar.
 
 ## Navegação
 
-- Menu lateral preto, com grupos: Serviços, Acompanhamento, Administração e Conta. O item ativo tem fundo amarelo e ícone preto.
+- Menu lateral em azul executivo, com grupos: Serviços, Acompanhamento, Administração e Conta. O item ativo tem fundo azul institucional, ícone branco e um traço amarelo à esquerda.
 - Almoxarifado é um único item, com abas: Visão geral, Solicitações, Nova solicitação, Pedido externo, Materiais, Inventário e Relatórios. Cada aba tem endereço próprio e respeita as permissões.
 - Início serve ao dia a dia: atalhos para abrir pedidos, pendências e solicitações recentes. Dashboard concentra indicadores e gráficos.
 - Títulos não repetem o nome do sistema, e não há avisos de versão ou de desenvolvimento.
@@ -73,7 +81,7 @@ Tabelas largas rolam dentro do próprio quadro, nunca a página.
 
 ## Acessibilidade
 
-Foco visível (azul no claro, amarelo no preto), controles nativos, rótulos em todos os campos e respeito a `prefers-reduced-motion`.
+Foco visível (azul institucional no claro, amarelo no azul executivo), controles nativos, rótulos em todos os campos e respeito a `prefers-reduced-motion`.
 
 `e2e/visual-review.e2e.cjs` verifica em computador, tablet e celular:
 
@@ -85,7 +93,7 @@ Foco visível (azul no claro, amarelo no preto), controles nativos, rótulos em 
 
 ## Controle de Demandas
 
-Segue os componentes acima, com estilos em `styles/demands.css`. Botões e item ativo continuam no padrão do sistema, em amarelo e preto. O azul marca o que é próprio do módulo: progresso, seleção de visualização, linha do tempo, colunas do quadro, repetição e marcas.
+Segue os componentes acima, com estilos em `styles/demands.css`. Botões e item ativo seguem o padrão do sistema, em azul institucional. "Vence em breve" usa o laranja de atenção. O azul marca o que é próprio do módulo: progresso, seleção de visualização, linha do tempo, colunas do quadro, repetição e marcas.
 
 ## Telas modernizadas
 

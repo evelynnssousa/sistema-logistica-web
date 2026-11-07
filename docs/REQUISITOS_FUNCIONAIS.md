@@ -10,6 +10,7 @@ Regras definidas pela instituição, na forma em que foram recebidas. O que esti
 - Somente integrantes da SLM individualmente autorizados abrem solicitações em nome de outros setores e realizam agendamentos, conforme as permissões concedidas.
 - O perfil Administrador não concede automaticamente todas as permissões restritas.
 - Agendar (`requests:schedule`) e informar ou alterar a previsão de entrega (`warehouse:forecast`) são atribuições da SLM: o Administrador só as recebe se integrar a equipe SLM, e o Operador SLM, por concessão individual. Ser administrador fora da SLM não basta, nem com concessão gravada no banco, e a recusa fica na auditoria (P-08, 06/11/2026). A administração do Almoxarifado (`warehouse:manage`: materiais, estoque, controle interno, inventário, situação, entrega, registro local, comunicações e anexos) não é restrita à SLM: o Administrador fora da equipe a mantém.
+- `warehouse:manage` só vale para o perfil Administrador (dentro ou fora da SLM) e para o Operador SLM com concessão individual. Solicitante e Motorista nunca a recebem: a concessão é recusada no backend e fica na auditoria (`access.denied`, operação `user.permission_grant`), e um valor gravado diretamente no banco não dá acesso, porque a permissão efetiva é recalculada com a elegibilidade e cada rota a confere de novo (Supercomando 17, 06/11/2026).
 - O perfil Solicitante não pode integrar a SLM.
 - A autorização é verificada no backend.
 - O administrador não altera o próprio acesso para contornar as regras.
@@ -68,6 +69,7 @@ Setores, andares, tipos de serviço e outras opções compartilhadas: inclusão,
 - Previsão de entrega: só o dia, sem horário, informada e alterada por quem tem `warehouse:manage` e `warehouse:forecast`; esta última exige a equipe SLM. A alteração exige justificativa, e cada previsão fica em um histórico interno que não muda, com autoria, data e horário.
 - O solicitante é avisado por e-mail e na central de notificações, uma vez por mudança real, e consulta protocolo, materiais, previsão, situação e data efetiva, sem justificativas nem observações.
 - Relatórios: entradas e saídas do estoque interno por material, para quem administra o módulo.
+- Sigilo do estoque: quem não administra o Almoxarifado (em especial o Solicitante) não vê nem infere saldo, reserva, mínimo, movimentações, contagens ou disponibilidade. O catálogo traz só código, nome, descrição, unidade e categoria; o pedido é aceito em qualquer quantidade, sem mensagem que revele o saldo; não há filtro de disponíveis ou indisponíveis; os totais por material dos relatórios exigem `warehouse:manage` (ou Operador SLM com `requests:read_all`); e a auditoria esconde os eventos de estoque, reserva, controle interno e inventário de quem não administra o módulo.
 - Situação da entrega: Aguardando entrega, Entrega reagendada ou Entregue. Só o registro da entrega conclui: uma previsão, mesmo vencida, não conta como entrega.
 
 ### Justificativas e comunicação (Supercomando 06)
