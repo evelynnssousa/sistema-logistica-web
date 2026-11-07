@@ -1,7 +1,7 @@
 .warehouse-portal {
   min-height: 100vh;
-  background: #f4f7fb;
-  color: #243247;
+  background: var(--page);
+  color: var(--text);
   font-family: inherit;
 }
 
@@ -12,15 +12,15 @@
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  background: #fff;
-  border-bottom: 1px solid #e2e8f0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
 }
 
 .warehouse-brand {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: #034ea2;
+  color: var(--institutional);
   text-decoration: none;
 }
 
@@ -30,8 +30,8 @@
   width: 42px;
   height: 42px;
   border-radius: 10px;
-  background: #034ea2;
-  color: #fff;
+  background: var(--institutional);
+  color: var(--white);
   font-size: 24px;
   font-weight: 800;
 }
@@ -48,13 +48,13 @@
 
 .warehouse-brand small {
   margin-top: 3px;
-  color: #64748b;
+  color: var(--text-muted);
   font-size: 11px;
 }
 
 .warehouse-header-label,
 .warehouse-eyebrow {
-  color: #034ea2;
+  color: var(--institutional);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 1.2px;
@@ -66,8 +66,8 @@
   justify-content: space-between;
   gap: 24px;
   padding: 46px clamp(20px, 5vw, 72px);
-  background: linear-gradient(115deg, #e7f0fc 0%, #f5f8fd 70%, #fff7df 100%);
-  border-bottom: 1px solid #e1eaf6;
+  background: linear-gradient(115deg, var(--institutional-soft) 0%, var(--surface-muted) 70%, var(--surface) 100%);
+  border-bottom: 1px solid var(--border);
 }
 
 .warehouse-hero-content {
@@ -76,7 +76,7 @@
 
 .warehouse-hero h1 {
   margin: 12px 0;
-  color: #17365e;
+  color: var(--heading);
   font-size: clamp(28px, 4vw, 40px);
   line-height: 1.15;
 }
@@ -84,7 +84,7 @@
 .warehouse-hero p {
   max-width: 620px;
   margin: 0;
-  color: #53657c;
+  color: var(--text-muted);
   font-size: 15px;
   line-height: 1.7;
 }
@@ -96,10 +96,10 @@
   width: 94px;
   height: 94px;
   border-radius: 24px;
-  background: #034ea2;
-  color: #fff;
+  background: var(--institutional);
+  color: var(--white);
   font-size: 46px;
-  box-shadow: 0 12px 30px #034ea222;
+  box-shadow: 0 12px 30px rgb(3 78 162 / 13%);
 }
 
 .warehouse-catalog {
@@ -118,19 +118,19 @@
 
 .warehouse-catalog-heading h2 {
   margin: 0 0 7px;
-  color: #20344e;
+  color: var(--heading);
   font-size: 23px;
 }
 
 .warehouse-catalog-heading p {
   margin: 0;
-  color: #6b7b90;
+  color: var(--text-muted);
   font-size: 14px;
 }
 
 .warehouse-result-count {
   flex-shrink: 0;
-  color: #64748b;
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -140,11 +140,11 @@
   gap: 5px;
   padding: 14px 17px;
   margin-bottom: 22px;
-  border: 1px solid #f0d28a;
-  border-left: 4px solid #e5a900;
+  border: 1px solid var(--info-border);
+  border-left: 4px solid var(--institutional);
   border-radius: 9px;
-  background: #fffaf0;
-  color: #78581b;
+  background: var(--info-soft);
+  color: var(--info-text);
   font-size: 13px;
   line-height: 1.55;
 }
@@ -164,7 +164,7 @@
   display: flex;
   flex-direction: column;
   gap: 7px;
-  color: #53657c;
+  color: var(--text-muted);
   font-size: 12px;
   font-weight: 700;
 }
@@ -175,11 +175,11 @@
   width: 100%;
   min-height: 44px;
   padding: 0 12px;
-  border: 1px solid #d8e1ed;
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
-  outline-color: #034ea2;
-  background: #fff;
-  color: #243247;
+  outline-color: var(--institutional);
+  background: var(--surface);
+  color: var(--text);
   font: inherit;
   font-size: 13px;
 }
@@ -193,7 +193,7 @@
   position: absolute;
   top: 30px;
   left: 13px;
-  color: #8190a4;
+  color: var(--text-muted);
   font-size: 22px;
   font-weight: 400;
 }
@@ -213,16 +213,16 @@
   flex-direction: column;
   min-width: 0;
   padding: 21px;
-  border: 1px solid #e1e8f1;
+  border: 1px solid var(--border);
   border-radius: 13px;
-  background: #fff;
-  box-shadow: 0 4px 14px #18365a08;
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgb(23 54 93 / 3%);
   transition: box-shadow 160ms ease, transform 160ms ease;
 }
 
 .warehouse-material-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 22px #18365a12;
+  box-shadow: 0 8px 22px rgb(23 54 93 / 7%);
 }
 
 .warehouse-material-icon {
@@ -232,13 +232,13 @@
   height: 45px;
   margin-bottom: 17px;
   border-radius: 11px;
-  background: #edf4fd;
-  color: #034ea2;
+  background: var(--institutional-soft);
+  color: var(--institutional);
   font-size: 25px;
 }
 
 .warehouse-material-category {
-  color: #64748b;
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -247,14 +247,14 @@
 
 .warehouse-material-card h3 {
   margin: 8px 0;
-  color: #243b58;
+  color: var(--heading);
   font-size: 17px;
   line-height: 1.4;
 }
 
 .warehouse-material-unit {
   margin: 0 0 22px;
-  color: #728197;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
@@ -265,7 +265,7 @@
   gap: 10px;
   margin-top: auto;
   padding-top: 15px;
-  border-top: 1px solid #edf0f5;
+  border-top: 1px solid var(--border);
 }
 
 .warehouse-availability {
@@ -281,11 +281,11 @@
 }
 
 .warehouse-availability.is-available {
-  color: #187747;
+  color: var(--success);
 }
 
 .warehouse-availability.is-unavailable {
-  color: #b45345;
+  color: var(--danger);
 }
 
 .warehouse-material-footer button {
@@ -293,7 +293,7 @@
   padding: 0 13px;
   border: 0;
   border-radius: 7px;
-  background: #034ea2;
+  background: var(--institutional);
   color: white;
   font: inherit;
   font-size: 12px;
@@ -304,25 +304,25 @@
 
 .warehouse-empty {
   padding: 50px 20px;
-  border: 1px dashed #cbd5e1;
+  border: 1px dashed var(--border-strong);
   border-radius: 12px;
-  background: #fff;
+  background: var(--surface);
   text-align: center;
 }
 
 .warehouse-empty > span {
-  color: #8293a9;
+  color: var(--text-muted);
   font-size: 30px;
 }
 
 .warehouse-empty h3 {
   margin: 10px 0 6px;
-  color: #33465f;
+  color: var(--heading);
 }
 
 .warehouse-empty p {
   margin: 0;
-  color: #728197;
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -331,9 +331,9 @@
   justify-content: space-between;
   gap: 16px;
   padding: 22px clamp(20px, 5vw, 72px);
-  border-top: 1px solid #e0e7f0;
-  background: #fff;
-  color: #6b7b90;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
   font-size: 12px;
 }
 

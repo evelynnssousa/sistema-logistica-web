@@ -140,7 +140,7 @@ async function loadManualAttachments(item: ClaimedManualEmail, storage: Attachme
       if (attachment.removed) throw new IntegrationError('ATTACHMENT_REMOVED', false)
       const chunks: Buffer[] = []
       try {
-        for await (const chunk of storage.open(attachment.storageKey)) chunks.push(chunk as Buffer)
+        for await (const chunk of await storage.open(attachment.storageKey)) chunks.push(chunk as Buffer)
       } catch {
         throw new IntegrationError('ATTACHMENT_UNREADABLE', false)
       }

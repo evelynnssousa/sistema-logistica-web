@@ -4,7 +4,7 @@
   margin: 16px 0;
   padding: 16px;
   border: 1px solid var(--border);
-  border-left: 4px solid var(--yellow);
+  border-left: 4px solid var(--accent);
   border-radius: var(--radius-small);
   background: var(--surface-muted);
   color: var(--text);
@@ -96,8 +96,9 @@
 }
 
 .notification-list .is-unread button {
-  border-left: 4px solid var(--yellow);
-  background: var(--yellow-soft);
+  border-left: 4px solid var(--accent);
+  /* Fundo bem claro: a data, em texto secundário, mantém 4,5:1. */
+  background: var(--surface-hover);
 }
 
 .notification-list button > span {
@@ -118,7 +119,7 @@
 .notification-unread-label {
   padding: 1px 8px;
   border-radius: 10px;
-  background: var(--black);
+  background: var(--executive);
   color: var(--white);
   font-size: 0.75rem;
   font-weight: 600;
@@ -143,8 +144,8 @@
 }
 
 .integrations-page .module-tabs button.active {
-  background: var(--yellow);
-  color: var(--black);
+  background: var(--institutional);
+  color: var(--white);
   font-weight: 700;
 }
 
@@ -225,9 +226,9 @@
   margin-top: 4px;
   padding: 3px 6px;
   border: 0;
-  border-left: 3px solid var(--yellow);
+  border-left: 3px solid var(--accent);
   border-radius: 4px;
-  background: var(--black);
+  background: var(--executive);
   color: var(--white);
   font-family: inherit;
   font-size: 0.74rem;
@@ -239,7 +240,7 @@
 
 .calendar-page button.calendar-event.fleet {
   border-left-color: var(--white);
-  background: var(--graphite);
+  background: var(--institutional);
 }
 
 .calendar-page button.calendar-event.is-cancelled {

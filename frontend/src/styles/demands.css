@@ -58,7 +58,7 @@
 }
 
 .demand-panel-heading a {
-  color: var(--blue);
+  color: var(--institutional);
   font-weight: 600;
 }
 
@@ -97,7 +97,7 @@
 }
 
 .demand-mini-list a:hover strong {
-  color: var(--blue);
+  color: var(--institutional);
   text-decoration: underline;
 }
 
@@ -125,8 +125,8 @@
   padding: 2px 8px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: var(--blue-soft);
-  color: var(--blue);
+  background: var(--institutional-soft);
+  color: var(--institutional);
   font-size: 0.75rem;
   font-weight: 600;
   white-space: nowrap;
@@ -183,14 +183,14 @@
   height: 8px;
   overflow: hidden;
   border-radius: 999px;
-  background: var(--blue-soft);
+  background: var(--institutional-soft);
 }
 
 .demand-progress-fill {
   display: block;
   height: 100%;
   border-radius: 999px;
-  background: var(--blue);
+  background: var(--institutional);
 }
 
 .demand-table-title {
@@ -230,7 +230,7 @@
 }
 
 .page-content .demand-view-switch button.is-active {
-  background: var(--blue);
+  background: var(--institutional);
   color: var(--white);
 }
 
@@ -255,7 +255,7 @@
   flex: none;
   width: 18px;
   height: 18px;
-  accent-color: var(--blue);
+  accent-color: var(--institutional);
 }
 
 .demand-checks {
@@ -303,13 +303,13 @@
   min-height: 200px;
   padding: 10px;
   border: 1px solid var(--border);
-  border-top: 4px solid var(--blue);
+  border-top: 4px solid var(--institutional);
   border-radius: var(--radius-small);
   background: var(--surface-muted);
 }
 
 .demand-kanban-column.is-target {
-  outline: 2px dashed var(--blue);
+  outline: 2px dashed var(--institutional);
 }
 
 .demand-kanban-column h3 {
@@ -340,7 +340,7 @@
 }
 
 .demand-card a small {
-  color: var(--blue);
+  color: var(--institutional);
   font-weight: 600;
 }
 
@@ -374,7 +374,7 @@
   justify-items: start;
   padding: 12px 14px;
   border: 1px solid var(--border);
-  border-left: 4px solid var(--blue);
+  border-left: 4px solid var(--institutional);
   border-radius: var(--radius-small);
   background: var(--surface);
   color: var(--text);
@@ -383,7 +383,7 @@
 }
 
 .page-content .demand-sector-cards button.is-active {
-  background: var(--blue-soft);
+  background: var(--institutional-soft);
 }
 
 .demand-sector-cards span {
@@ -432,7 +432,7 @@
 
 .demand-agenda-legend li {
   padding-left: 8px;
-  border-left: 4px solid var(--blue);
+  border-left: 4px solid var(--institutional);
 }
 
 .demand-agenda-legend li.is-overdue {
@@ -440,7 +440,7 @@
 }
 
 .demand-agenda-legend li.is-soon {
-  border-left-color: var(--yellow);
+  border-left-color: var(--warning);
 }
 
 .demand-agenda-legend li.is-done {
@@ -457,7 +457,7 @@
 
 .demand-month-head {
   padding: 6px 8px;
-  background: var(--graphite);
+  background: var(--executive);
   color: var(--white);
   font-size: 0.82rem;
   font-weight: 600;
@@ -488,7 +488,7 @@
   align-self: flex-start;
   padding: 1px 7px;
   border-radius: 999px;
-  background: var(--blue);
+  background: var(--institutional);
   color: var(--white);
 }
 
@@ -500,7 +500,7 @@
   width: 100%;
   padding: 4px 6px;
   border: 1px solid var(--border);
-  border-left: 4px solid var(--blue);
+  border-left: 4px solid var(--institutional);
   border-radius: 5px;
   background: var(--surface);
   color: var(--text);
@@ -523,8 +523,8 @@
 }
 
 .page-content .demand-agenda-chip.is-soon {
-  border-left-color: var(--yellow);
-  background: var(--yellow-soft);
+  border-left-color: var(--warning);
+  background: var(--warning-soft);
 }
 
 .page-content .demand-agenda-chip.is-done {
@@ -537,7 +537,7 @@
   padding: 2px;
   border: 0;
   background: transparent;
-  color: var(--blue);
+  color: var(--institutional);
   font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
@@ -561,7 +561,7 @@
 }
 
 .demand-agenda-list h3.is-today {
-  color: var(--blue);
+  color: var(--institutional);
 }
 
 /* Formulário */
@@ -599,9 +599,9 @@
   margin-top: 8px;
   padding: 12px;
   border: 1px solid var(--border);
-  border-left: 4px solid var(--blue);
+  border-left: 4px solid var(--institutional);
   border-radius: var(--radius-small);
-  background: var(--blue-soft);
+  background: var(--institutional-soft);
 }
 
 .demand-collaborators {
@@ -745,7 +745,7 @@
   gap: 4px;
   padding: 10px;
   border: 1px solid var(--border);
-  border-left: 4px solid var(--blue);
+  border-left: 4px solid var(--institutional);
   border-radius: var(--radius-small);
 }
 
@@ -782,7 +782,7 @@
 
 .demand-details summary {
   min-height: 28px;
-  color: var(--blue);
+  color: var(--institutional);
   font-weight: 600;
   cursor: pointer;
 }
@@ -790,7 +790,7 @@
 .demand-history {
   gap: 0;
   padding-left: 14px;
-  border-left: 2px solid var(--blue);
+  border-left: 2px solid var(--institutional);
 }
 
 .demand-history li {
@@ -900,4 +900,31 @@
 .ui-filter-bar .demand-more-filters {
   min-height: 42px;
   align-self: end;
+}
+
+.demand-history-changes {
+  display: grid;
+  gap: 2px;
+  margin: 2px 0;
+}
+
+.demand-history-changes > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.demand-history-changes > div.is-long {
+  display: grid;
+  gap: 0;
+}
+
+.demand-history-changes dt {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.demand-history-changes dd {
+  margin: 0;
+  white-space: pre-wrap;
 }

@@ -1028,10 +1028,14 @@ test('P-08: administrador fora da SLM mantém o controle do Almoxarifado; previs
   // 10. A tela recebe do servidor o mesmo catálogo que ele aplica: a previsão é restrita e só elegível na SLM.
   const catalog = (await call('/admin/permissions', { session: admin })).body
   assert.ok(catalog.restricted.includes('warehouse:forecast'))
-  assert.equal(catalog.restricted.includes('warehouse:manage'), false)
+  // Supercomando 17: a administração do Almoxarifado é restrita (fora de Solicitante e Motorista),
+  // mas continua elegível ao administrador fora da SLM.
+  assert.ok(catalog.restricted.includes('warehouse:manage'))
   const eligible = (role: string, slmMember: boolean) =>
     catalog.eligibility.find((entry: { role: string; slmMember: boolean }) => entry.role === role && entry.slmMember === slmMember).eligible as string[]
   assert.equal(eligible('administrator', false).includes('warehouse:forecast'), false)
   assert.equal(eligible('administrator', true).includes('warehouse:forecast'), true)
+  assert.ok(eligible('administrator', false).includes('warehouse:manage'))
+  assert.equal(eligible('requester', false).includes('warehouse:manage'), false)
 })
 

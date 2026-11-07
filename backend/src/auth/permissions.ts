@@ -100,7 +100,7 @@ export const permissionGroups = [
     label: 'Almoxarifado',
     permissions: [
       { key: 'warehouse:read', label: 'Acessar o módulo' },
-      { key: 'warehouse:manage', label: 'Administrar o módulo' },
+      { key: 'warehouse:manage', label: 'Administrar o módulo (só Administrador e Operador SLM)' },
       { key: 'warehouse:forecast', label: 'Informar e alterar a previsão de entrega (exige equipe SLM)' },
     ],
   },
@@ -174,12 +174,14 @@ export function isPermission(value: unknown): value is Permission {
  * perfil concede abertura em nome de outro setor, CPF nem a Central da SLM. Agendar e
  * informar ou alterar a previsão de entrega são atribuições da SLM: o perfil Administrador
  * só as concede a quem integra a equipe SLM (auditoria de 05/11/2026, P-08). A administração
- * do Almoxarifado (warehouse:manage: materiais, estoque, inventário, situação, entrega) não é
- * restrita: o Administrador fora da SLM a mantém. Para os demais elegíveis, tudo depende de
- * concessão individual.
+ * do Almoxarifado (warehouse:manage: materiais, estoque, inventário, situação, entrega) é do
+ * Administrador, dentro ou fora da SLM, e do Operador SLM com concessão individual; Solicitante
+ * e Motorista nunca a recebem, porque ela revela o saldo do estoque. Para os demais elegíveis,
+ * tudo depende de concessão individual.
  */
 export const restrictedPermissions = [
   'requests:schedule',
+  'warehouse:manage',
   'warehouse:forecast',
   'requests:create_on_behalf',
   'flights:cpf:read',
@@ -212,7 +214,27 @@ export function isEligibleForRestrictedPermission(
   if (permission === 'requests:schedule' || permission === 'warehouse:forecast') {
     return isSlmStaff
   }
+  // Fora da SLM, só o Administrador. Solicitante e Motorista nunca, qualquer que seja a origem.
+  if (permission === 'warehouse:manage') {
+    return role === 'administrator' || isSlmStaff
+  }
   return true
+}
+
+/**
+ * Verificação efetiva de uma permissão: além de constar da identidade, a permissão especial
+ * exige perfil elegível. Assim, nenhuma identidade montada por outro caminho (dado gravado
+ * diretamente no banco, sessão antiga, rota nova) faz um Solicitante administrar o Almoxarifado.
+ */
+export function holdsPermission(
+  identity: { permissions: readonly Permission[]; role: AuthRole; slmMember: boolean },
+  permission: Permission,
+): boolean {
+  return (
+    identity.permissions.includes(permission) &&
+    (!isRestrictedPermission(permission) ||
+      isEligibleForRestrictedPermission(permission, identity.role, identity.slmMember))
+  )
 }
 
 /** Um administrador nunca perde estas permissões, nem por retirada gravada no banco. */

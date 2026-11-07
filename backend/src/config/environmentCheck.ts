@@ -1,5 +1,7 @@
 import { accessSync, constants, statSync } from 'node:fs'
-import { attachmentDirectoryProblem, projectRoot } from '../attachments/storage.js'
+import { graphStorageSettings } from '../attachments/graphDriveStorage.js'
+import { proxySecretProblem } from '../security/trustedProxy.js'
+import { attachmentDirectoryProblem, projectRoot, storageDriver } from '../attachments/storage.js'
 
 /**
  * Conferência das variáveis de ambiente, para a implantação e para o início da API. Nunca
@@ -46,6 +48,45 @@ export function passengerKeyProblem(raw: string | undefined): string | null {
   if (key.length !== 32) return `precisa ter 32 bytes; tem ${key.length}`
   if (key.every((byte) => byte === key[0])) return 'não pode ser um valor repetido'
   return null
+}
+
+/**
+ * ATTACHMENTS_STORAGE escolhe onde ficam os anexos. "sharepoint" mal configurado é erro e nunca
+ * cai para o disco local: os arquivos iriam para um lugar que ninguém aprovou.
+ */
+function checkAttachmentStorage(environment: Environment, root: string): EnvironmentFinding[] {
+  const driver = storageDriver(environment)
+  if (driver === null) {
+    return [{ variable: 'ATTACHMENTS_STORAGE', level: 'erro', message: 'Valor desconhecido: use "local" ou "sharepoint". Anexos ficam indisponíveis.' }]
+  }
+  if (driver === 'local') return [checkAttachments(environment, root)]
+
+  const settings = graphStorageSettings(environment)
+  if (!settings.ok) {
+    return settings.problems.map((problem) => ({
+      variable: problem.variable,
+      level: 'erro' as const,
+      message: `${problem.message} Com ATTACHMENTS_STORAGE=sharepoint, anexos ficam indisponíveis.`,
+    }))
+  }
+  const findings: EnvironmentFinding[] = [
+    {
+      variable: 'ATTACHMENTS_STORAGE',
+      level: 'ok',
+      message: 'SharePoint pelo Microsoft Graph, configuração completa. A conexão real só é comprovada em homologação.',
+    },
+  ]
+  if (settings.value.credentials.kind === 'secret' && isProduction(environment)) {
+    findings.push({
+      variable: 'GRAPH_CLIENT_SECRET',
+      level: 'aviso',
+      message: 'Segredo do aplicativo em produção: prefira certificado e acompanhe o vencimento.',
+    })
+  }
+  if (value(environment, 'ATTACHMENTS_DIR')) {
+    findings.push({ variable: 'ATTACHMENTS_DIR', level: 'aviso', message: 'Ignorada: o armazenamento escolhido é o SharePoint.' })
+  }
+  return findings
 }
 
 function checkAttachments(environment: Environment, root: string): EnvironmentFinding {
@@ -101,7 +142,7 @@ export function checkEnvironment(
   else if (passenger) add('PASSENGER_DATA_KEY', 'erro', `Inválida: ${passenger}. Passagens não aceita passageiros.`)
   else add('PASSENGER_DATA_KEY', 'ok', 'Chave de 32 bytes. Confirme que há cópia segura fora do servidor e dos backups.')
 
-  findings.push(checkAttachments(environment, root))
+  findings.push(...checkAttachmentStorage(environment, root))
 
   const resendKey = value(environment, 'RESEND_API_KEY')
   const resendFrom = value(environment, 'RESEND_FROM')
@@ -163,7 +204,20 @@ export function checkEnvironment(
     if (!value(environment, 'INSTITUTIONAL_EMAIL_DOMAINS')) {
       add('INSTITUTIONAL_EMAIL_DOMAINS', 'aviso', 'Sem lista: qualquer domínio pode pedir cadastro, que continua exigindo aprovação.')
     }
-    if (!value(environment, 'TRUST_PROXY')) {
+    const proxySecret = proxySecretProblem(environment.PROXY_SHARED_SECRET)
+    if (proxySecret === 'ausente') {
+      add('PROXY_SHARED_SECRET', 'aviso', 'Ausente: a API aceita chamadas diretas, fora do proxy do Cloudflare Pages.')
+    } else if (proxySecret) {
+      add('PROXY_SHARED_SECRET', 'erro', `Inválida: ${proxySecret}. A API não inicia.`)
+    } else {
+      add('PROXY_SHARED_SECRET', 'ok', 'Presente: só o proxy do Cloudflare Pages chega às rotas, exceto /api/health.')
+    }
+    // O disco do Render Free é apagado a cada nova publicação ou reinício.
+    if (value(environment, 'RENDER') === 'true' && storageDriver(environment) === 'local' && value(environment, 'ATTACHMENTS_DIR')) {
+      add('ATTACHMENTS_STORAGE', 'erro', 'No Render, o disco local não é persistente: anexos gravados nele seriam perdidos.')
+    }
+    // Com o segredo do proxy, o IP vem de X-SLM-Client-IP; X-Forwarded-For não é necessário.
+    if (!value(environment, 'TRUST_PROXY') && proxySecret !== null) {
       add('TRUST_PROXY', 'aviso', 'Sem valor: atrás de proxy, os limites por IP valem para o proxy inteiro.')
     }
   }

@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from 'pg'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
 import { notifyDemand } from '../demands/demandNotifications.js'
 import type { DemandRecurrenceInput } from '../demands/demandValidation.js'
+import { freeTextFields } from '../demands/demandHistoryChanges.js'
 import {
   addDays,
   describeRule,
@@ -102,14 +103,18 @@ export function todayInSaoPaulo(now = new Date()) {
 /** O que mudou, para a auditoria: quem e quando já são colunas do próprio registro. */
 async function auditDetails(client: Client, entry: { demandId?: string | null; action: string; details?: Record<string, unknown> }) {
   const readable = (value: unknown) => (value === null || value === undefined ? 'vazio' : String(value).replace(/_/g, ' '))
-  const { de, para, campos } = entry.details ?? {}
+  const { de, para, campos, campo } = entry.details ?? {}
   const found = entry.demandId
     ? await client.query<{ numero: string }>(`SELECT numero FROM public.demands WHERE id = $1`, [entry.demandId])
     : null
+  // Texto livre (título, descrição, observações) fica só no histórico da demanda, que segue as
+  // regras de acesso dela; a auditoria geral registra apenas qual campo mudou.
+  const valuesAllowed = typeof campo !== 'string' || !freeTextFields.has(campo)
   return {
     alteracao: readable(entry.action),
     ...(found?.rows[0] ? { demanda: found.rows[0].numero } : {}),
-    ...(de !== undefined || para !== undefined ? { from: readable(de), to: readable(para) } : {}),
+    ...(typeof campo === 'string' ? { campos: [campo] } : {}),
+    ...(valuesAllowed && (de !== undefined || para !== undefined) ? { from: readable(de), to: readable(para) } : {}),
     ...(Array.isArray(campos) ? { campos: campos.map(String) } : {}),
   }
 }

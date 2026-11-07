@@ -1,7 +1,7 @@
 import express, { Router } from 'express'
 import type { Request, RequestHandler, Response } from 'express'
 import { AttachmentRejectedError, validateAttachment } from '../attachments/fileValidation.js'
-import { resolveAttachmentStorage } from '../attachments/storage.js'
+import { isStorageFailure, resolveAttachmentStorage } from '../attachments/storage.js'
 import { tripGroups } from '../auth/driverPolicy.js'
 import type { TripGroup } from '../auth/driverPolicy.js'
 import { canScheduleRequest } from '../auth/requestPolicy.js'
@@ -255,8 +255,7 @@ router.post(
       await drivers.linkOccurrenceAttachment(occurrenceId, id)
       response.status(201).json({ success: true, id })
     } catch (error) {
-      const code = (error as { code?: unknown }).code
-      if (code === 'EACCES' || code === 'ENOSPC') recordTechnicalEvent('storage', 'attachment_write_failed', error)
+      if (isStorageFailure(error)) recordTechnicalEvent('storage', 'attachment_write_failed', error)
       throw error
     }
   }),

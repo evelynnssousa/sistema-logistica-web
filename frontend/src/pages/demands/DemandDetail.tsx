@@ -13,13 +13,11 @@ import {
   commentKindLabels,
   completeDemand,
   demandAttachmentUrl,
-  demandPriorityLabels,
   demandStatusLabels,
   discardDemand,
   fetchDemand,
   fetchDemandAttachmentLimits,
   followDemand,
-  historyLabels,
   moduleLinkLabels,
   publishDemand,
   removeDemandAttachment,
@@ -36,6 +34,7 @@ import {
 } from '../../api/demandsApi'
 import type { DemandDetail as Detail, DemandStatus } from '../../api/demandsApi'
 import { errorMessage, formatCalendarDate, formatDateTime } from '../../api/modulesApi'
+import { historyLines, historyTitle } from './demandHistoryText'
 import { Alert, EmptyState, Loading } from '../../components/ui/Feedback'
 import Icon from '../../components/ui/Icon'
 import Modal from '../../components/ui/Modal'
@@ -957,25 +956,6 @@ function SeriesCard({ data, onReload }: { data: Detail; onReload: Reload }) {
   )
 }
 
-function describeHistory(details: Record<string, unknown>) {
-  const parts: string[] = []
-  const { de, para, campos, data, aguardando, alcance, regra, proximaData } = details
-  const format = (value: unknown) => {
-    const text = String(value ?? 'nenhum')
-    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return formatCalendarDate(text)
-    return demandStatusLabels[text as DemandStatus] ?? demandPriorityLabels[text] ?? text
-  }
-  if ('de' in details || 'para' in details) parts.push(`${format(de)} → ${format(para)}`)
-  if (Array.isArray(campos) && campos.length > 0) parts.push(`${campos.length} campo(s)`)
-  if (data) parts.push(format(data))
-  if (aguardando) parts.push(`aguardando ${String(aguardando)}`)
-  if (regra) parts.push(String(regra))
-  if (proximaData) parts.push(`próxima data ${format(proximaData)}`)
-  if (alcance === 'esta_e_futuras') parts.push('esta e as futuras')
-  if (alcance === 'somente_esta') parts.push('somente esta')
-  return parts.join(' · ')
-}
-
 function HistoryCard({ data }: { data: Detail }) {
   return (
     <section className="ui-card demand-panel" aria-labelledby="demand-history">
@@ -984,14 +964,23 @@ function HistoryCard({ data }: { data: Detail }) {
       </div>
       <ol className="demand-history">
         {data.history.map((item) => {
-          const detail = describeHistory(item.details)
+          const lines = historyLines(item.action, item.details)
           return (
             <li key={item.id}>
-              <strong>{historyLabels[item.action] ?? item.action}</strong>
-              {detail && <span>{detail}</span>}
-              {item.comment && <span>{item.comment}</span>}
+              <strong>{historyTitle(item.action, item.details)}</strong>
+              {lines.length > 0 && (
+                <dl className="demand-history-changes">
+                  {lines.map((line, index) => (
+                    <div key={index} className={line.long ? 'is-long' : undefined}>
+                      <dt>{line.label}:</dt>
+                      <dd>{line.text}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+              {item.comment && <span>Justificativa: {item.comment}</span>}
               <small className="demand-muted">
-                {item.user ?? 'Sistema'} · {formatDateTime(item.at)}
+                Realizado por {item.user ?? 'Sistema'} · {formatDateTime(item.at)}
               </small>
             </li>
           )

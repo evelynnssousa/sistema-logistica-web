@@ -6,3 +6,20 @@ backend/dist/
 !.env.example
 backups/
 tmp-backup-perfis/
+
+# Segredos locais e artefatos do Cloudflare (Wrangler)
+.dev.vars
+.wrangler/
+
+# Chaves privadas. Certificados públicos (.crt), como o da CA do Supabase, continuam versionados.
+*.pem
+*.key
+
+# Cópias de banco fora de backups/
+*.dump
+
+# Registros e resultados de testes
+*.log
+test-results/
+playwright-report/
+coverage/

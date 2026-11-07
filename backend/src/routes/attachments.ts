@@ -1,7 +1,9 @@
+import { holdsPermission } from '../auth/permissions.js'
 import express, { Router } from 'express'
 import type { Request, Response } from 'express'
 import { AttachmentRejectedError, contentTypes, inlineKinds, validateAttachment } from '../attachments/fileValidation.js'
-import { resolveAttachmentStorage } from '../attachments/storage.js'
+import { isStorageFailure, resolveAttachmentStorage } from '../attachments/storage.js'
+import { transmitAttachment } from '../attachments/transmit.js'
 import { canReadRequest, canUpdateRequest } from '../auth/requestPolicy.js'
 import type { RequestModule } from '../auth/requestPolicy.js'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
@@ -68,7 +70,7 @@ async function accessTo(identity: AuthenticatedIdentity, owner: AttachmentOwner)
   const row = found.rows[0]
   if (!row) return null
   const requester = row.solicitante_id === identity.userId
-  const manages = identity.permissions.includes('warehouse:manage')
+  const manages = holdsPermission(identity, 'warehouse:manage')
   return {
     module: 'warehouse',
     read:
@@ -194,7 +196,7 @@ router.post('/attachments/resources/:resourceType/:resourceId', hardLimit, async
     })
     response.status(201).json({ success: true, id })
   } catch (error) {
-    if ((error as { code?: unknown }).code === 'EACCES' || (error as { code?: unknown }).code === 'ENOSPC') {
+    if (isStorageFailure(error)) {
       recordTechnicalEvent('storage', 'attachment_write_failed', error)
     }
     sendError(response, error)
@@ -230,19 +232,7 @@ router.get('/attachments/files/:attachmentId/content', async (request, response)
           : "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'",
     })
 
-    const stream = storage.open(attachment.storageKey)
-    stream.on('error', (error) => {
-      recordTechnicalEvent('storage', 'attachment_read_failed', error)
-      if (response.headersSent) {
-        response.destroy()
-      } else {
-        response.removeHeader('Content-Disposition')
-        response.removeHeader('Content-Length')
-        response.set('Content-Type', 'application/json')
-        response.status(503).json({ success: false, message: 'O arquivo não está disponível neste momento.' })
-      }
-    })
-    stream.pipe(response)
+    await transmitAttachment(response, storage, attachment, 'attachment_read_failed')
   } catch (error) {
     sendError(response, error)
   }

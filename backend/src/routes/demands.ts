@@ -1,7 +1,8 @@
 import express, { Router } from 'express'
 import type { Request, RequestHandler, Response } from 'express'
 import { AttachmentRejectedError, contentTypes, inlineKinds, validateAttachment } from '../attachments/fileValidation.js'
-import { resolveAttachmentStorage } from '../attachments/storage.js'
+import { isStorageFailure, resolveAttachmentStorage } from '../attachments/storage.js'
+import { transmitAttachment } from '../attachments/transmit.js'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
 import { requireAuth } from '../auth/sessionRuntime.js'
 import { AttachmentRepository } from '../database/attachmentRepository.js'
@@ -530,19 +531,7 @@ router.get(
           ? "default-src 'none'; style-src 'unsafe-inline'"
           : "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'",
     })
-    const stream = storage.open(attachment.storageKey)
-    stream.on('error', (error) => {
-      recordTechnicalEvent('storage', 'demand_attachment_read_failed', error)
-      if (response.headersSent) {
-        response.destroy()
-      } else {
-        response.removeHeader('Content-Disposition')
-        response.removeHeader('Content-Length')
-        response.set('Content-Type', 'application/json')
-        response.status(503).json({ success: false, message: 'O arquivo não está disponível neste momento.' })
-      }
-    })
-    stream.pipe(response)
+    await transmitAttachment(response, storage, attachment, 'demand_attachment_read_failed')
   }),
 )
 
@@ -805,8 +794,7 @@ router.post(
       })
       response.status(201).json({ success: true, id: attachmentId })
     } catch (error) {
-      const code = (error as { code?: unknown }).code
-      if (code === 'EACCES' || code === 'ENOSPC') recordTechnicalEvent('storage', 'demand_attachment_write_failed', error)
+      if (isStorageFailure(error)) recordTechnicalEvent('storage', 'demand_attachment_write_failed', error)
       throw error
     }
   }),

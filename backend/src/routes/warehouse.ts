@@ -1,3 +1,4 @@
+import { holdsPermission } from '../auth/permissions.js'
 import { Router } from 'express'
 import type { Request, Response } from 'express'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
@@ -60,7 +61,7 @@ function identityOf(response: Response) {
 
 function seesAllRequests(identity: AuthenticatedIdentity) {
   return (
-    identity.permissions.includes('warehouse:manage') ||
+    holdsPermission(identity, 'warehouse:manage') ||
     identity.permissions.includes('requests:read_all')
   )
 }
@@ -171,7 +172,7 @@ router.get(
   '/warehouse/materials',
   requirePermission('warehouse:read'),
   guarded(async (request, response) => {
-    const canManage = identityOf(response).permissions.includes('warehouse:manage')
+    const canManage = holdsPermission(identityOf(response), 'warehouse:manage')
     const query = asBody(request.query)
     response.json({
       success: true,

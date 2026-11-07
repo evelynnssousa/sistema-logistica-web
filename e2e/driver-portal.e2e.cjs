@@ -214,7 +214,7 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
       await dialog.locator('input[type="file"]').setInputFiles({ name: 'foto-pneu.pdf', mimeType: 'application/pdf', buffer: pdf })
       await shot(driver, 'ocorrencia')
       const submit = dialog.getByRole('button', { name: 'Registrar ocorrência' })
-      assert.equal(await submit.evaluate((node) => getComputedStyle(node).backgroundColor), 'rgb(251, 185, 0)', 'botão principal em amarelo')
+      assert.equal(await submit.evaluate((node) => getComputedStyle(node).backgroundColor), 'rgb(3, 78, 162)', 'botão principal em azul institucional')
       await submit.click()
       await driver.waitForSelector('text=Ocorrência registrada. A equipe de Frota já pode consultar.')
 
@@ -298,8 +298,8 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
       const start = card.getByRole('button', { name: 'Iniciar viagem' })
       const box = await start.boundingBox()
       assert.ok(box.height >= 44, `botão com ${box.height}px`)
-      assert.equal(await start.evaluate((node) => getComputedStyle(node).backgroundColor), 'rgb(251, 185, 0)', 'amarelo #FBB900')
-      assert.equal(await phone.locator('.driver-header').evaluate((node) => getComputedStyle(node).backgroundColor), 'rgb(0, 0, 0)', 'preto')
+      assert.equal(await start.evaluate((node) => getComputedStyle(node).backgroundColor), 'rgb(3, 78, 162)', 'azul institucional #034EA2')
+      assert.equal(await phone.locator('.driver-header').evaluate((node) => getComputedStyle(node).backgroundColor), 'rgb(23, 54, 93)', 'azul executivo #17365D')
 
       await card.getByRole('button', { name: 'Registrar ocorrência' }).click()
       assert.ok((await overflow()) <= 1, 'ocorrência')

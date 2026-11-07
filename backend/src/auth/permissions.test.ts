@@ -4,6 +4,7 @@ import {
   allPermissions,
   computeEffectivePermissions,
   essentialAdministratorPermissions,
+  holdsPermission,
   grantsFromLegacyPermissions,
   isEligibleForRestrictedPermission,
   isRestrictedPermission,
@@ -88,8 +89,17 @@ test('a elegibilidade segue a matriz, e a equipe só vale para os perfis previst
   assert.equal(eligible('warehouse:forecast', 'slm_operator', true), true)
   assert.equal(eligible('warehouse:forecast', 'slm_operator', false), false)
   assert.equal(eligible('warehouse:forecast', 'requester', true), false)
-  assert.equal(isRestrictedPermission('warehouse:manage'), false)
+  // Administrar o Almoxarifado: Administrador dentro ou fora da SLM e Operador SLM; nunca
+  // Solicitante nem Motorista, mesmo marcados como SLM.
+  assert.equal(isRestrictedPermission('warehouse:manage'), true)
   assert.equal(eligible('warehouse:manage', 'administrator', false), true)
+  assert.equal(eligible('warehouse:manage', 'administrator', true), true)
+  assert.equal(eligible('warehouse:manage', 'slm_operator', true), true)
+  assert.equal(eligible('warehouse:manage', 'slm_operator', false), false)
+  assert.equal(eligible('warehouse:manage', 'requester', false), false)
+  assert.equal(eligible('warehouse:manage', 'requester', true), false)
+  assert.equal(eligible('warehouse:manage', 'driver', false), false)
+  assert.equal(eligible('warehouse:manage', 'driver', true), false)
   assert.equal(eligible('requests:schedule', 'slm_operator', false), false)
   assert.equal(eligible('requests:schedule', 'requester', true), false)
 
@@ -225,4 +235,42 @@ test('das permissões antigas, só configurações são convertidas: CPF e armaz
     ['settings:manage'],
   )
   assert.deepEqual(grantsFromLegacyPermissions(null), [])
+})
+
+test('Solicitante e Motorista nunca administram o Almoxarifado, nem por dado gravado no banco', () => {
+  for (const slmMember of [false, true]) {
+    assert.equal(
+      computeEffectivePermissions('requester', ['warehouse:manage'], [], slmMember).includes('warehouse:manage'),
+      false,
+      `solicitante, slmMember=${slmMember}`,
+    )
+    assert.equal(
+      computeEffectivePermissions('driver', ['warehouse:manage'], [], slmMember).includes('warehouse:manage'),
+      false,
+      `motorista, slmMember=${slmMember}`,
+    )
+  }
+  // Operador SLM: só por concessão individual, e só na equipe.
+  assert.equal(computeEffectivePermissions('slm_operator', [], [], true).includes('warehouse:manage'), false)
+  assert.ok(computeEffectivePermissions('slm_operator', ['warehouse:manage'], [], true).includes('warehouse:manage'))
+  assert.equal(computeEffectivePermissions('slm_operator', ['warehouse:manage'], [], false).includes('warehouse:manage'), false)
+})
+
+test('a verificação efetiva recusa identidade montada com warehouse:manage sem elegibilidade', () => {
+  const forged = (role: 'requester' | 'driver' | 'slm_operator' | 'administrator', slmMember: boolean) => ({
+    role,
+    slmMember,
+    permissions: ['warehouse:read', 'warehouse:manage', 'warehouse:forecast'] as const,
+  })
+  assert.equal(holdsPermission(forged('requester', false), 'warehouse:manage'), false)
+  assert.equal(holdsPermission(forged('requester', true), 'warehouse:manage'), false)
+  assert.equal(holdsPermission(forged('driver', true), 'warehouse:manage'), false)
+  assert.equal(holdsPermission(forged('slm_operator', false), 'warehouse:manage'), false)
+  assert.ok(holdsPermission(forged('slm_operator', true), 'warehouse:manage'))
+  assert.ok(holdsPermission(forged('administrator', false), 'warehouse:manage'))
+  // A previsão continua só da SLM, mesmo para o Administrador.
+  assert.equal(holdsPermission(forged('administrator', false), 'warehouse:forecast'), false)
+  assert.ok(holdsPermission(forged('administrator', true), 'warehouse:forecast'))
+  // Permissão comum segue só a identidade.
+  assert.ok(holdsPermission(forged('requester', false), 'warehouse:read'))
 })

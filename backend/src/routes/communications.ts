@@ -1,3 +1,4 @@
+import { holdsPermission } from '../auth/permissions.js'
 import { Router } from 'express'
 import type { Request, Response } from 'express'
 import { emailPattern } from '../auth/identifiers.js'
@@ -62,7 +63,7 @@ function guarded(handler: Handler): Handler {
 /** Quem atende o módulo. Ler o módulo não basta: o histórico traz endereços e documentos. */
 function attendsModule(identity: AuthenticatedIdentity, resource: CommunicationResource) {
   return resource.module === 'warehouse'
-    ? identity.permissions.includes('warehouse:manage')
+    ? holdsPermission(identity, 'warehouse:manage')
     : canUpdateRequest(identity, resource.module)
 }
 

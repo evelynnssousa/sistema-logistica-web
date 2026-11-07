@@ -1,3 +1,4 @@
+import { holdsPermission } from '../auth/permissions.js'
 import type { Pool } from 'pg'
 import type { RequestModule } from '../auth/requestPolicy.js'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
@@ -103,7 +104,7 @@ export class SearchRepository {
       if (wants('materials') && !filters.status) tasks.materials = this.materials(context)
       if (wants('warehouseRequests')) tasks.warehouseRequests = this.warehouseRequests(context)
     }
-    if (warehouseAllowed && holds('warehouse:manage') && wants('inventoryChecks')) {
+    if (warehouseAllowed && holdsPermission(identity, 'warehouse:manage') && wants('inventoryChecks')) {
       tasks.inventoryChecks = this.inventoryChecks(context)
     }
     if ((!filters.module || filters.module === 'fleet') && holds('fleet:update') && wants('vehicles') && !filters.status) {
@@ -271,7 +272,7 @@ export class SearchRepository {
           module: 'warehouse',
           status: null,
           at: null,
-          link: context.identity.permissions.includes('warehouse:manage')
+          link: holdsPermission(context.identity, 'warehouse:manage')
             ? '/almoxarifado/materiais'
             : '/almoxarifado/nova',
         }),
@@ -282,7 +283,7 @@ export class SearchRepository {
   private warehouseRequests(context: Context) {
     const { identity, filters } = context
     const seesAll =
-      identity.permissions.includes('warehouse:manage') || identity.permissions.includes('requests:read_all')
+      holdsPermission(identity, 'warehouse:manage') || identity.permissions.includes('requests:read_all')
     return this.page(context, (paging) => {
       const parameters: unknown[] = [likePattern(filters.term)]
       const conditions = [

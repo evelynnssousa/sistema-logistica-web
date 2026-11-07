@@ -1,4 +1,5 @@
 import type { RequestHandler } from 'express'
+import { holdsPermission } from '../auth/permissions.js'
 import type { Permission } from '../auth/permissions.js'
 import { recordAuthAuditEvent } from '../database/authAuditRepository.js'
 import { currentIdentity } from './requirePermission.js'
@@ -21,7 +22,7 @@ export function requireAuditedPermission(
       response.status(401).json({ success: false, message: 'Autenticação necessária.' })
       return
     }
-    const missing = permissions.filter((permission) => !identity.permissions.includes(permission))
+    const missing = permissions.filter((permission) => !holdsPermission(identity, permission))
     if (missing.length === 0) {
       next()
       return

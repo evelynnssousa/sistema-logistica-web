@@ -1,3 +1,4 @@
+import { holdsPermission } from '../auth/permissions.js'
 import { Router } from 'express'
 import type { Request, Response } from 'express'
 import type { RequestModule } from '../auth/requestPolicy.js'
@@ -68,8 +69,9 @@ router.get('/reports/summary', requirePermission('reports:read'), async (request
       insights.summary(identity, filters),
       insights.byPeriod(identity, filters),
       insights.bySector(identity, filters),
-      identity.permissions.includes('warehouse:manage') ||
-      identity.permissions.includes('requests:read_all')
+      // Totais por material são indicador interno: Solicitante não os recebe nem com read_all.
+      holdsPermission(identity, 'warehouse:manage') ||
+      (identity.permissions.includes('requests:read_all') && identity.role === 'slm_operator')
         ? warehouse.topMaterials({ from: filters.from ?? null, to: filters.to ?? null })
         : Promise.resolve([]),
     ])

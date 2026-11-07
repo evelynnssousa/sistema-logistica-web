@@ -12,7 +12,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px 16px;
-  background: var(--black);
+  background: var(--executive);
   color: var(--white);
 }
 
@@ -39,7 +39,7 @@
 }
 
 .driver-brand strong {
-  color: var(--yellow);
+  color: var(--white);
   font-size: 1.05rem;
 }
 
@@ -69,7 +69,7 @@
 .driver-tabs {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  background: var(--graphite);
+  background: var(--executive-raised);
 }
 
 .driver-tabs button {
@@ -90,16 +90,16 @@
 }
 
 .driver-tabs button.is-active {
-  border-bottom-color: var(--yellow);
-  color: var(--yellow);
+  border-bottom-color: var(--accent);
+  color: var(--white);
 }
 
 .driver-tab-badge {
   min-width: 22px;
   padding: 1px 6px;
   border-radius: 999px;
-  background: var(--yellow);
-  color: var(--black);
+  background: var(--accent);
+  color: var(--executive);
   font-size: 0.78rem;
   font-weight: 700;
 }
@@ -137,8 +137,8 @@
 }
 
 .driver-groups button.is-active {
-  border-color: var(--blue);
-  background: var(--blue);
+  border-color: var(--institutional);
+  background: var(--institutional);
   color: var(--white);
 }
 
@@ -218,7 +218,7 @@
 }
 
 .driver-trip-notes {
-  background: var(--blue-soft);
+  background: var(--institutional-soft);
   color: var(--text);
 }
 
@@ -260,14 +260,15 @@
 }
 
 .driver-button-primary {
-  background: var(--yellow);
-  color: var(--black);
+  border-color: var(--institutional);
+  background: var(--institutional);
+  color: var(--white);
 }
 
 .driver-button-secondary {
-  border-color: var(--black);
+  border-color: var(--border-strong);
   background: var(--surface);
-  color: var(--black);
+  color: var(--executive);
 }
 
 /* Dentro do diálogo, a regra genérica de botões do Modal venceria estas. */
@@ -279,16 +280,16 @@
 
 .ui-modal button.driver-button-primary,
 .ui-modal button.driver-button-primary:hover:not(:disabled) {
-  border-color: var(--yellow);
-  background: var(--yellow);
-  color: var(--black);
+  border-color: var(--institutional);
+  background: var(--institutional);
+  color: var(--white);
 }
 
 .driver-button-quiet {
   flex-basis: 100%;
   min-height: 44px;
   background: transparent;
-  color: var(--blue);
+  color: var(--institutional);
   text-decoration: underline;
 }
 
@@ -352,7 +353,7 @@
 }
 
 .driver-notices li.is-unread {
-  border-left: 4px solid var(--yellow);
+  border-left: 4px solid var(--accent);
 }
 
 .driver-occurrences small,

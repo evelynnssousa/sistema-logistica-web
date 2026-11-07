@@ -3,33 +3,79 @@
  * componentes. Regras em docs/IDENTIDADE_VISUAL.md.
  */
 :root {
-  --black: #000000;
-  --yellow: #fbb900;
-  --yellow-soft: #fff4d1;
+  /* Paleta oficial */
+  --executive: #17365d;
+  --executive-strong: #102a4a;
+  --executive-raised: #1f4a7a;
+  --institutional: #034ea2;
+  --institutional-hover: #023e82;
+  --institutional-soft: #e8f0fa;
+  --accent: #fbb900;
+  --accent-soft: #fff6db;
   --white: #ffffff;
-  --graphite: #162235;
-  --graphite-soft: #2a3648;
-  --blue: #034ea2;
-  --blue-soft: #e8f0fa;
 
-  --page: #f4f4f1;
+  /* Superfícies, textos e bordas */
+  --page: #f1f4f8;
   --surface: #ffffff;
-  --surface-muted: #f8f8f6;
-  --border: #dedfda;
-  --border-strong: #8c9098;
-  --text: #15191f;
-  --text-muted: #4d5560;
+  --surface-muted: #f7f9fc;
+  --surface-hover: #f3f6fa;
+  --border: #e4e9f0;
+  --border-strong: #8a94a6;
+  --heading: var(--executive);
+  --text: #475467;
+  --text-muted: #667085;
+  --on-dark: #ffffff;
+  --on-dark-muted: #c9d6e8;
+  --on-dark-hover: rgb(255 255 255 / 10%);
+  --on-dark-border: rgb(255 255 255 / 14%);
+  --disabled-surface: #eef1f5;
+  --disabled-text: #667085;
 
+  /* Situações: verde, azul, laranja e vermelho. Nunca amarelo. */
   --success: #146c43;
   --success-soft: #e4f5ec;
+  --info: var(--institutional);
+  --info-soft: var(--institutional-soft);
+  --warning: #b54708;
+  --warning-soft: #fef0e6;
   --danger: #b42318;
+  --danger-strong: #8e1c13;
   --danger-soft: #fdecea;
-  --warning: #7a4b00;
-  --warning-soft: #fff3d6;
+  --info-border: #b9cfe9;
+  --info-text: #05305f;
+  --success-border: var(--success-border);
+  --success-text: var(--success-text);
+  --warning-border: #f7c9a6;
+  --danger-border: var(--danger-border);
 
+  /* Tipografia */
+  --font-family: Inter, Arial, sans-serif;
+  --font-size-small: 0.78rem;
+  --font-size-body: 0.9rem;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-heavy: 800;
+
+  /* Forma, profundidade e espaço */
   --radius: 12px;
   --radius-small: 8px;
-  --shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 4px 16px rgb(0 0 0 / 5%);
+  --radius-pill: 999px;
+  --shadow: 0 1px 2px rgb(16 42 74 / 6%), 0 4px 16px rgb(16 42 74 / 5%);
+  --shadow-raised: 0 8px 28px rgb(16 42 74 / 14%);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Interação */
+  --focus-ring: var(--institutional);
+  --focus-ring-on-dark: var(--accent);
+  --transition: 120ms ease;
   --sidebar-width: 268px;
 
   color: var(--text);
@@ -47,12 +93,12 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid var(--blue);
+  outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
 a {
-  color: var(--blue);
+  color: var(--institutional);
 }
 
 /* ------------------------------------------------------------------ Layout */
@@ -97,12 +143,12 @@ a {
   padding: 0;
   overflow: hidden;
   border: 0;
-  background: var(--black);
+  background: var(--executive);
   color: var(--white);
 }
 
 .sidebar :focus-visible {
-  outline-color: var(--yellow);
+  outline-color: var(--focus-ring-on-dark);
 }
 
 .sidebar .brand {
@@ -111,7 +157,7 @@ a {
   gap: 12px;
   margin: 0;
   padding: 18px 16px;
-  border-bottom: 1px solid rgb(255 255 255 / 14%);
+  border-bottom: 1px solid var(--on-dark-border);
 }
 
 /* O logotipo oficial tem texto preto: fica sempre sobre fundo branco. */
@@ -147,7 +193,7 @@ a {
 }
 
 .sidebar .brand-text span {
-  color: #d4d4d0;
+  color: var(--on-dark-muted);
   font-size: 0.66rem;
   letter-spacing: 0.04em;
 }
@@ -160,12 +206,12 @@ a {
   min-height: 0;
   padding: 10px 12px;
   overflow-y: auto;
-  scrollbar-color: #4a4a4a transparent;
+  scrollbar-color: var(--executive-raised) transparent;
 }
 
 .sidebar .nav-group-label {
   margin: 14px 10px 6px;
-  color: #bdbdb8;
+  color: var(--on-dark-muted);
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -189,23 +235,35 @@ a {
   border: 0;
   border-radius: var(--radius-small);
   background: transparent;
-  color: #f0f0ec;
-  font-size: 0.9rem;
-  font-weight: 500;
+  color: var(--on-dark);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   text-decoration: none;
-  transition: background-color 120ms ease, color 120ms ease;
+  transition: background-color var(--transition), color var(--transition);
 }
 
 .sidebar .nav-item:hover {
-  background: rgb(255 255 255 / 12%);
+  background: var(--on-dark-hover);
   color: var(--white);
 }
 
+/* Item ativo: azul institucional, com um traço curto em amarelo como único destaque. */
 .sidebar .nav-item.active,
 .sidebar .nav-item.active:hover {
-  background: var(--yellow);
-  color: var(--black);
-  font-weight: 700;
+  background: var(--institutional);
+  color: var(--on-dark);
+  font-weight: var(--font-weight-bold);
+}
+
+.sidebar .nav-item.active::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
 }
 
 .sidebar .nav-item.active:focus-visible {
@@ -218,18 +276,19 @@ a {
   width: auto;
   height: auto;
   background: none;
-  color: var(--yellow);
+  color: var(--on-dark-muted);
 }
 
+.sidebar .nav-item:hover .nav-icon,
 .sidebar .nav-item.active .nav-icon {
   background: none;
-  color: var(--black);
+  color: var(--on-dark);
 }
 
 .sidebar .sidebar-bottom {
   margin: 0;
   padding: 12px;
-  border-top: 1px solid rgb(255 255 255 / 14%);
+  border-top: 1px solid var(--on-dark-border);
 }
 
 .sidebar .user-profile {
@@ -240,7 +299,7 @@ a {
   padding: 8px;
   border: 0;
   border-radius: var(--radius-small);
-  background: var(--graphite);
+  background: var(--executive-raised);
 }
 
 .sidebar .avatar {
@@ -250,9 +309,9 @@ a {
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background: var(--yellow);
-  color: var(--black);
-  font-weight: 800;
+  background: var(--accent);
+  color: var(--executive);
+  font-weight: var(--font-weight-heavy);
 }
 
 .sidebar .user-info {
@@ -270,7 +329,7 @@ a {
 }
 
 .sidebar .user-info span {
-  color: #e4e4df;
+  color: var(--on-dark-muted);
   font-size: 0.74rem;
 }
 
@@ -362,17 +421,20 @@ a {
   gap: 6px;
   min-height: 40px;
   padding: 8px 14px;
-  border: 1px solid var(--black);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-small);
-  background: var(--black);
-  color: var(--white);
+  background: var(--surface);
+  color: var(--executive);
   font-size: 0.86rem;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
   cursor: pointer;
+  transition: background-color var(--transition), border-color var(--transition);
 }
 
-.topbar .topbar-logout:hover {
-  background: var(--graphite-soft);
+.topbar .topbar-logout:hover,
+.topbar-menu:hover {
+  border-color: var(--executive);
+  background: var(--surface-hover);
 }
 
 .topbar-menu {
@@ -395,7 +457,7 @@ a {
 .ui-page-header h1,
 .page-section .page-header h1 {
   margin: 0;
-  color: var(--text);
+  color: var(--heading);
   font-size: clamp(1.45rem, 2.4vw, 1.9rem);
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -428,8 +490,10 @@ a {
 }
 
 .ui-section-title,
-.page-content h2 {
-  color: var(--text);
+.page-content h2,
+.page-content h3,
+.ui-modal h2 {
+  color: var(--heading);
 }
 
 /* ------------------------------------------------------------------ Botões */
@@ -452,20 +516,20 @@ a {
   line-height: 1.2;
   text-decoration: none;
   cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition: background-color var(--transition), border-color var(--transition), color var(--transition);
 }
 
 .page-content button:hover:not(:disabled),
 .ui-modal button:hover:not(:disabled),
 .page-content .ui-button:hover {
-  border-color: var(--black);
-  background: var(--surface-muted);
+  border-color: var(--institutional);
+  background: var(--surface-hover);
 }
 
 .page-content button:disabled {
   border-color: var(--border);
-  background: #eeeeea;
-  color: #5f656e;
+  background: var(--disabled-surface);
+  color: var(--disabled-text);
   cursor: not-allowed;
   opacity: 1;
 }
@@ -480,12 +544,12 @@ a {
   gap: 6px;
   min-height: 42px;
   padding: 9px 18px;
-  border: 1px solid var(--yellow);
+  border: 1px solid var(--institutional);
   border-radius: var(--radius-small);
-  background: var(--yellow);
-  color: var(--black);
-  font-size: 0.9rem;
-  font-weight: 700;
+  background: var(--institutional);
+  color: var(--white);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-bold);
   text-decoration: none;
 }
 
@@ -493,8 +557,9 @@ a {
 .page-content .maintenance-primary-button:hover,
 .page-content button.maintenance-primary-button:hover:not(:disabled),
 .ui-modal .ui-button-primary:hover:not(:disabled) {
-  border-color: var(--black);
-  background: #e5a900;
+  border-color: var(--institutional-hover);
+  background: var(--institutional-hover);
+  color: var(--white);
 }
 
 .page-content .maintenance-secondary-button,
@@ -506,10 +571,10 @@ a {
   gap: 6px;
   min-height: 42px;
   padding: 9px 16px;
-  border: 1px solid var(--black);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-small);
   background: var(--surface);
-  color: var(--black);
+  color: var(--executive);
   font-size: 0.9rem;
   font-weight: 600;
   text-decoration: none;
@@ -525,8 +590,8 @@ a {
 
 .page-content button.danger:hover:not(:disabled),
 .ui-modal .ui-button-danger:hover:not(:disabled) {
-  border-color: #8e1c13;
-  background: #8e1c13;
+  border-color: var(--danger-strong);
+  background: var(--danger-strong);
 }
 
 /* ----------------------------------------------------------------- Cartões */
@@ -629,44 +694,53 @@ a {
 }
 
 .ui-metric-black {
-  border-color: var(--black);
-  background: var(--black);
+  border-color: var(--executive);
+  background: var(--executive);
   color: var(--white);
 }
 
 .ui-metric-black .ui-metric-icon {
-  background: var(--yellow);
-  color: var(--black);
+  background: rgb(255 255 255 / 12%);
+  color: var(--accent);
 }
 
 .ui-metric-black .ui-metric-description {
-  color: #deded9;
+  color: var(--on-dark-muted);
 }
 
 .ui-metric-yellow {
-  border-color: var(--yellow);
-  background: var(--yellow);
-  color: var(--black);
-}
-
-.ui-metric-yellow .ui-metric-icon {
-  background: var(--black);
-  color: var(--yellow);
-}
-
-.ui-metric-graphite {
-  border-color: var(--graphite);
-  background: var(--graphite);
+  border-color: var(--institutional);
+  background: var(--institutional);
   color: var(--white);
 }
 
+.ui-metric-yellow .ui-metric-icon {
+  background: rgb(255 255 255 / 14%);
+  color: var(--white);
+}
+
+.ui-metric-yellow .ui-metric-description {
+  color: var(--on-dark-muted);
+}
+
+.ui-metric-graphite {
+  border-color: var(--border);
+  border-top: 3px solid var(--executive);
+  background: var(--surface);
+  color: var(--text);
+}
+
 .ui-metric-graphite .ui-metric-icon {
-  background: rgb(255 255 255 / 12%);
-  color: var(--yellow);
+  background: var(--institutional-soft);
+  color: var(--executive);
+}
+
+.ui-metric-graphite .ui-metric-value {
+  color: var(--heading);
 }
 
 .ui-metric-graphite .ui-metric-description {
-  color: #dfe3e9;
+  color: var(--text-muted);
 }
 
 .ui-metric-white {
@@ -675,8 +749,12 @@ a {
 }
 
 .ui-metric-white .ui-metric-icon {
-  background: var(--yellow-soft);
-  color: var(--black);
+  background: var(--institutional-soft);
+  color: var(--institutional);
+}
+
+.ui-metric-white .ui-metric-value {
+  color: var(--heading);
 }
 
 .ui-metric-white .ui-metric-description {
@@ -710,14 +788,14 @@ a {
   height: 12px;
   overflow: hidden;
   border-radius: 4px;
-  background: #eeeeea;
+  background: var(--disabled-surface);
 }
 
 .ui-bars .report-bar-fill {
   display: block;
   height: 100%;
   border-radius: 0 4px 4px 0;
-  background: var(--graphite);
+  background: var(--executive);
 }
 
 .ui-columns {
@@ -750,12 +828,12 @@ a {
   width: 100%;
   min-height: 2px;
   border-radius: 4px 4px 0 0;
-  background: var(--graphite);
+  background: var(--executive);
 }
 
 .ui-column:hover .ui-column-fill,
 .ui-column:focus-visible .ui-column-fill {
-  background: var(--black);
+  background: var(--executive);
 }
 
 .ui-column-label {
@@ -776,7 +854,7 @@ a {
   display: none;
   padding: 3px 8px;
   border-radius: 6px;
-  background: var(--black);
+  background: var(--executive);
   color: var(--white);
   font-size: 0.74rem;
   white-space: nowrap;
@@ -834,13 +912,13 @@ a {
 .page-content .ui-clear-filters {
   border-color: transparent;
   background: transparent;
-  color: var(--blue);
+  color: var(--institutional);
 }
 
 .page-content .ui-clear-filters:disabled {
   border-color: transparent;
   background: transparent;
-  color: #5f656e;
+  color: var(--text-muted);
 }
 
 /* ------------------------------------------------------------------ Campos */
@@ -862,7 +940,7 @@ a {
 
 .page-content input::placeholder,
 .page-content textarea::placeholder {
-  color: #5f656e;
+  color: var(--text-muted);
 }
 
 .page-content input[readonly] {
@@ -878,15 +956,15 @@ a {
 
 .page-content select:disabled,
 .page-content input:disabled {
-  background-color: #eeeeea;
-  color: #5f656e;
+  background-color: var(--disabled-surface);
+  color: var(--text-muted);
 }
 
 .page-content input[type='checkbox'],
 .page-content input[type='radio'] {
   width: 18px;
   height: 18px;
-  accent-color: var(--black);
+  accent-color: var(--executive);
 }
 
 .page-content .maintenance-form-field {
@@ -1091,10 +1169,10 @@ a {
   gap: 5px;
   min-height: 36px;
   padding: 6px 12px;
-  border: 1px solid var(--black);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-small);
   background: var(--surface);
-  color: var(--black);
+  color: var(--executive);
   font-size: 0.82rem;
   font-weight: 600;
   text-decoration: none;
@@ -1102,7 +1180,8 @@ a {
 }
 
 .page-content .service-row-action:hover {
-  background: var(--yellow);
+  border-color: var(--institutional);
+  background: var(--institutional-soft);
 }
 
 .page-content table a {
@@ -1134,7 +1213,7 @@ a {
   gap: 5px;
   padding: 4px 10px;
   border-radius: 999px;
-  background: #eeeeea;
+  background: var(--disabled-surface);
   color: var(--text);
   font-size: 0.78rem;
   font-weight: 700;
@@ -1148,13 +1227,13 @@ a {
 }
 
 .ui-badge-scheduled {
-  background: var(--blue-soft);
-  color: var(--blue);
+  background: var(--institutional-soft);
+  color: var(--institutional);
 }
 
 .ui-badge-progress {
-  background: var(--black);
-  color: var(--yellow);
+  background: var(--info-soft);
+  color: var(--info);
 }
 
 .ui-badge-success {
@@ -1186,26 +1265,26 @@ a {
 .ui-alert-info,
 .module-notice,
 .settings-guidance {
-  border-color: #b9cfe9;
-  background: var(--blue-soft);
-  color: #05305f;
+  border-color: var(--info-border);
+  background: var(--institutional-soft);
+  color: var(--info-text);
 }
 
 .ui-alert-success {
-  border-color: #a8dcc0;
+  border-color: var(--success-border);
   background: var(--success-soft);
-  color: #0d4f30;
+  color: var(--success-text);
 }
 
 .ui-alert-error,
 .settings-storage-error {
-  border-color: #f2b8b2;
+  border-color: var(--danger-border);
   background: var(--danger-soft);
-  color: #8e1c13;
+  color: var(--danger-strong);
 }
 
 .ui-alert-warning {
-  border-color: #eed08d;
+  border-color: var(--warning-border);
   background: var(--warning-soft);
   color: var(--warning);
 }
@@ -1245,14 +1324,14 @@ a {
   height: 92px;
   margin-bottom: 8px;
   border-radius: 50%;
-  background: var(--yellow-soft);
-  color: var(--black);
+  background: var(--institutional-soft);
+  color: var(--executive);
 }
 
 .ui-empty-ring {
   position: absolute;
   inset: 8px;
-  border: 2px dashed #d39c00;
+  border: 2px dashed var(--accent);
   border-radius: 50%;
 }
 
@@ -1263,7 +1342,7 @@ a {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--black);
+  background: var(--executive);
 }
 
 .ui-loading {
@@ -1278,8 +1357,8 @@ a {
 .ui-spinner {
   width: 20px;
   height: 20px;
-  border: 3px solid #e4e4df;
-  border-top-color: var(--black);
+  border: 3px solid var(--border);
+  border-top-color: var(--executive);
   border-radius: 50%;
   animation: ui-spin 800ms linear infinite;
 }
@@ -1360,7 +1439,7 @@ a {
   padding: 4px;
   overflow-x: auto;
   border-radius: 10px;
-  background: var(--black);
+  background: var(--executive);
   scrollbar-width: thin;
 }
 
@@ -1380,7 +1459,7 @@ a {
 }
 
 .module-tabs a svg {
-  color: var(--yellow);
+  color: var(--on-dark-muted);
 }
 
 .module-tabs a:hover {
@@ -1388,17 +1467,17 @@ a {
 }
 
 .module-tabs a.active {
-  background: var(--yellow);
-  color: var(--black);
+  background: var(--institutional);
+  color: var(--white);
   font-weight: 700;
 }
 
 .module-tabs a.active svg {
-  color: var(--black);
+  color: var(--white);
 }
 
 .module-tabs a:focus-visible {
-  outline-color: var(--yellow);
+  outline-color: var(--focus-ring-on-dark);
   outline-offset: -3px;
 }
 
@@ -1502,7 +1581,7 @@ a {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--black);
+  background: var(--executive);
   content: '';
 }
 
@@ -1539,21 +1618,22 @@ a {
   gap: 8px;
   min-height: 44px;
   padding: 8px 14px;
-  border: 1px solid var(--black);
+  border: 1px solid var(--executive);
   border-radius: 999px;
   background: var(--surface);
-  color: var(--black);
+  color: var(--executive);
   font-size: 0.86rem;
   font-weight: 600;
   text-decoration: none;
 }
 
 .home-action svg {
-  color: var(--black);
+  color: var(--executive);
 }
 
 .home-action:hover {
-  background: var(--yellow);
+  border-color: var(--institutional);
+  background: var(--institutional-soft);
 }
 
 .home-pending {
@@ -1594,7 +1674,7 @@ a {
   gap: 2px;
   padding: 3px;
   border-radius: 10px;
-  background: var(--black);
+  background: var(--executive);
 }
 
 .page-content .calendar-view-controls button {
@@ -1610,8 +1690,8 @@ a {
 
 .page-content .calendar-view-controls button.active,
 .page-content .calendar-view-controls button.active:hover:not(:disabled) {
-  background: var(--yellow);
-  color: var(--black);
+  background: var(--institutional);
+  color: var(--white);
 }
 
 .calendar-filter-row {
@@ -1663,7 +1743,7 @@ a {
 }
 
 .calendar-day.today {
-  border: 2px solid var(--black);
+  border: 2px solid var(--executive);
 }
 
 .calendar-day-number {
@@ -1675,9 +1755,9 @@ a {
   display: block;
   margin-top: 4px;
   padding: 3px 6px;
-  border-left: 3px solid var(--yellow);
+  border-left: 3px solid var(--accent);
   border-radius: 4px;
-  background: var(--black);
+  background: var(--executive);
   color: var(--white);
   font-size: 0.74rem;
   text-decoration: none;
@@ -1685,8 +1765,8 @@ a {
 }
 
 .calendar-event.fleet {
-  border-left-color: #ffffff;
-  background: var(--graphite);
+  border-left-color: var(--white);
+  background: var(--institutional);
   color: var(--white);
 }
 
@@ -1726,8 +1806,8 @@ a {
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  background: var(--black);
-  color: var(--yellow);
+  background: var(--institutional-soft);
+  color: var(--executive);
 }
 
 .settings-group > header h2 {
@@ -1798,7 +1878,7 @@ a {
 .page-content .settings-option-state {
   padding: 3px 9px;
   border-radius: 999px;
-  background: #eeeeea;
+  background: var(--disabled-surface);
   color: var(--text);
   font-size: 0.74rem;
   font-weight: 700;
@@ -1898,7 +1978,7 @@ a {
   width: 34px;
   height: 34px;
   border-radius: 8px;
-  background: #eeeeea;
+  background: var(--disabled-surface);
   color: var(--text);
 }
 
@@ -1921,27 +2001,27 @@ a {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: var(--graphite);
+  background: var(--executive);
   color: var(--white);
   font-size: 0.72rem;
   font-weight: 700;
 }
 
 .audit-row-important td {
-  background: #fffaf0;
+  background: var(--surface-muted);
 }
 
 .audit-row-important td:first-child {
-  box-shadow: inset 4px 0 0 var(--yellow);
+  box-shadow: inset 4px 0 0 var(--accent);
 }
 
 .audit-row-important .audit-action-icon {
-  background: var(--yellow);
-  color: var(--black);
+  background: var(--accent);
+  color: var(--executive);
 }
 
 .audit-row-refused td {
-  background: #fff6f5;
+  background: var(--danger-soft);
 }
 
 .audit-row-refused td:first-child {
@@ -2022,13 +2102,13 @@ a {
   width: 40px;
   height: 40px;
   border-radius: 10px;
-  background: var(--yellow-soft);
-  color: var(--black);
+  background: var(--institutional-soft);
+  color: var(--executive);
 }
 
 .warehouse-material-card.is-chosen {
-  border-color: var(--black);
-  box-shadow: inset 0 0 0 1px var(--black);
+  border-color: var(--executive);
+  box-shadow: inset 0 0 0 1px var(--executive);
 }
 
 .warehouse-request-summary {
@@ -2041,7 +2121,7 @@ a {
   margin-top: 16px;
   padding: 14px;
   border-radius: var(--radius);
-  background: var(--black);
+  background: var(--executive);
   color: var(--white);
   box-shadow: 0 8px 24px rgb(0 0 0 / 25%);
 }
@@ -2095,7 +2175,7 @@ a {
 }
 
 .page-section a.users-link {
-  color: var(--blue);
+  color: var(--institutional);
   font-weight: 600;
 }
 
@@ -2109,8 +2189,8 @@ a {
 }
 
 .users-permission.sensitive {
-  border-left: 4px solid var(--yellow);
-  background: #fffaf0;
+  border-left: 4px solid var(--accent);
+  background: var(--surface-muted);
 }
 
 .page-section > [role='alert'],
@@ -2120,20 +2200,20 @@ a {
 }
 
 .page-section > [role='alert'] {
-  border: 1px solid #f2b8b2;
+  border: 1px solid var(--danger-border);
   background: var(--danger-soft);
-  color: #8e1c13;
+  color: var(--danger-strong);
 }
 
 .page-section > [role='status'] {
-  border: 1px solid #a8dcc0;
+  border: 1px solid var(--success-border);
   background: var(--success-soft);
-  color: #0d4f30;
+  color: var(--success-text);
 }
 
 .user-badge.slm {
-  background: var(--black);
-  color: var(--yellow);
+  background: var(--institutional-soft);
+  color: var(--executive);
 }
 
 .user-badge.status-approved {
@@ -2155,11 +2235,11 @@ a {
 
 /* -------------------------------------------------------- Entrada no sistema */
 .login-page {
-  background: var(--black);
+  background: var(--executive);
 }
 
 .login-card {
-  border-top: 5px solid var(--yellow);
+  border-top: 4px solid var(--accent);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--text);
@@ -2172,25 +2252,25 @@ a {
 }
 
 .login-form input:focus-visible {
-  outline: 3px solid var(--blue);
+  outline: 3px solid var(--institutional);
 }
 
 .login-submit {
-  border: 1px solid var(--yellow);
+  border: 1px solid var(--institutional);
   border-radius: var(--radius-small);
-  background: var(--yellow);
-  color: var(--black);
-  font-weight: 700;
+  background: var(--institutional);
+  color: var(--white);
+  font-weight: var(--font-weight-bold);
 }
 
 .login-submit:hover:not(:disabled) {
-  border-color: var(--black);
-  background: #e5a900;
+  border-color: var(--institutional-hover);
+  background: var(--institutional-hover);
 }
 
 .recovery-link,
 .login-register-link button {
-  color: var(--blue);
+  color: var(--institutional);
 }
 
 /* ----------------------------------------------------- Acesso negado e vazio */

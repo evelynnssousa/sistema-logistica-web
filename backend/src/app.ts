@@ -4,12 +4,16 @@ import { isTestRuntime } from './database/databaseSafety.js'
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js'
 import apiRouter from './routes/index.js'
 import { parseTrustProxy, securityHeaders } from './security/securityHeaders.js'
+import { trustedProxy } from './security/trustedProxy.js'
 
 const app = express()
 
 app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY))
 
 app.use(securityHeaders())
+
+// Antes de tudo: com PROXY_SHARED_SECRET, só o proxy do Cloudflare chega às rotas.
+app.use(trustedProxy())
 
 // Só em teste de navegador: permite conferir que quem respondeu é o backend isolado.
 const e2eRunId = isTestRuntime() ? process.env.E2E_RUN_ID : undefined

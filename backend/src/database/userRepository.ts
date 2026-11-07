@@ -3,6 +3,7 @@ import { databaseRoleFor, isAuthRole } from '../auth/roles.js'
 import type { AuthRole, AuthenticatedIdentity } from '../auth/roles.js'
 import {
   computeEffectivePermissions,
+  holdsPermission,
   isEligibleForRestrictedPermission,
   isEssentialAdministratorPermission,
   isRestrictedPermission,
@@ -16,7 +17,7 @@ import {
   resolveAccess,
 } from './accessSchema.js'
 import type { AccessRow, ResolvedAccess } from './accessSchema.js'
-import { accessHistoryActions, insertAuthAuditEvent } from './authAuditRepository.js'
+import { accessHistoryActions, insertAuthAuditEvent, recordAuthAuditEvent } from './authAuditRepository.js'
 import { applyInstitutionalLinks } from './institutionalLinkRepository.js'
 import type { InstitutionalInput } from './institutionalLinkRepository.js'
 import { getDatabasePool } from './pool.js'
@@ -356,6 +357,16 @@ type AuditRow = {
   details: Record<string, unknown>
 }
 
+/** Ações de auditoria que revelam informações internas do estoque. */
+export const stockAuditActions = [
+  'warehouse.stock_movement',
+  'warehouse.reserve_changed',
+  'warehouse.control_recorded',
+  'warehouse.inventory_created',
+  'warehouse.inventory_item_updated',
+  'warehouse.inventory_closed',
+]
+
 const auditSelect = `SELECT e.id::text AS id, e.occurred_at, e.action, e.result,
                             actor.full_name AS actor_name,
                             target.full_name AS target_name,
@@ -394,6 +405,30 @@ async function saveRegistrationForm(
 
 export class UserRepository {
   constructor(private readonly poolProvider: () => Pool = getDatabasePool) {}
+
+  /**
+   * A concessão recusada fica na auditoria, fora da transação que será desfeita: quem tentou,
+   * para quem, o perfil e as permissões recusadas. Uma falha ao auditar não muda a resposta.
+   */
+  private async auditRefusedGrant(
+    actor: AuthenticatedIdentity,
+    userId: string,
+    role: AuthRole,
+    refused: readonly Permission[],
+  ) {
+    await recordAuthAuditEvent(
+      {
+        actorUserId: actor.userId,
+        actorKind: 'user',
+        subjectUserId: userId,
+        sessionId: null,
+        eventType: 'sensitive_operation_denied',
+        result: 'denied',
+        details: { operation: 'user.permission_grant', role, refused },
+      },
+      this.poolProvider,
+    )
+  }
 
   async findActiveById(id: string): Promise<UserAccount | null> {
     const pool = this.poolProvider()
@@ -747,6 +782,25 @@ export class UserRepository {
       )
     }
 
+    // A recusa é auditada depois que a transação é desfeita: dentro dela, a conta-alvo está
+    // bloqueada e a gravação da auditoria, por outra conexão, esperaria por ela.
+    let refusedForAudit: Permission[] = []
+    try {
+      return await this.applyUserAccess(actor, userId, input, (refused) => {
+        refusedForAudit = refused
+      })
+    } catch (error) {
+      if (refusedForAudit.length > 0) await this.auditRefusedGrant(actor, userId, input.role, refusedForAudit)
+      throw error
+    }
+  }
+
+  private async applyUserAccess(
+    actor: AuthenticatedIdentity,
+    userId: string,
+    input: UserAccessInput,
+    onRefused: (refused: Permission[]) => void,
+  ): Promise<ManagedUser> {
     return withTransaction(this.poolProvider(), async (client) => {
       if (!(await isAccessSchemaMigrated(client))) {
         throw new AccessMigrationRequiredError()
@@ -779,11 +833,11 @@ export class UserRepository {
         (permission) =>
           ineligible(permission) && previous.grantedPermissions.includes(permission),
       )
-      if (
-        input.grantedPermissions.some(
-          (permission) => ineligible(permission) && !revokedPermissions.includes(permission),
-        )
-      ) {
+      const refusedGrants = input.grantedPermissions.filter(
+        (permission) => ineligible(permission) && !revokedPermissions.includes(permission),
+      )
+      if (refusedGrants.length > 0) {
+        onRefused(refusedGrants)
         throw new UserManagementError(
           'Esta concessão exige um perfil elegível e, para Operador SLM, a equipe SLM.',
           400,
@@ -1044,6 +1098,11 @@ export class UserRepository {
       conditions.push(`e.action LIKE ${bind(`${filters.action.replace(/[\\%_]/g, '\\$&')}%`)}`)
     }
     if (filters.result) conditions.push(`e.result = ${bind(filters.result)}`)
+    // Os eventos do estoque trazem saldo, reserva, contagens e movimentações. Quem não administra
+    // o Almoxarifado não os vê, nem pela existência do registro.
+    if (!holdsPermission(actor, 'warehouse:manage')) {
+      conditions.push(`NOT (e.action = ANY(${bind(stockAuditActions)}))`)
+    }
     if (filters.from) conditions.push(`e.occurred_at >= ${bind(filters.from)}`)
     if (filters.to) conditions.push(`e.occurred_at <= ${bind(filters.to)}`)
     if (filters.person) {
@@ -1272,10 +1331,11 @@ export class UserRepository {
         throw new UserManagementError('O perfil Operador SLM exige que o usuário integre a equipe SLM.', 400)
       }
       assertDriverProfileRules(extras.role, slm, extras.grantedPermissions ?? [], [])
-      const ineligible = (extras.grantedPermissions ?? []).some(
+      const ineligible = (extras.grantedPermissions ?? []).filter(
         (permission) => isRestrictedPermission(permission) && !isEligibleForRestrictedPermission(permission, extras.role, slm),
       )
-      if (ineligible) {
+      if (ineligible.length > 0) {
+        await this.auditRefusedGrant(actor, userId, extras.role, ineligible)
         throw new UserManagementError('Esta concessão exige um perfil elegível e, para Operador SLM, a equipe SLM.', 400)
       }
     }

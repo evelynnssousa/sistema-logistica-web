@@ -41,7 +41,7 @@
   padding: 16px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .detail-action h3 {
@@ -56,8 +56,8 @@
 .detail-status {
   padding: 6px 12px;
   border-radius: 999px;
-  background: #e8eef7;
-  color: #034ea2;
+  background: var(--institutional-soft);
+  color: var(--institutional);
 }
 
 .detail-history {
@@ -74,7 +74,7 @@
   flex-direction: column;
   gap: 2px;
   padding-left: 12px;
-  border-left: 3px solid #d5deea;
+  border-left: 3px solid var(--border);
 }
 
 .detail-history small {
@@ -111,16 +111,16 @@
 }
 
 .module-tabs button[aria-selected='true'] {
-  background: #034ea2;
-  color: #fff;
+  background: var(--institutional);
+  color: var(--white);
 }
 
 .module-notice {
   margin: 12px 0;
   padding: 12px 16px;
-  border-left: 4px solid #034ea2;
+  border-left: 4px solid var(--institutional);
   border-radius: 6px;
-  background: #eef3fa;
+  background: var(--institutional-soft);
 }
 
 .calendar-grid {
@@ -142,7 +142,7 @@
   padding: 4px;
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 6px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .calendar-day.outside {
@@ -159,16 +159,16 @@
   margin-top: 4px;
   padding: 2px 4px;
   border-radius: 4px;
-  background: #e8eef7;
-  color: #034ea2;
+  background: var(--institutional-soft);
+  color: var(--institutional);
   font-size: 0.75rem;
   text-decoration: none;
   overflow-wrap: anywhere;
 }
 
 .calendar-event.fleet {
-  background: #e6f4ea;
-  color: #1b6e3c;
+  background: var(--success-soft);
+  color: var(--success);
 }
 
 .calendar-list {
@@ -195,13 +195,13 @@
 .report-bar-track {
   height: 10px;
   border-radius: 999px;
-  background: #e8eef7;
+  background: var(--institutional-soft);
 }
 
 .report-bar-fill {
   height: 100%;
   border-radius: 999px;
-  background: #034ea2;
+  background: var(--institutional);
 }
 
 .warehouse-cart-row {

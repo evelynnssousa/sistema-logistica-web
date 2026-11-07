@@ -338,7 +338,7 @@ function Composer({
               <dd>{chosen.length ? chosen.map((item) => `${item.name} (${sizeLabel(item.sizeBytes)})`).join(', ') : 'Nenhum'}</dd>
             </div>
           </dl>
-          <iframe title="Mensagem que será enviada" sandbox="" srcDoc={preview.html} style={{ width: '100%', minHeight: 320, border: '1px solid #dedfda' }} />
+          <iframe title="Mensagem que será enviada" sandbox="" srcDoc={preview.html} style={{ width: '100%', minHeight: 320, border: '1px solid var(--border)' }} />
           {error && <Alert tone="error">{error}</Alert>}
           <div className="action-row">
             <button type="button" className="maintenance-primary-button" disabled={busy} onClick={() => void confirm()}>

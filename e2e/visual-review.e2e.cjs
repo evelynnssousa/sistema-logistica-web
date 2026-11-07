@@ -246,8 +246,22 @@ async function run({ playwright, baseUrl, password, screenshotDirectory }) {
         const colors = await active.evaluate((element) => ({
           background: getComputedStyle(element).backgroundColor,
           icon: getComputedStyle(element.querySelector('.nav-icon')).color,
+          marker: getComputedStyle(element, '::before').backgroundColor,
+          menu: getComputedStyle(element.closest('.sidebar')).backgroundColor,
         }))
-        assert.deepEqual(colors, { background: 'rgb(251, 185, 0)', icon: 'rgb(0, 0, 0)' })
+        // Identidade executiva: menu azul executivo, item ativo azul institucional, traço amarelo.
+        assert.deepEqual(colors, {
+          background: 'rgb(3, 78, 162)',
+          icon: 'rgb(255, 255, 255)',
+          marker: 'rgb(251, 185, 0)',
+          menu: 'rgb(23, 54, 93)',
+        })
+        // A logo oficial continua carregada, sem distorção.
+        const logo = await page.locator('.sidebar .brand-symbol img').evaluate((image) => ({
+          loaded: image.complete && image.naturalWidth > 0,
+          fit: getComputedStyle(image).objectFit,
+        }))
+        assert.deepEqual(logo, { loaded: true, fit: 'contain' })
       }
 
       console.log(`✔ revisão visual em ${viewport.name}: ${pages.length} telas`)

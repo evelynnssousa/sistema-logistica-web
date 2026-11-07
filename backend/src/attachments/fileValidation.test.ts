@@ -80,7 +80,7 @@ test('armazenamento: sem pasta absoluta, não há armazenamento', () => {
   assert.ok(resolveAttachmentStorage({ ATTACHMENTS_DIR: '/var/slm/anexos' }))
 })
 
-test('armazenamento: a chave nunca sai da pasta', () => {
+test('armazenamento: a chave nunca sai da pasta', async () => {
   const storage = resolveAttachmentStorage({ ATTACHMENTS_DIR: '/var/slm/anexos' })!
-  assert.throws(() => storage.open('../../../etc/passwd'), /inválida/)
+  await assert.rejects(storage.open('../../../etc/passwd'), /inválida/)
 })

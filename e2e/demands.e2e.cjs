@@ -256,6 +256,11 @@ async function scenarios({ browser, baseUrl, runId, password, screenshotDirector
     await lead.locator('.ui-modal').getByLabel('Responsável principal').selectOption({ label: nameFrom(emails.lead) })
     await lead.getByRole('button', { name: 'Salvar responsável' }).click()
     await lead.waitForSelector('.demand-history >> text=Responsável alterado')
+    // O registro mostra quem saiu, quem entrou e quem fez a alteração.
+    const entry = lead.locator('.demand-history li', { hasText: 'Responsável alterado' }).last()
+    await entry.locator('dt', { hasText: 'Anterior:' }).waitFor()
+    await entry.locator('dd', { hasText: nameFrom(emails.lead) }).waitFor()
+    await entry.locator('text=Realizado por').waitFor()
   })
 
   let seriesDemand = ''

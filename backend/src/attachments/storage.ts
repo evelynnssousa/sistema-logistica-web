@@ -1,15 +1,22 @@
+import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import type { ReadStream } from 'node:fs'
 import { access, constants, mkdir, rm, writeFile } from 'node:fs/promises'
 import { isAbsolute, resolve, sep } from 'node:path'
+import { Transform } from 'node:stream'
+import type { Readable } from 'node:stream'
+import { GraphDriveStorage, graphStorageSettings } from './graphDriveStorage.js'
 
 /**
  * Armazenamento dos anexos. Trocar o disco local por um serviço aprovado pela TI significa
- * implementar esta interface, sem mudar rotas nem regras de acesso.
+ * implementar esta interface, sem mudar rotas nem regras de acesso. Quem chama já conferiu a
+ * permissão: o armazenamento nunca decide quem pode ler.
  */
 export interface AttachmentStorage {
+  /** Grava um arquivo novo. Nunca sobrescreve: chave existente é erro com código EEXIST. */
   save(key: string, content: Buffer): Promise<void>
-  open(key: string): ReadStream
+  /** Abre o conteúdo para transmissão pelo próprio servidor. Ausente: erro com código ENOENT. */
+  open(key: string): Promise<Readable>
+  /** Remoção física. Só serve para desfazer um envio cujo registro o banco recusou. */
   remove(key: string): Promise<void>
   check(): Promise<void>
 }
@@ -21,14 +28,14 @@ export class AttachmentStorageUnavailableError extends Error {
   }
 }
 
-const keyPattern = /^[0-9a-f-]{36}$/
+export const attachmentKeyPattern = /^[0-9a-f-]{36}$/
 
 export class LocalDiskStorage implements AttachmentStorage {
   constructor(private readonly directory: string) {}
 
   private pathOf(key: string) {
     // A chave é gerada pelo servidor; a conferência impede sair da pasta em qualquer hipótese.
-    if (!keyPattern.test(key)) throw new Error('Chave de anexo inválida.')
+    if (!attachmentKeyPattern.test(key)) throw new Error('Chave de anexo inválida.')
     const path = resolve(this.directory, key.slice(0, 2), key)
     if (!path.startsWith(`${resolve(this.directory)}${sep}`)) throw new Error('Chave de anexo inválida.')
     return path
@@ -41,7 +48,7 @@ export class LocalDiskStorage implements AttachmentStorage {
     await writeFile(path, content, { mode: 0o600, flag: 'wx' })
   }
 
-  open(key: string) {
+  async open(key: string): Promise<Readable> {
     return createReadStream(this.pathOf(key))
   }
 
@@ -74,12 +81,88 @@ export function attachmentDirectoryProblem(directory: string | undefined, root =
   return null
 }
 
+export type StorageDriver = 'local' | 'sharepoint'
+
+/** ATTACHMENTS_STORAGE: "local" (padrão, desenvolvimento e homologação) ou "sharepoint". */
+export function storageDriver(environment: NodeJS.ProcessEnv = process.env): StorageDriver | null {
+  const raw = environment.ATTACHMENTS_STORAGE?.trim().toLowerCase()
+  if (!raw || raw === 'local') return 'local'
+  if (raw === 'sharepoint') return 'sharepoint'
+  return null
+}
+
+let testStorage: AttachmentStorage | null | undefined
+let cachedGraph: { fingerprint: string; storage: GraphDriveStorage } | null = null
+
+/** Só para testes: substitui o armazenamento escolhido pelo ambiente. undefined restaura. */
+export function setAttachmentStorageForTests(storage: AttachmentStorage | null | undefined) {
+  testStorage = storage
+}
+
 /**
- * Sem ATTACHMENTS_DIR não há armazenamento: nada é gravado em uma pasta improvisada, nem no
- * banco. A pasta precisa ser absoluta e ficar fora do código publicado.
+ * Sem configuração válida não há armazenamento: nada é gravado em uma pasta improvisada, nem
+ * no banco, e o SharePoint mal configurado nunca cai para o disco local. A pasta local precisa
+ * ser absoluta e ficar fora do código publicado.
  */
 export function resolveAttachmentStorage(environment: NodeJS.ProcessEnv = process.env): AttachmentStorage | null {
+  if (testStorage !== undefined) return testStorage
+  const driver = storageDriver(environment)
+  if (driver === 'sharepoint') {
+    const settings = graphStorageSettings(environment)
+    if (!settings.ok) return null
+    // Uma instância por configuração: o token fica só na memória dela e é reaproveitado.
+    const fingerprint = createHash('sha256').update(JSON.stringify(settings.value)).digest('hex')
+    if (cachedGraph?.fingerprint !== fingerprint) {
+      cachedGraph = { fingerprint, storage: new GraphDriveStorage(settings.value) }
+    }
+    return cachedGraph.storage
+  }
+  if (driver !== 'local') return null
   const directory = environment.ATTACHMENTS_DIR?.trim()
   if (!directory || attachmentDirectoryProblem(directory) !== null) return null
   return new LocalDiskStorage(directory)
+}
+
+/** Falha do armazenamento (disco ou SharePoint) que a equipe técnica precisa ver. */
+export function isStorageFailure(error: unknown) {
+  const code = (error as { code?: unknown } | null)?.code
+  return code === 'EACCES' || code === 'ENOSPC' || (error as Error | null)?.name === 'GraphStorageError'
+}
+
+export class AttachmentIntegrityError extends Error {
+  readonly code = 'ATTACHMENT_INTEGRITY'
+  constructor() {
+    super('O conteúdo do anexo não confere com o registrado.')
+    this.name = 'AttachmentIntegrityError'
+  }
+}
+
+/**
+ * Confere tamanho e SHA-256 durante a transmissão. O último pedaço só sai depois da conferência:
+ * conteúdo divergente nunca chega inteiro ao navegador.
+ */
+export function verifyContent(expected: { sha256: string; sizeBytes: number }) {
+  const hash = createHash('sha256')
+  let received = 0
+  let pending: Buffer | null = null
+  return new Transform({
+    transform(chunk: Buffer, _encoding, done) {
+      received += chunk.length
+      if (received > expected.sizeBytes) {
+        done(new AttachmentIntegrityError())
+        return
+      }
+      hash.update(chunk)
+      const previous = pending
+      pending = chunk
+      done(null, previous ?? undefined)
+    },
+    flush(done) {
+      if (received !== expected.sizeBytes || hash.digest('hex') !== expected.sha256) {
+        done(new AttachmentIntegrityError())
+        return
+      }
+      done(null, pending ?? undefined)
+    },
+  })
 }

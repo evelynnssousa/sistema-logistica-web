@@ -478,6 +478,166 @@ test('histórico registra cada alteração e não pode ser alterado', async () =
   await assert.rejects(pool.query(`DELETE FROM public.demand_history WHERE demand_id = $1`, [id]))
 })
 
+type HistoryItem = { id: string; action: string; details: Record<string, any>; user: string | null; at: string } // eslint-disable-line @typescript-eslint/no-explicit-any
+
+test('histórico detalha campo, valor anterior, novo valor e autor, sem registros falsos', async () => {
+  const { id } = await createDemand()
+  const history = async () => (await detail(id)).history as HistoryItem[]
+  const newSince = async (count: number) => (await history()).slice(count)
+  const version = async () => (await detail(id)).demand.version as number
+
+  // 1. Prazo: anterior e novo.
+  let seen = (await history()).length
+  assert.equal((await patch(`/demands/${id}`, leadA, { version: await version(), dueDate: addDays(today, 12) })).status, 200)
+  let added = await newSince(seen)
+  assert.equal(added.length, 1)
+  assert.equal(added[0].action, 'prazo_alterado')
+  assert.equal(added[0].details.campo, 'prazo')
+  assert.equal(added[0].details.de, addDays(today, 10))
+  assert.equal(added[0].details.para, addDays(today, 12))
+  assert.ok(added[0].user?.includes('lider-a'), 'autor do registro')
+  assert.ok(added[0].at)
+
+  // 2. Responsável: quem saiu e quem entrou, com o autor correto.
+  seen = (await history()).length
+  assert.equal((await post(`/demands/${id}/assign`, otherA, { responsibleId: otherA.id, reason: 'Redistribuição' })).status, 200)
+  added = await newSince(seen)
+  assert.equal(added.length, 1)
+  assert.equal(added[0].action, 'responsavel_alterado')
+  assert.ok(added[0].details.de.includes('membro-a'))
+  assert.ok(added[0].details.para.includes('outro-a'))
+  assert.ok(added[0].user?.includes('outro-a'), 'quem redistribuiu')
+
+  // 3. Status: os dois valores.
+  seen = (await history()).length
+  assert.equal((await post(`/demands/${id}/status`, leadA, { status: 'em_andamento' })).status, 200)
+  added = await newSince(seen)
+  assert.equal(added.length, 1)
+  assert.equal(added[0].action, 'status_alterado')
+  assert.equal(added[0].details.de, 'nao_iniciada')
+  assert.equal(added[0].details.para, 'em_andamento')
+
+  // 6. Vários campos de uma vez: um registro por campo, cada um com os dois valores.
+  const categories = (await get('/demands/settings/categories', admin)).body.categories as { id: string; name: string }[]
+  const otherCategory = categories.find((item) => item.id !== categoryId) as { id: string; name: string }
+  seen = (await history()).length
+  assert.equal(
+    (await patch(`/demands/${id}`, leadA, {
+      version: await version(),
+      title: 'Levantamento revisado',
+      description: 'Levantar os contratos vigentes e vencidos.',
+      priority: 'urgente',
+      startDate: addDays(today, 1),
+      reminderDays: 5,
+      notes: 'Conferir com o jurídico',
+      categoryId: otherCategory.id,
+    })).status,
+    200,
+  )
+  added = await newSince(seen)
+  const byField = new Map(added.map((item) => [item.details.campo as string, item]))
+  assert.equal(added.length, 7, added.map((item) => item.details.campo).join(', '))
+  assert.equal(byField.get('titulo')?.action, 'campo_alterado')
+  assert.equal(byField.get('titulo')?.details.de, 'Levantamento de contratos')
+  assert.equal(byField.get('titulo')?.details.para, 'Levantamento revisado')
+  assert.equal(byField.get('descricao')?.action, 'descricao_alterada')
+  assert.equal(byField.get('descricao')?.details.de, 'Levantar os contratos vigentes.')
+  assert.equal(byField.get('prioridade')?.details.de, 'alta')
+  assert.equal(byField.get('prioridade')?.details.para, 'urgente')
+  assert.equal(byField.get('inicioPrevisto')?.details.de, null)
+  assert.equal(byField.get('inicioPrevisto')?.details.para, addDays(today, 1))
+  assert.equal(byField.get('lembreteDias')?.details.para, 5)
+  assert.equal(byField.get('observacoes')?.details.para, 'Conferir com o jurídico')
+  assert.equal(byField.get('categoria')?.details.para, otherCategory.name, 'categoria pelo nome')
+  assert.equal(byField.get('categoria')?.details.paraId, otherCategory.id)
+  assert.ok(added.every((item) => item.user?.includes('lider-a')))
+  assert.equal(added.some((item) => item.action === 'dados_alterados'), false, 'nada de "N campo(s)"')
+
+  // A auditoria geral registra qual campo mudou, sem copiar texto livre.
+  const audit = await pool.query<{ details: Record<string, unknown> }>(
+    `SELECT details FROM public.auth_audit_events WHERE action = 'demand.changed' AND target_resource_id = $1`,
+    [id],
+  )
+  const titleAudit = audit.rows.find((item) => Array.isArray(item.details.campos) && item.details.campos.includes('titulo'))
+  assert.ok(titleAudit, 'o campo alterado chega à auditoria geral')
+  assert.ok(!JSON.stringify(titleAudit).includes('Levantamento revisado'), 'sem o texto do título')
+
+  // 7. Reenviar os mesmos valores não cria registro.
+  seen = (await history()).length
+  assert.equal(
+    (await patch(`/demands/${id}`, leadA, {
+      version: await version(),
+      title: 'Levantamento revisado',
+      priority: 'urgente',
+      dueDate: addDays(today, 12),
+      reminderDays: 5,
+      categoryId: otherCategory.id,
+    })).status,
+    200,
+  )
+  assert.equal((await history()).length, seen, 'sem evento falso')
+  assert.equal((await post(`/demands/${id}/status`, leadA, { status: 'em_andamento' })).status, 200)
+  assert.equal((await history()).length, seen, 'mesmo status também não registra')
+
+  // 4 e 5. Colaboradores e setores, um registro por pessoa ou setor.
+  const collaboration = (body: Record<string, unknown>) => put(`/demands/${id}/collaboration`, leadA, body)
+  seen = (await history()).length
+  assert.equal(
+    (await collaboration({ collaborators: [{ userId: memberA.id, activity: 'Revisar', dueDate: null }], collaboratorSectorIds: [sectorB] })).status,
+    200,
+  )
+  added = await newSince(seen)
+  assert.deepEqual(added.map((item) => item.action).sort(), ['colaborador_adicionado', 'setor_colaborador_adicionado'])
+  const addedPerson = added.find((item) => item.action === 'colaborador_adicionado') as HistoryItem
+  assert.ok(addedPerson.details.pessoa.includes('membro-a'))
+  assert.equal(addedPerson.details.pessoaId, memberA.id)
+  assert.equal(addedPerson.details.atividade, 'Revisar')
+  assert.equal(added.find((item) => item.action === 'setor_colaborador_adicionado')?.details.setor, 'Setor Beta')
+
+  seen = (await history()).length
+  assert.equal(
+    (await collaboration({
+      collaborators: [{ userId: memberA.id, activity: 'Revisar e enviar', dueDate: null }, { userId: memberB.id, activity: null, dueDate: null }],
+      collaboratorSectorIds: [sectorB, sectorC],
+    })).status,
+    200,
+  )
+  added = await newSince(seen)
+  assert.deepEqual(added.map((item) => item.action).sort(), ['colaborador_adicionado', 'colaborador_alterado', 'setor_colaborador_adicionado'])
+  const changedPerson = added.find((item) => item.action === 'colaborador_alterado') as HistoryItem
+  assert.deepEqual(changedPerson.details.alteracoes, [{ campo: 'atividade', de: 'Revisar', para: 'Revisar e enviar' }])
+  assert.ok(added.find((item) => item.action === 'colaborador_adicionado')?.details.pessoa.includes('membro-b'))
+  assert.equal(added.find((item) => item.action === 'setor_colaborador_adicionado')?.details.setor, 'Setor Gama')
+
+  seen = (await history()).length
+  const final = { collaborators: [{ userId: memberB.id, activity: null, dueDate: null }], collaboratorSectorIds: [sectorB] }
+  assert.equal((await collaboration(final)).status, 200)
+  added = await newSince(seen)
+  assert.deepEqual(added.map((item) => item.action).sort(), ['colaborador_removido', 'setor_colaborador_removido'])
+  assert.ok(added.find((item) => item.action === 'colaborador_removido')?.details.pessoa.includes('membro-a'))
+  assert.equal(added.find((item) => item.action === 'setor_colaborador_removido')?.details.setor, 'Setor Gama')
+  assert.ok(added.every((item) => item.user?.includes('lider-a')))
+
+  seen = (await history()).length
+  assert.equal((await collaboration(final)).status, 200)
+  assert.equal((await history()).length, seen, 'mesma colaboração não registra')
+  assert.equal((await history()).some((item) => item.action === 'colaboracao_alterada'), false)
+
+  // 8 e 9. Os registros anteriores continuam iguais; ninguém os altera pela API nem pelo banco.
+  const before = await history()
+  const entry = before[1]
+  for (const method of ['PATCH', 'PUT', 'DELETE']) {
+    for (const session of [leadA, admin]) {
+      const attempt = await call(`/demands/${id}/history/${entry.id}`, { method, session, body: { action: 'x' } })
+      assert.ok([403, 404, 405].includes(attempt.status), `${method} no histórico: ${attempt.status}`)
+    }
+  }
+  await assert.rejects(pool.query(`UPDATE public.demand_history SET detalhes = '{}' WHERE id = $1`, [entry.id]))
+  await assert.rejects(pool.query(`DELETE FROM public.demand_history WHERE id = $1`, [entry.id]))
+  assert.deepEqual(await history(), before, 'nenhum registro mudou ou sumiu')
+  assert.equal(before[0].action, 'criada')
+})
+
 test('alteração simultânea: a versão antiga é recusada', async () => {
   const { id } = await createDemand()
   const version = (await detail(id)).demand.version
@@ -894,6 +1054,14 @@ test('anexos: validação, acesso, download e remoção lógica registrados', as
   assert.equal(after.attachments.find((item: { id: string }) => item.id === attachment.id).removalReason, 'Enviado por engano')
   const actions = after.history.map((item: { action: string }) => item.action)
   assert.ok(actions.includes('anexo_incluido') && actions.includes('anexo_removido'))
+  // O histórico identifica o arquivo pelo próprio anexo; o nome não é copiado para o registro.
+  const ofAttachment = after.history.filter((item: HistoryItem) => item.details.anexoId === attachment.id)
+  assert.deepEqual(ofAttachment.map((item: HistoryItem) => [item.action, item.details.arquivo]), [
+    ['anexo_incluido', 'relatorio.pdf'],
+    ['anexo_removido', 'relatorio.pdf'],
+  ])
+  const stored = await pool.query(`SELECT detalhes FROM public.demand_history WHERE detalhes->>'anexoId' = $1`, [attachment.id])
+  assert.ok(stored.rows.every((item) => !JSON.stringify(item.detalhes).includes('relatorio')))
 
   const capacity = await get('/attachments/capacity', admin)
   assert.ok(capacity.body.files >= 1, 'o anexo entra na conta da capacidade')

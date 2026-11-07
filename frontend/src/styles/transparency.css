@@ -7,11 +7,11 @@
 }
 
 .service-notice {
-  background: #fff8e1;
-  border: 1px solid #8a6d00;
-  border-left-width: 4px;
-  border-radius: 8px;
-  color: #15191f;
+  background: var(--info-soft);
+  border: 1px solid var(--info-border);
+  border-left: 4px solid var(--institutional);
+  border-radius: var(--radius-small);
+  color: var(--text);
   padding: 12px 16px;
 }
 
@@ -37,9 +37,9 @@
 
 .return-panel,
 .duplicate-warning {
-  border: 1px solid #8a6d00;
-  border-left-width: 4px;
-  border-radius: 8px;
+  border: 1px solid var(--warning-border);
+  border-left: 4px solid var(--warning);
+  border-radius: var(--radius-small);
   display: grid;
   gap: 10px;
   padding: 14px 16px;
@@ -87,7 +87,7 @@
 
 .item-decision {
   align-items: end;
-  border-top: 1px solid #dedfda;
+  border-top: 1px solid var(--border);
   display: grid;
   gap: 8px;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -96,9 +96,9 @@
 
 /* Acessibilidade: atalho para o conteúdo e foco sempre visível, sem depender da cor de fundo. */
 .skip-link {
-  background: #000;
+  background: var(--executive);
   border-radius: 0 0 6px 6px;
-  color: #fbb900;
+  color: var(--white);
   font-weight: 700;
   left: 16px;
   padding: 10px 14px;
@@ -120,7 +120,7 @@ select:focus-visible,
 textarea:focus-visible,
 summary:focus-visible,
 [tabindex]:focus-visible {
-  outline: 3px solid #034ea2;
+  outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
 }
 

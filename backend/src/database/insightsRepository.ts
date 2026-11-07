@@ -1,3 +1,4 @@
+import { holdsPermission } from '../auth/permissions.js'
 import type { Pool } from 'pg'
 import type { RequestModule } from '../auth/requestPolicy.js'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
@@ -61,7 +62,7 @@ function buildWarehouseScope(identity: AuthenticatedIdentity, filters: InsightFi
     return `$${parameters.length}`
   }
   const seesAll =
-    identity.permissions.includes('warehouse:manage') ||
+    holdsPermission(identity, 'warehouse:manage') ||
     identity.permissions.includes('requests:read_all')
 
   if (!seesAll) conditions.push(`r.solicitante_id = ${bind(identity.userId)}`)
@@ -419,7 +420,7 @@ export class InsightsRepository {
 
   /** Entradas e saídas do estoque interno por material. Restrito como as telas de estoque. */
   private async stockFlow(identity: AuthenticatedIdentity, filters: InsightFilters) {
-    if (!identity.permissions.includes('warehouse:manage')) return null
+    if (!holdsPermission(identity, 'warehouse:manage')) return null
     if (filters.module && filters.module !== 'warehouse') return null
 
     const result = await this.poolProvider().query<{
@@ -623,7 +624,7 @@ export class InsightsRepository {
 
   /** A conferência é restrita a quem administra o Almoxarifado, como nas rotas do módulo. */
   private async inventoryOperational(identity: AuthenticatedIdentity, filters: InsightFilters) {
-    if (!identity.permissions.includes('warehouse:manage')) return null
+    if (!holdsPermission(identity, 'warehouse:manage')) return null
     if (filters.module && filters.module !== 'warehouse') return null
 
     const result = await this.poolProvider().query<{

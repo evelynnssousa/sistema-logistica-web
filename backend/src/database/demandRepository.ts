@@ -1,3 +1,4 @@
+import { holdsPermission } from '../auth/permissions.js'
 import { createHash, randomUUID } from 'node:crypto'
 import type { Pool, PoolClient } from 'pg'
 import type { AttachmentStorage } from '../attachments/storage.js'
@@ -7,6 +8,8 @@ import type { AuthenticatedIdentity } from '../auth/roles.js'
 import { keepThoseWithAccess, notifyDemand } from '../demands/demandNotifications.js'
 import { creationScope, resolveDemandAccess, visibilityLevel, visibleDemandSql } from '../demands/demandPolicy.js'
 import type { DemandAccess, DemandContext, DemandFacts } from '../demands/demandPolicy.js'
+import { actionForField, collaborationChanges, demandFieldChanges } from '../demands/demandHistoryChanges.js'
+import type { CollaborationState, FieldChange } from '../demands/demandHistoryChanges.js'
 import { readRecurrenceInput } from '../demands/demandValidation.js'
 import { requirePublishable, terminalStatuses } from '../demands/demandValidation.js'
 import type {
@@ -437,6 +440,7 @@ export class DemandRepository {
       ),
       this.series.detail(demandId, visibleDemandSql('d', '$1::uuid', '$2'), [context.userId, visibilityLevel(context)]),
     ])
+    const attachmentNames = new Map(attachments.rows.map((item) => [item.id as string, item.nome_original as string]))
 
     return {
       demand: presentDetail(row.rows[0]),
@@ -475,7 +479,12 @@ export class DemandRepository {
         id: item.id,
         action: item.acao,
         comment: item.comentario,
-        details: item.detalhes,
+        // O nome do arquivo não é copiado para o histórico: vem do próprio anexo, que quem lê
+        // a demanda já vê na lista de anexos (inclusive os removidos).
+        details:
+          typeof item.detalhes?.anexoId === 'string' && attachmentNames.has(item.detalhes.anexoId)
+            ? { ...item.detalhes, arquivo: attachmentNames.get(item.detalhes.anexoId) }
+            : item.detalhes,
         at: item.created_at,
         user: item.usuario,
       })),
@@ -810,17 +819,34 @@ export class DemandRepository {
       recurrence?: ReturnType<typeof readRecurrenceInput> | null
     },
   ) {
+    const current = await client.query<{ solicitante_id: string | null; responsavel_id: string | null; setor_responsavel_id: string | null }>(
+      `SELECT solicitante_id::text AS solicitante_id, responsavel_id::text AS responsavel_id,
+              setor_responsavel_id::text AS setor_responsavel_id
+         FROM public.demands WHERE id = $1`,
+      [demandId],
+    )
+    const stored = current.rows[0]
+    // Troca de pessoa no rascunho: quem saiu e quem entrou, como nas demais alterações.
+    const recordPerson = async (action: string, from: string | null, to: string | null) => {
+      if (from === to) return
+      const names = await namesOf(client, 'person', [from, to])
+      await recordDemandHistory(client, {
+        demandId,
+        userId: actorId,
+        action,
+        details: { de: from ? (names.get(from) ?? null) : null, para: to ? (names.get(to) ?? null) : null, deId: from, paraId: to },
+      })
+    }
     if (extras.requesterId !== undefined) {
       await assertPeople(client, [extras.requesterId])
-      await client.query(`UPDATE public.demands SET solicitante_id = $2 WHERE id = $1`, [demandId, extras.requesterId ?? actorId])
+      const requesterId = extras.requesterId ?? actorId
+      await client.query(`UPDATE public.demands SET solicitante_id = $2 WHERE id = $1`, [demandId, requesterId])
+      await recordPerson('solicitante_alterado', stored.solicitante_id, requesterId)
     }
     if (extras.responsibleId !== undefined) {
-      const sectorResult = await client.query<{ setor_responsavel_id: string | null }>(
-        `SELECT setor_responsavel_id::text AS setor_responsavel_id FROM public.demands WHERE id = $1`,
-        [demandId],
-      )
-      await assertSectorMember(client, extras.responsibleId, sectorResult.rows[0].setor_responsavel_id)
+      await assertSectorMember(client, extras.responsibleId, stored.setor_responsavel_id)
       await client.query(`UPDATE public.demands SET responsavel_id = $2 WHERE id = $1`, [demandId, extras.responsibleId])
+      await recordPerson('responsavel_alterado', stored.responsavel_id, extras.responsibleId)
     }
     if (extras.collaboration) {
       await assertPeople(client, [
@@ -828,9 +854,11 @@ export class DemandRepository {
         ...extras.collaboration.authorizedUserIds,
       ])
       await assertActive(client, 'demand_sectors', extras.collaboration.collaboratorSectorIds, 'Setor')
+      const previousState = await readCollaborationState(client, demandId)
       await client.query(`DELETE FROM public.demand_participants WHERE demand_id = $1 AND tipo IN ('colaborador', 'autorizado')`, [demandId])
       await client.query(`DELETE FROM public.demand_sector_links WHERE demand_id = $1`, [demandId])
       await this.saveCollaboration(client, demandId, actorId, extras.collaboration)
+      await recordCollaborationChanges(client, demandId, actorId, previousState, extras.collaboration)
     }
     if (extras.recurrence !== undefined) {
       await client.query(`UPDATE public.demands SET recorrencia_rascunho = $2::jsonb WHERE id = $1`, [
@@ -871,18 +899,22 @@ export class DemandRepository {
       [row.series_id, row.data_ocorrencia, row.id],
     )
     for (const other of others.rows) {
+      // Cada ocorrência tem os próprios valores: o registro mostra o que mudou nela.
+      const otherRow = await lockDemand(client, other.id)
       await applyFields(client, other.id, shared)
       // Mesma regra de restringir uma demanda: quem só acompanhava deixa de ter acesso.
       if (shared.restricted === true) {
         await client.query(`DELETE FROM public.demand_participants WHERE demand_id = $1 AND tipo = 'acompanhante'`, [other.id])
       }
       await bump(client, other.id, false)
+      const alteracoes = await nameReferences(client, demandFieldChanges(otherRow, shared))
+      if (alteracoes.length === 0) continue
       await recordDemandHistory(client, {
         demandId: other.id,
         seriesId: row.series_id,
         userId: actorId,
         action: 'alterada_em_serie',
-        details: { campos: Object.keys(shared), origem: row.numero },
+        details: { alteracoes, campos: alteracoes.map((item) => item.campo), origem: row.numero },
       })
     }
     const template: Record<string, unknown> = {}
@@ -903,7 +935,7 @@ export class DemandRepository {
       seriesId: row.series_id,
       userId: actorId,
       action: 'recorrencia_alterada',
-      details: { campos: Object.keys(shared), alcance: 'esta_e_futuras', ocorrencias: others.rows.length },
+      details: { campos: demandFieldChanges(row, shared).map((item) => item.campo), alcance: 'esta_e_futuras', ocorrencias: others.rows.length },
     })
   }
 
@@ -980,26 +1012,15 @@ export class DemandRepository {
       await assertPeople(client, [...input.collaborators.map((item) => item.userId), ...input.authorizedUserIds])
       await assertActive(client, 'demand_sectors', input.collaboratorSectorIds, 'Setor')
 
-      const previous = await client.query<{ user_id: string }>(
-        `SELECT user_id::text AS user_id FROM public.demand_participants WHERE demand_id = $1 AND tipo = 'colaborador'`,
-        [demandId],
-      )
-      const before = new Set(previous.rows.map((item) => item.user_id))
+      const previousState = await readCollaborationState(client, demandId)
+      const before = new Set(previousState.collaborators.map((item) => item.userId))
       await client.query(`DELETE FROM public.demand_participants WHERE demand_id = $1 AND tipo IN ('colaborador', 'autorizado')`, [demandId])
       await client.query(`DELETE FROM public.demand_sector_links WHERE demand_id = $1`, [demandId])
       await this.saveCollaboration(client, demandId, identity.userId, input)
       if (!row.rascunho) await assertCanOpenDemand(client, demandId, collaborationPeople(input))
       await bump(client, demandId, input.scope === 'this' && Boolean(row.series_id))
-      await recordDemandHistory(client, {
-        demandId,
-        userId: identity.userId,
-        action: 'colaboracao_alterada',
-        details: {
-          colaboradores: input.collaborators.length,
-          setoresColaboradores: input.collaboratorSectorIds.length,
-          autorizados: input.authorizedUserIds.length,
-        },
-      })
+      const alcance = row.series_id ? { alcance: input.scope === 'future' ? 'esta_e_futuras' : 'somente_esta' } : {}
+      await recordCollaborationChanges(client, demandId, identity.userId, previousState, input, alcance)
       if (!row.rascunho) {
         await notifyDemand(client, {
           kind: 'atribuicao',
@@ -1113,7 +1134,7 @@ export class DemandRepository {
         [demandId, redactOptional(input.done), redactOptional(input.result), redactOptional(input.notes), identity.userId],
       )
       await bump(client, demandId, false)
-      await recordDemandHistory(client, { demandId, userId: identity.userId, action: 'concluida', details: { de: row.status } })
+      await recordDemandHistory(client, { demandId, userId: identity.userId, action: 'concluida', details: { de: row.status, para: 'concluida' } })
       const facts = (await loadFacts(client, demandId)) as DemandFacts
       await notifyDemand(client, {
         kind: 'status',
@@ -1144,6 +1165,8 @@ export class DemandRepository {
         action: 'reaberta',
         comment: reason,
         details: {
+          de: 'concluida',
+          para: 'em_andamento',
           conclusaoAnterior: {
             realizado: row.conclusao_realizado,
             resultado: row.conclusao_resultado,
@@ -1177,7 +1200,7 @@ export class DemandRepository {
         [demandId, redactOptional(reason), identity.userId],
       )
       await bump(client, demandId, false)
-      await recordDemandHistory(client, { demandId, userId: identity.userId, action: 'cancelada', comment: reason, details: { de: row.status } })
+      await recordDemandHistory(client, { demandId, userId: identity.userId, action: 'cancelada', comment: reason, details: { de: row.status, para: 'cancelada' } })
       const facts = (await loadFacts(client, demandId)) as DemandFacts
       await notifyDemand(client, {
         kind: 'status',
@@ -1303,13 +1326,35 @@ export class DemandRepository {
       const row = await lockDemand(client, demandId)
       if (terminalStatuses.includes(row.status)) throw conflict('Esta demanda já foi encerrada.')
       const found = await client.query<Row>(
-        `SELECT id::text AS id, titulo, responsavel_id::text AS responsavel_id, status, prazo::text AS prazo
+        `SELECT id::text AS id, titulo, descricao, observacoes, responsavel_id::text AS responsavel_id, status, prazo::text AS prazo
            FROM public.demand_subtasks WHERE id = $1 AND demand_id = $2 FOR UPDATE`,
         [subtaskId, demandId],
       )
       const current = found.rows[0]
       if (!current) throw notFound()
       if (input.responsibleId !== undefined) await assertPeople(client, [input.responsibleId])
+
+      // Só o que muda de fato entra no histórico; sem mudança, nada é gravado.
+      const alteracoes: FieldChange[] = []
+      const compare = (campo: string, before: unknown, after: unknown) => {
+        if (after !== undefined && (before ?? null) !== (after ?? null)) alteracoes.push({ campo, de: before ?? null, para: after ?? null })
+      }
+      compare('titulo', current.titulo, input.title === undefined ? undefined : redactOptional(input.title))
+      compare('descricao', current.descricao, input.description === undefined ? undefined : redactOptional(input.description))
+      compare('prazo', current.prazo, input.dueDate)
+      compare('observacoes', current.observacoes, input.notes === undefined ? undefined : redactOptional(input.notes))
+      compare('status', current.status, input.status)
+      if (input.responsibleId !== undefined && input.responsibleId !== current.responsavel_id) {
+        const names = await namesOf(client, 'person', [current.responsavel_id, input.responsibleId])
+        alteracoes.push({
+          campo: 'responsavel',
+          de: current.responsavel_id ? (names.get(current.responsavel_id) ?? null) : null,
+          para: input.responsibleId ? (names.get(input.responsibleId) ?? null) : null,
+          deId: current.responsavel_id,
+          paraId: input.responsibleId,
+        })
+      }
+      if (alteracoes.length === 0) return
 
       const sets: string[] = []
       const values: unknown[] = [subtaskId]
@@ -1334,7 +1379,14 @@ export class DemandRepository {
         demandId,
         userId: identity.userId,
         action: 'etapa_alterada',
-        details: { etapa: subtaskId, titulo: current.titulo, campos: Object.keys(input), statusDe: current.status, statusPara: input.status ?? current.status },
+        details: {
+          etapa: subtaskId,
+          titulo: current.titulo,
+          alteracoes,
+          campos: alteracoes.map((item) => item.campo),
+          statusDe: current.status,
+          statusPara: input.status ?? current.status,
+        },
       })
       if (input.responsibleId && input.responsibleId !== current.responsavel_id && !row.rascunho) {
         await notifyDemand(client, {
@@ -1453,7 +1505,7 @@ export class DemandRepository {
   async findAttachment(id: string) {
     const { rows } = await this.poolProvider().query<Row>(
       `SELECT id::text AS id, demand_id::text AS demand_id, nome_original, tipo, tamanho_bytes::text AS tamanho_bytes,
-              storage_key, enviado_por::text AS enviado_por, removido_em
+              sha256, storage_key, enviado_por::text AS enviado_por, removido_em
          FROM public.demand_attachments WHERE id = $1`,
       [id],
     )
@@ -1465,6 +1517,7 @@ export class DemandRepository {
       name: row.nome_original as string,
       kind: row.tipo as string,
       sizeBytes: Number(row.tamanho_bytes),
+      sha256: row.sha256 as string,
       storageKey: row.storage_key as string,
       uploadedById: row.enviado_por as string,
       removedAt: row.removido_em as Date | null,
@@ -1601,36 +1654,84 @@ async function recordPatchHistory(
   scope: 'this' | 'future',
 ) {
   const alcance = row.series_id ? { alcance: scope === 'future' ? 'esta_e_futuras' : 'somente_esta' } : {}
-  const record = (action: string, details: Record<string, unknown>) =>
-    recordDemandHistory(client, { demandId, userId, action, details: { ...details, ...alcance } })
+  // Um registro por campo que mudou de fato, com o valor anterior e o novo.
+  for (const change of await nameReferences(client, demandFieldChanges(row, patch))) {
+    await recordDemandHistory(client, { demandId, userId, action: actionForField(change.campo), details: { ...change, ...alcance } })
+  }
+}
 
-  if (patch.description !== undefined && patch.description !== row.descricao) {
-    await record('descricao_alterada', {})
+const referenceNameSql: Record<'category' | 'sector' | 'person', string> = {
+  category: `SELECT id::text AS id, nome AS name FROM public.demand_categories WHERE id = ANY($1::uuid[])`,
+  sector: `SELECT id::text AS id, nome AS name FROM public.demand_sectors WHERE id = ANY($1::uuid[])`,
+  person: `SELECT id::text AS id, full_name AS name FROM public.auth_users WHERE id = ANY($1::uuid[])`,
+}
+
+async function namesOf(client: Client, kind: 'category' | 'sector' | 'person', ids: (string | null | undefined)[]) {
+  const wanted = [...new Set(ids.filter((id): id is string => Boolean(id)))]
+  if (wanted.length === 0) return new Map<string, string>()
+  const { rows } = await client.query<{ id: string; name: string }>(referenceNameSql[kind], [wanted])
+  return new Map(rows.map((item) => [item.id, item.name]))
+}
+
+/** O nome vigente no momento da alteração fica no registro, junto do identificador. */
+async function nameReferences(client: Client, changes: ReturnType<typeof demandFieldChanges>): Promise<FieldChange[]> {
+  const result: FieldChange[] = []
+  for (const { reference, ...change } of changes) {
+    if (!reference) {
+      result.push(change)
+      continue
+    }
+    const names = await namesOf(client, reference, [change.deId, change.paraId])
+    result.push({ ...change, de: change.deId ? (names.get(change.deId) ?? null) : null, para: change.paraId ? (names.get(change.paraId) ?? null) : null })
   }
-  if (patch.dueDate !== undefined && patch.dueDate !== row.prazo) {
-    await record('prazo_alterado', { de: row.prazo, para: patch.dueDate })
+  return result
+}
+
+async function readCollaborationState(client: Client, demandId: string): Promise<CollaborationState> {
+  const people = await client.query<{ user_id: string; tipo: string; atividade: string | null; prazo: string | null }>(
+    `SELECT user_id::text AS user_id, tipo, atividade, prazo::text AS prazo FROM public.demand_participants
+      WHERE demand_id = $1 AND tipo IN ('colaborador', 'autorizado')`,
+    [demandId],
+  )
+  const sectors = await client.query<{ sector_id: string }>(
+    `SELECT sector_id::text AS sector_id FROM public.demand_sector_links WHERE demand_id = $1`,
+    [demandId],
+  )
+  return {
+    collaborators: people.rows
+      .filter((item) => item.tipo === 'colaborador')
+      .map((item) => ({ userId: item.user_id, activity: item.atividade, dueDate: item.prazo })),
+    collaboratorSectorIds: sectors.rows.map((item) => item.sector_id),
+    authorizedUserIds: people.rows.filter((item) => item.tipo === 'autorizado').map((item) => item.user_id),
   }
-  if (patch.priority !== undefined && patch.priority !== row.prioridade) {
-    await record('prioridade_alterada', { de: row.prioridade, para: patch.priority })
+}
+
+/** Cada pessoa ou setor incluído ou retirado vira um registro próprio, com o nome. */
+async function recordCollaborationChanges(
+  client: Client,
+  demandId: string,
+  userId: string,
+  before: CollaborationState,
+  after: CollaborationState,
+  extra: Record<string, unknown> = {},
+) {
+  const events = collaborationChanges(before, after)
+  if (events.length === 0) return
+  const people = await namesOf(client, 'person', events.map((item) => ('userId' in item ? item.userId : null)))
+  const sectors = await namesOf(client, 'sector', events.map((item) => ('sectorId' in item ? item.sectorId : null)))
+  for (const event of events) {
+    const { action, ...rest } = event
+    const details =
+      'sectorId' in rest
+        ? { setorId: rest.sectorId, setor: sectors.get(rest.sectorId) ?? null }
+        : {
+            pessoaId: rest.userId,
+            pessoa: people.get(rest.userId) ?? null,
+            ...('atividade' in rest ? { atividade: rest.atividade, prazo: rest.prazo } : {}),
+            ...('alteracoes' in rest ? { alteracoes: rest.alteracoes, campos: rest.alteracoes.map((item) => item.campo) } : {}),
+          }
+    await recordDemandHistory(client, { demandId, userId, action, details: { ...details, ...extra } })
   }
-  if (patch.followUpManagerId !== undefined && patch.followUpManagerId !== row.gestor_id) {
-    await record('gestor_alterado', {})
-  }
-  if (patch.restricted !== undefined && patch.restricted !== row.restrita) {
-    await record('restricao_alterada', { para: patch.restricted })
-  }
-  const others: [keyof DemandPatch, string][] = [
-    ['title', row.titulo],
-    ['categoryId', row.categoria_id],
-    ['originSectorId', row.setor_origem_id],
-    ['responsibleSectorId', row.setor_responsavel_id],
-    ['startDate', row.inicio_previsto],
-    ['notes', row.observacoes],
-    ['references', row.referencias],
-    ['reminderDays', row.lembrete_dias],
-  ]
-  const changed = others.filter(([key, current]) => patch[key] !== undefined && patch[key] !== current).map(([key]) => key)
-  if (changed.length > 0) await record('dados_alterados', { campos: changed })
 }
 
 async function mergeTemplate(client: Client, seriesId: string, values: Record<string, unknown>) {
@@ -1692,7 +1793,7 @@ async function findLinkTarget(client: Client, identity: AuthenticatedIdentity, m
     if (!row) return null
     const allowed =
       identity.permissions.includes('warehouse:read') &&
-      (identity.permissions.includes('warehouse:manage') ||
+      (holdsPermission(identity, 'warehouse:manage') ||
         identity.permissions.includes('requests:read_all') ||
         row.solicitante_id === identity.userId)
     return allowed ? { id: row.id, protocol: row.protocolo } : null

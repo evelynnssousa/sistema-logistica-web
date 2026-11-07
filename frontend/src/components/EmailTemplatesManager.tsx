@@ -254,7 +254,7 @@ function TemplateEditor({
         <section className="ui-card ui-stacked" aria-label="Visualização prévia" data-testid="template-preview">
           <Alert tone="info">Simulação com dados de exemplo. Nenhuma pessoa ou solicitação real aparece aqui.</Alert>
           <p><strong>Assunto:</strong> {preview.subject}</p>
-          <iframe title="Visualização do e-mail" sandbox="" srcDoc={preview.html} style={{ width: '100%', minHeight: 360, border: '1px solid #dedfda' }} />
+          <iframe title="Visualização do e-mail" sandbox="" srcDoc={preview.html} style={{ width: '100%', minHeight: 360, border: '1px solid var(--border)' }} />
         </section>
       )}
 

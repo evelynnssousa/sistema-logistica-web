@@ -1,4 +1,5 @@
 import type { RequestHandler, Response } from 'express'
+import { holdsPermission } from '../auth/permissions.js'
 import type { Permission } from '../auth/permissions.js'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
 
@@ -35,14 +36,14 @@ function denyUnless(
 
 /** Autorização: deve vir depois de requireAuthentication. */
 export function requirePermission(permission: Permission): RequestHandler {
-  return denyUnless((identity) => identity.permissions.includes(permission))
+  return denyUnless((identity) => holdsPermission(identity, permission))
 }
 
 export function requireAnyPermission(
   ...permissions: Permission[]
 ): RequestHandler {
   return denyUnless((identity) =>
-    permissions.some((permission) => identity.permissions.includes(permission)),
+    permissions.some((permission) => holdsPermission(identity, permission)),
   )
 }
 

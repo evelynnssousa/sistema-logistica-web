@@ -51,12 +51,12 @@
 }
 
 .central-queue.needs-attention {
-  border-left: 4px solid var(--yellow);
+  border-left: 4px solid var(--accent);
 }
 
 .central-queue.is-selected {
-  background: var(--black);
-  border-color: var(--black);
+  background: var(--executive);
+  border-color: var(--executive);
   color: var(--white);
 }
 
@@ -117,7 +117,7 @@
   border: 0;
   box-shadow: none;
   background: none;
-  color: var(--blue);
+  color: var(--institutional);
   font: inherit;
   text-decoration: underline;
   text-align: left;
@@ -125,7 +125,7 @@
 }
 
 .is-selected-row td {
-  background: var(--yellow-soft);
+  background: var(--institutional-soft);
 }
 
 .management-hint {
@@ -166,8 +166,8 @@
   margin-left: 8px;
   padding: 1px 8px;
   border-radius: 999px;
-  background: var(--yellow);
-  color: var(--black);
+  background: var(--institutional);
+  color: var(--white);
   font-size: 0.75rem;
   font-weight: 700;
 }
@@ -206,8 +206,8 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: var(--black);
-  color: var(--yellow);
+  background: var(--institutional-soft);
+  color: var(--executive);
 }
 
 .request-timeline > li > div {
@@ -292,11 +292,11 @@
 }
 
 .search-hit:hover {
-  border-color: var(--black);
+  border-color: var(--institutional);
 }
 
 .search-hit strong {
-  color: var(--blue);
+  color: var(--institutional);
 }
 
 .search-hit small {
@@ -485,7 +485,7 @@
 }
 
 .quote-selected td {
-  background: var(--yellow-soft);
+  background: var(--institutional-soft);
 }
 
 /* Configurações do Portal do Motorista */

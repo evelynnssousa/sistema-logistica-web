@@ -1481,13 +1481,14 @@ button:focus-visible {
 
 :root {
 
-  --jucesp-blue: #034EA2;
+  /* Nomes antigos: apontam para os tokens de styles/theme.css, sem paleta paralela. */
+  --jucesp-blue: var(--institutional);
 
-  --jucesp-yellow: #FBB900;
+  --jucesp-yellow: var(--accent);
 
-  --jucesp-graphite: #111827;
+  --jucesp-graphite: var(--heading);
 
-  --jucesp-light-gray: #F3F4F6;
+  --jucesp-light-gray: var(--page);
 
 }
 
@@ -1804,10 +1805,10 @@ body,
 }
 
 :root {
-  --jucesp-blue: #0862c9;
-  --jucesp-yellow: #fbb900;
-  --jucesp-graphite: #162235;
-  --jucesp-light-gray: #f3f6fa;
+  --jucesp-blue: var(--institutional);
+  --jucesp-yellow: var(--accent);
+  --jucesp-graphite: var(--heading);
+  --jucesp-light-gray: var(--page);
 }
 
 .sidebar {
@@ -3480,10 +3481,10 @@ body,
 .air-travel-submit-notice {
   max-width: 360px;
   padding: 8px 10px;
-  border: 1px solid #f3d28b;
+  border: 1px solid var(--info-border);
   border-radius: 6px;
-  background: #fff8e7;
-  color: #75520a !important;
+  background: var(--info-soft);
+  color: var(--info-text) !important;
   font-size: 11px !important;
   line-height: 1.5;
   text-align: right;
@@ -3626,10 +3627,10 @@ body,
 .fleet-request-notice {
   max-width: 360px;
   padding: 8px 10px;
-  border: 1px solid #f3d28b;
+  border: 1px solid var(--info-border);
   border-radius: 6px;
-  background: #fff8e7;
-  color: #75520a !important;
+  background: var(--info-soft);
+  color: var(--info-text) !important;
   font-size: 11px !important;
   line-height: 1.5;
   text-align: right;
@@ -3765,8 +3766,8 @@ body,
 .form-field-protected {
   padding: 4px 7px;
   border-radius: 999px;
-  background: #fff4d6;
-  color: #75520a;
+  background: var(--info-soft);
+  color: var(--info-text);
   font-size: 9px;
   font-weight: 700;
 }

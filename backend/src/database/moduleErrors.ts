@@ -4,6 +4,7 @@ import { RequestValidationError } from '../requests/validation.js'
 import { recordTechnicalEvent } from '../monitoring/technicalEvents.js'
 import { logSecurityEvent } from '../security/logger.js'
 import { DomainError } from './withTransaction.js'
+import { GraphStorageError } from '../attachments/graphAuth.js'
 
 /** Regra de negócio com status HTTP próprio. Atravessa a transação com a mensagem intacta. */
 export class ModuleError extends DomainError {
@@ -68,6 +69,15 @@ export function sendModuleError(response: Response, error: unknown) {
   }
   if (error instanceof ModuleError) {
     response.status(error.status).json({ success: false, message: error.message, ...(error.code ? { code: error.code } : {}) })
+    return
+  }
+  if (error instanceof GraphStorageError) {
+    // Sem detalhe do provedor: o código técnico fica só no registro interno.
+    response.status(503).json({
+      success: false,
+      code: 'ATTACHMENT_STORAGE_UNAVAILABLE',
+      message: 'O armazenamento de anexos está indisponível neste momento. Tente novamente em instantes.',
+    })
     return
   }
   if (error instanceof CpfProtectionUnavailableError) {

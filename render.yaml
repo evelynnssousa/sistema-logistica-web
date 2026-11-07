@@ -1,0 +1,39 @@
+# Render (plano Free): API do SLM. Arquivo de referência: nada é criado até alguém importá-lo
+# no painel do Render. Os valores marcados com "sync: false" são digitados no painel, nunca aqui.
+# Guia: docs/HOSPEDAGEM_GRATUITA.md
+services:
+  - type: web
+    name: slm-api
+    runtime: node
+    plan: free
+    # NODE_ENV=production vale também na instalação; --include=dev mantém o TypeScript do build.
+    buildCommand: npm ci --include=dev && npm run build:backend
+    startCommand: npm run start:backend
+    healthCheckPath: /api/health
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "24"
+      # Supabase (pooler, com SSL).
+      - key: DATABASE_URL
+        sync: false
+      # Endereço do Cloudflare Pages, https.
+      - key: FRONTEND_URL
+        sync: false
+      - key: APP_PUBLIC_URL
+        sync: false
+      # O mesmo valor de BACKEND_PROXY_SECRET no Cloudflare. Ao menos 32 caracteres aleatórios.
+      - key: PROXY_SHARED_SECRET
+        sync: false
+      - key: PASSENGER_DATA_KEY
+        sync: false
+      - key: PASSWORD_RESET_PEPPER
+        sync: false
+      - key: INSTITUTIONAL_EMAIL_DOMAINS
+        sync: false
+      # O disco do Render Free não é persistente: sem ATTACHMENTS_DIR. Os anexos ficam
+      # indisponíveis (503) até ATTACHMENTS_STORAGE=sharepoint ser autorizado e configurado.
+      - key: ATTACHMENTS_STORAGE
+        sync: false
