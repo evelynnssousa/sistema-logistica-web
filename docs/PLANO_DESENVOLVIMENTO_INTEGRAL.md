@@ -66,7 +66,7 @@ Dependem de decisão da instituição. O sistema segue o comportamento indicado 
 4. **Cancelar um atendimento em andamento é permitido?** Hoje é, com motivo obrigatório, para o atendimento não ficar sem desfecho.
 5. **Fluxos do sistema antigo:** falta acesso às planilhas para conferir campos, sobretudo cadastro de veículos e de motoristas, criados sem essa conferência.
 6. **Solicitante acompanha pedidos do próprio setor?** Hoje só os dele. Solicitação aberta pela SLM em nome de um setor não aparece para as pessoas desse setor.
-7. **Quem deve operar o Almoxarifado?** `warehouse:manage` é do Administrador e, para os demais, só por concessão individual.
+7. **Quem deve operar o Almoxarifado?** `warehouse:manage` é do Administrador e do Operador SLM da equipe, pelo perfil (08/11/2026). Solicitante e Motorista nunca.
 8. **Conflito de agenda deve bloquear?** Hoje avisa e permite confirmar, porque não há regra de disponibilidade nos requisitos.
 9. **Como registrar uma rejeição em Passagens?** O fluxo não tem esse status. Hoje, é um cancelamento com motivo.
 10. **Prazo do lembrete de pendências:** sem valor definido, não há lembretes.

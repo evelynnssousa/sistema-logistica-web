@@ -160,6 +160,29 @@ os valores são digitados no painel, nunca no repositório. `TRUST_PROXY` fica s
 O envio de e-mail usa a API HTTPS do Resend, que não é afetada pelo bloqueio das portas SMTP
 (25, 465 e 587) do Render Free.
 
+E-mails (`docs/INTEGRACOES_E_AUTOMACOES.md`): `RESEND_API_KEY` e `RESEND_FROM` (domínio
+verificado) bastam para a recuperação de senha. Os demais e-mails exigem também
+`NOTIFICATION_EMAILS_ENABLED=true`, que **só deve ser definido com autorização expressa** e depois
+de decidir o que fazer com os itens "não configurados" antigos (eles não saem sozinhos). Listas
+de equipe: `EMAIL_INTERNAL_TO_*` e `EMAIL_CC_*`. Cota diária: `EMAIL_DAILY_LIMIT` (o limite contratado
+no Resend, ou menor, conferido no painel), `EMAIL_RECOVERY_DAILY_RESERVE` e `EMAIL_ADMIN_GROUP_MINUTES`;
+sem `EMAIL_DAILY_LIMIT`, a fila não envia pelo Resend. Testes reais restritos: `EMAIL_RECIPIENT_ALLOWLIST`
+(endereços exatos) e `EMAIL_RECIPIENT_RESTRICTION` (só `off` desliga); sem a lista, nenhum e-mail real
+sai, nem a recuperação de senha. Todas ficam declaradas no `render.yaml` com `sync: false`, sem valor.
+Limitações no plano Free:
+
+- O worker roda dentro da API. Com o serviço adormecido por inatividade, a fila espera a próxima
+  requisição acordar a API. Lembretes e prazos vencidos rodam a cada hora, contada do início.
+- O disco não é persistente: anexos de mensagens manuais e o bilhete de passagem só funcionam
+  com armazenamento persistente autorizado. Sem ele, a mensagem com anexo falha
+  (`ATTACHMENT_STORAGE_MISSING`). O SharePoint não deve ser presumido autorizado nem configurado.
+- O limite diário e mensal do plano gratuito do Resend precisa ser conferido antes de ligar os
+  avisos de segurança e de Demandas, e informado em `EMAIL_DAILY_LIMIT`. O sistema controla só o
+  limite diário: o limite mensal do plano não é contado, e precisa ser acompanhado no painel do Resend.
+- Reinícios e adormecimento não zeram a cota: o consumo fica no banco (migração 019), por dia em UTC.
+- Adormecida, a API não varre a validade: os itens vencidos são marcados como expirados no primeiro
+  ciclo depois de acordar, antes de qualquer envio.
+
 ## Supabase
 
 A API usa só o PostgreSQL do Supabase, pelo driver `pg` (`backend/src/database/pool.ts`).

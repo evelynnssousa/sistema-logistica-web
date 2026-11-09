@@ -332,6 +332,10 @@ Aplique depois da 017, com backup e autorização, como as demais; o script já 
 
 Como não cria tabela, o script a considera aplicada quando a 017 existe, nenhum objeto de `public` está aberto à API pública e as duas funções têm `search_path` fixo. Se alguém reabrir um privilégio depois, ela volta a aparecer como pendente, e aplicar de novo não tem outro efeito. Reverter: `018_public_api_privileges.rollback.sql`, que devolve exatamente os privilégios anteriores, conferidos no banco real em 05/11/2026. `npm run test:migrations` comprova, em banco descartável com os papéis do Supabase: antes, `anon` tem `TRUNCATE` em `materials`; depois, os três papéis não leem, gravam, esvaziam nem numeram nada, inclusive executando os comandos como cada papel; a reversão restaura o estado anterior.
 
+### Migração 019: cota diária de e-mails (A1)
+
+Criada em 08/11/2026, **não aplicada em nenhum banco remoto**, inclusive na homologação. Aplique depois da 018, com backup e autorização, como as demais; o script já a inclui (marcador `email_daily_usage`). Cria `email_daily_usage` (consumo por dia em UTC, notificações e recuperação de senha), com RLS e sem privilégios para a API pública, acrescenta `grouped_count` (padrão 1) e o índice `idx_email_deliveries_grouping` em `email_deliveries`, e **sela a fila anterior**: toda mensagem "pendente" ou "não configurada" (também em `manual_emails`) vira falha definitiva `BLOCKED_BEFORE_ACTIVATION`, com registro em `integration_attempts`, sem apagar nada. Na homologação, eram 4 mensagens em 08/11/2026. Depende da 006 e da 013. Sem ela, com `EMAIL_DAILY_LIMIT` definido, a fila de notificações não envia, a recuperação de senha segue sem contagem e os avisos administrativos saem um a um. Reverter: `019_email_quota.rollback.sql`, que para se houver aviso agrupado ainda não enviado. A selagem não é desfeita. Detalhes em `docs/INTEGRACOES_E_AUTOMACOES.md`.
+
 **Conceda a Central individualmente.** Nem o perfil Administrador recebe `slm_central:read` e `slm_central:manage`: é preciso incluir as quatro pessoas na equipe SLM e conceder a cada uma, pela tela do usuário.
 
 ### O que a 003 faz com cada conta
@@ -345,7 +349,7 @@ Como não cria tabela, o script a considera aplicada quando a 017 existe, nenhum
 
 Ninguém entra automaticamente na equipe SLM nem recebe `warehouse:manage`, CPF, agendamento ou abertura em nome de outro setor.
 
-**Atenção (P-08, corrigido em 06/11/2026):** agendar e informar ou alterar a previsão de entrega exigem a equipe SLM também para o Administrador. Como a 003 coloca todos os administradores fora da equipe, **depois de migrar, quem agenda e informa previsões é o Operador SLM com as concessões**, ou um administrador marcado na equipe SLM por outro administrador. A administração do Almoxarifado (materiais, estoque, inventário, situação e entrega) continua com o perfil Administrador, dentro ou fora da equipe.
+**Atenção (P-08, corrigido em 06/11/2026):** agendar e informar ou alterar a previsão de entrega exigem a equipe SLM também para o Administrador. Como a 003 coloca todos os administradores fora da equipe, **depois de migrar, quem agenda e informa previsões é o Operador SLM** (pelo perfil, desde 08/11/2026, sem concessão manual), ou um administrador marcado na equipe SLM por outro administrador. A administração do Almoxarifado (materiais, estoque, inventário, situação e entrega) continua com o perfil Administrador, dentro ou fora da equipe.
 
 **Depois de aplicar**, confira se não há divergências. O resultado precisa ser vazio:
 

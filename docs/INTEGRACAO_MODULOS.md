@@ -42,11 +42,11 @@ Funções em `backend/src/auth/requestPolicy.ts`, usadas pelas rotas:
 | Listar | filtro no SQL | Sem `requests:read_all`, filtre por `solicitante_id = sessão` na consulta, e não depois |
 | Consultar uma | `canReadRequest` | Sem acesso, responda 404 |
 | Atualizar | `canUpdateRequest` | `requests:update` e `<módulo>:update` |
-| Agendar | `canScheduleRequest` | Administrador pelo perfil; Operador SLM na equipe, com concessão individual de `requests:schedule`; sempre com a permissão do módulo. Solicitante nunca |
+| Agendar | `canScheduleRequest` | Administrador ou Operador SLM, na equipe SLM, pelo perfil (desde 08/11/2026); sempre com a permissão do módulo. Retirada individual prevalece. Solicitante nunca |
 | Cancelar | `canCancelRequest` | `requests:cancel` e acesso à solicitação |
 | Consultar CPF completo | `canReadFullCpf` | Administrador ou Operador SLM, na equipe SLM, com concessão individual de `flights:cpf:read`, `flights:read` e acesso à solicitação. Nenhum perfil concede |
 
-Permissões especiais: `requests:schedule`, `requests:create_on_behalf` e `flights:cpf:read`. A regra de elegibilidade está em `backend/src/auth/permissions.ts`. O servidor as retira ao sair da equipe, ao passar para Solicitante e ao desativar a conta, e elas não voltam sozinhas.
+Permissões especiais: `requests:schedule`, `requests:create_on_behalf` e `flights:cpf:read`. A regra de elegibilidade está em `backend/src/auth/permissions.ts`. O servidor retira as concedidas individualmente ao sair da equipe, ao passar para Solicitante e ao desativar a conta, e elas não voltam sozinhas. `requests:schedule`, `warehouse:manage` e `warehouse:forecast` também fazem parte do perfil Operador SLM e só valem enquanto a pessoa integrar a equipe: voltam com a equipe, porque vêm do perfil, e não de concessão.
 
 Como ficou:
 

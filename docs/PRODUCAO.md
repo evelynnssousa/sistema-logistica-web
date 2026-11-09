@@ -63,9 +63,14 @@ Confira com `npm run config:check` (com `NODE_ENV=production`), que mostra só n
 | `TRUST_PROXY` | `1` atrás de um proxy | Número de proxies confiáveis |
 | `PASSENGER_DATA_KEY` | Obrigatória para Passagens | `openssl rand -base64 32`, gerada **no servidor**, com cópia em cofre da instituição. Sem ela, CPFs gravados ficam ilegíveis. Não há troca de chave implementada |
 | `ATTACHMENTS_DIR` | Obrigatória para anexos | Pasta da seção 4 |
-| `PASSWORD_RESET_PEPPER` | Obrigatória para recuperar senha | `openssl rand -hex 32` |
+| `PASSWORD_RESET_PEPPER` | Obrigatória para recuperar senha. Ausente: a recuperação fica desligada. Definida com menos de 32 caracteres (sem contar espaços nas extremidades, que são removidos): a API não inicia em produção | `openssl rand -hex 32` |
 | `RESEND_API_KEY`, `RESEND_FROM` | Obrigatórias para qualquer e-mail | Conta Resend institucional, com domínio verificado (SPF e DKIM) |
 | `NOTIFICATION_EMAILS_ENABLED` | `true` só depois da homologação do e-mail | Autorização da responsável |
+| `EMAIL_DAILY_LIMIT` | Obrigatória para a fila sair pelo Resend. Total diário (UTC) de todos os e-mails | O limite contratado no Resend, ou menor, conferido no painel. Sem valor presumido |
+| `EMAIL_RECOVERY_DAILY_RESERVE` | Opcional. Padrão: 20% do limite | Parte reservada à recuperação de senha |
+| `EMAIL_ADMIN_GROUP_MINUTES` | Opcional. Padrão: 30; `0` desliga | Janela de agrupamento dos avisos administrativos |
+| `EMAIL_RECIPIENT_RESTRICTION` | **`off` para enviar a qualquer destinatário.** Ausente: restrição de testes ligada, e sem `EMAIL_RECIPIENT_ALLOWLIST` nenhum e-mail real sai, nem a recuperação de senha | Só depois da homologação, com autorização |
+| `EMAIL_RECIPIENT_ALLOWLIST` | Só na homologação: endereços exatos das contas de teste | Lista das caixas de teste |
 | `EMAIL_INTERNAL_TO_*`, `EMAIL_CC_*` | Conforme a área | Lista oficial de destinatários |
 | `GOOGLE_CALENDAR_*` | Só se autorizado | Conta de serviço e calendários institucionais |
 | `INSTITUTIONAL_EMAIL_DOMAINS` | Recomendada | Lista oficial de domínios (P-09) |
