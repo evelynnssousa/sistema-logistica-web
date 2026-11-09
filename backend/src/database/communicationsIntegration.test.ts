@@ -431,7 +431,8 @@ test('passagem: dados automáticos, bilhete obrigatório, indicador, sem CPF, e 
 
 test('almoxarifado: só quem administra envia, com o e-mail informado no pedido digitado', async () => {
   const manager = await createUser('almox-mensagem@example.gov.br', 'slm_operator', ['warehouse:manage'])
-  const operator = await createUser('almox-sem@example.gov.br', 'slm_operator')
+  // Operador SLM com a gestão do Almoxarifado retirada individualmente.
+  const operator = await createUser('almox-sem@example.gov.br', 'slm_operator', [], ['warehouse:manage'])
   const unit = await post('/settings/catalog/measurementUnits', admin, { label: `Unidade ${randomUUID().slice(0, 6)}` })
   const material = await post('/warehouse/materials', admin, { name: `Papel ${randomUUID().slice(0, 6)}`, unitId: unit.body.option.id })
   const sector = await post('/settings/catalog/sectors', admin, { label: `Setor ${randomUUID().slice(0, 6)}` })

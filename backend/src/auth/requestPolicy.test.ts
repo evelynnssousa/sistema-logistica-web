@@ -99,7 +99,7 @@ test('abrir em nome de outro setor exige equipe, perfil elegível e concessão, 
   )
 })
 
-test('agendar: administrador da SLM pelo perfil, operador só com concessão, solicitante nunca', () => {
+test('agendar: administrador e operador da SLM pelo perfil, fora da equipe não, solicitante nunca', () => {
   const grant = { granted: ['requests:schedule'] as Permission[] }
 
   // P-08: ser administrador fora da SLM não basta, nem com concessão gravada.
@@ -109,13 +109,26 @@ test('agendar: administrador da SLM pelo perfil, operador só com concessão, so
   assert.equal(canScheduleRequest(identity('administrator', { slmMember: true }), 'maintenance'), true, 'na SLM')
   assert.equal(canScheduleRequest(identity('administrator', { slmMember: true }), 'fleet'), true, 'na SLM')
 
-  assert.equal(canScheduleRequest(identity('slm_operator'), 'maintenance'), false, 'sem concessão')
+  // Operador SLM na equipe agenda pelo perfil, sem concessão manual.
+  assert.equal(canScheduleRequest(identity('slm_operator'), 'maintenance'), true, 'pelo perfil')
+  assert.equal(canScheduleRequest(identity('slm_operator'), 'fleet'), true, 'pelo perfil')
   assert.equal(canScheduleRequest(identity('slm_operator', grant), 'maintenance'), true)
-  assert.equal(canScheduleRequest(identity('slm_operator', grant), 'fleet'), true)
+  // Mesmo perfil fora da equipe (por exemplo, conta anterior à migração 003): não agenda.
   assert.equal(
-    canScheduleRequest(identity('slm_operator', { ...grant, slmMember: false }), 'maintenance'),
+    canScheduleRequest(identity('slm_operator', { slmMember: false }), 'maintenance'),
     false,
     'operador fora da equipe',
+  )
+  assert.equal(
+    canScheduleRequest(identity('slm_operator', { ...grant, slmMember: false }), 'fleet'),
+    false,
+    'operador fora da equipe, com concessão',
+  )
+  // A retirada individual prevalece sobre o padrão do perfil.
+  assert.equal(
+    canScheduleRequest(identity('slm_operator', { denied: ['requests:schedule'] }), 'maintenance'),
+    false,
+    'retirada individual',
   )
 
   assert.equal(canScheduleRequest(identity('requester'), 'maintenance'), false)
@@ -161,8 +174,8 @@ test('agendar exige a permissão do módulo, e ela sozinha não basta', () => {
     true,
   )
 
-  // Só a permissão do módulo, sem a autorização individual.
-  const moduleOnly = identity('slm_operator')
+  // Só a permissão do módulo, sem a permissão geral de agendar.
+  const moduleOnly = identity('slm_operator', { denied: ['requests:schedule'] })
   assert.ok(moduleOnly.permissions.includes('maintenance:schedule'))
   assert.equal(canScheduleRequest(moduleOnly, 'maintenance'), false)
 })

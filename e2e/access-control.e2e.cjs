@@ -167,12 +167,15 @@ async function run({ playwright, baseUrl, runId, password }) {
       await admin.waitForSelector('.page-section > [role=status]')
     }
 
-    await step('o perfil não concede permissões especiais, e a tela só oferece a quem é elegível', async () => {
+    await step('o perfil traz o conjunto operacional da SLM, e as demais especiais só por concessão a quem é elegível', async () => {
       const operatorId = await operator.evaluate(async () => (await (await fetch('/api/auth/me')).json()).user.id)
       const special = ['requests:schedule', 'requests:create_on_behalf', 'flights:cpf:read']
+      const operational = ['requests:schedule', 'warehouse:manage', 'warehouse:forecast']
+      const individual = ['requests:create_on_behalf', 'flights:cpf:read']
 
       const before = await operator.evaluate(async () => (await (await fetch('/api/auth/me')).json()).user.permissions)
-      for (const key of special) assert.equal(before.includes(key), false, key)
+      for (const key of operational) assert.ok(before.includes(key), `padrão do perfil: ${key}`)
+      for (const key of individual) assert.equal(before.includes(key), false, key)
 
       await admin.goto(`/usuarios/${requesterId}`)
       await admin.waitForSelector('.users-permission')
@@ -203,7 +206,26 @@ async function run({ playwright, baseUrl, runId, password }) {
 
       const after = await operator.evaluate(async () => (await (await fetch('/api/auth/me')).json()).user)
       assert.equal(after.slmMember, false)
-      for (const key of special) assert.equal(after.permissions.includes(key), false, key)
+      for (const key of [...special, ...operational]) assert.equal(after.permissions.includes(key), false, key)
+    })
+
+    await step('a tela explica cada permissão e distingue o padrão do perfil da concessão individual', async () => {
+      await admin.goto(`/usuarios/${requesterId}`)
+      await admin.waitForSelector('.users-permission')
+      await admin.locator('.permission-scope-notice').waitFor()
+      assert.match(await admin.textContent('.permission-scope-notice'), /não elimina as demais regras/)
+      const schedule = admin.locator('.users-permission', { hasText: 'requests:schedule' })
+      assert.equal(await schedule.locator('.permission-description-title strong').textContent(), 'Agendar serviços')
+      assert.equal(await schedule.locator('.permission-kind').textContent(), 'Agendamento')
+      assert.match(await schedule.locator('.permission-description-text').textContent(), /data e o horário/)
+      assert.match(await schedule.locator('.permission-description-note').textContent(), /equipe SLM/)
+      const forecast = admin.locator('.users-permission', { hasText: 'warehouse:forecast' })
+      assert.equal(await forecast.locator('.permission-description-title strong').textContent(), 'Registrar previsão de entrega')
+      // Nenhuma permissão aparece só pela chave técnica.
+      const rows = await admin.locator('.users-permission').count()
+      assert.equal(await admin.locator('.users-permission .permission-description-text').count(), rows)
+      const own = admin.locator('.users-permission', { hasText: 'requests:read_own' })
+      assert.match(await own.locator('small').last().textContent(), /padrão do perfil/)
     })
 
     await step('as permissões essenciais de um administrador não podem ser retiradas pela tela', async () => {

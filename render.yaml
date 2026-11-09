@@ -33,6 +33,47 @@ services:
         sync: false
       - key: INSTITUTIONAL_EMAIL_DOMAINS
         sync: false
+      # E-mail (Resend, domínio verificado). Só com elas, a recuperação de senha funciona.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false
+      # Listas de equipe, opcionais (vírgulas). Vazias: a equipe é avisada só na plataforma.
+      - key: EMAIL_INTERNAL_TO_MAINTENANCE
+        sync: false
+      - key: EMAIL_INTERNAL_TO_FLEET
+        sync: false
+      - key: EMAIL_INTERNAL_TO_FLIGHTS
+        sync: false
+      - key: EMAIL_INTERNAL_TO_WAREHOUSE
+        sync: false
+      - key: EMAIL_INTERNAL_TO_SYSTEM
+        sync: false
+      # Cópias das mensagens ao solicitante, opcionais (vírgulas). Vazias: sem cópia.
+      - key: EMAIL_CC_MAINTENANCE
+        sync: false
+      - key: EMAIL_CC_FLEET
+        sync: false
+      - key: EMAIL_CC_FLIGHTS
+        sync: false
+      - key: EMAIL_CC_WAREHOUSE
+        sync: false
+      # Cota diária (docs/INTEGRACOES_E_AUTOMACOES.md). EMAIL_DAILY_LIMIT é o limite contratado no
+      # Resend, ou menor, e precisa ser conferido no painel do Resend: sem ele, a fila não envia.
+      - key: EMAIL_DAILY_LIMIT
+        sync: false
+      - key: EMAIL_RECOVERY_DAILY_RESERVE
+        sync: false
+      - key: EMAIL_ADMIN_GROUP_MINUTES
+        sync: false
+      # Testes reais restritos: só os endereços exatos da lista recebem. Sem a lista, nenhum e-mail real
+      # sai, nem a recuperação de senha. Só EMAIL_RECIPIENT_RESTRICTION=off desliga, com autorização.
+      - key: EMAIL_RECIPIENT_ALLOWLIST
+        sync: false
+      - key: EMAIL_RECIPIENT_RESTRICTION
+        sync: false
+      # NOTIFICATION_EMAILS_ENABLED fica de fora de propósito: liberar os demais e-mails exige
+      # autorização expressa e é feito à mão no painel (docs/INTEGRACOES_E_AUTOMACOES.md).
       # O disco do Render Free não é persistente: sem ATTACHMENTS_DIR. Os anexos ficam
       # indisponíveis (503) até ATTACHMENTS_STORAGE=sharepoint ser autorizado e configurado.
       - key: ATTACHMENTS_STORAGE

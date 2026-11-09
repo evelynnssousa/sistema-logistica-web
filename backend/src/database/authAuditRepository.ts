@@ -28,6 +28,9 @@ const auditActions = {
   password_recovery_completed: 'auth.password_recovery_completed',
   password_recovery_requested: 'auth.password_recovery_requested',
   password_recovery_failed: 'auth.password_recovery_failed',
+  // Envio do e-mail de recuperação: só canal, tentativas e código do erro. Nunca código, token ou link.
+  password_recovery_email_sent: 'auth.password_recovery_email_sent',
+  password_recovery_email_failed: 'auth.password_recovery_email_failed',
   slm_member_added: 'user.slm_added',
   slm_member_removed: 'user.slm_removed',
   cpf_access_granted: 'user.cpf_access_granted',
@@ -93,6 +96,9 @@ const auditActions = {
   config_published: 'config.published',
   config_restored: 'config.restored',
   email_template_test_sent: 'config.email_test_sent',
+  email_template_test_failed: 'config.email_test_failed',
+  // Lista de destinatários permitidos (homologação): só canal, modelo e domínios, nunca o endereço.
+  email_recipient_blocked: 'email.recipient_blocked',
   demand_created: 'demand.created',
   demand_changed: 'demand.changed',
   demand_restriction_changed: 'demand.restriction_changed',

@@ -110,9 +110,9 @@ function setAccess(
   })
 }
 
-async function staff(email: string, grants: Permission[] = []): Promise<Session> {
+async function staff(email: string, grants: Permission[] = [], denied: Permission[] = []): Promise<Session> {
   const user = await createUser(email, 'slm_operator', 'CPC')
-  const result = await setAccess(user.id, { role: 'slm_operator', slmMember: true, grantedPermissions: grants })
+  const result = await setAccess(user.id, { role: 'slm_operator', slmMember: true, grantedPermissions: grants, deniedPermissions: denied })
   assert.equal(result.status, 200, result.text)
   return user
 }
@@ -1300,7 +1300,8 @@ test('passagens: o filtro por tipo de viagem vem da API e ignora valor desconhec
 })
 
 test('relatórios: quilometragem e consumo só para quem acessa essas áreas, sem presumir dados', async () => {
-  const reader = await staff('rel-frota@example.gov.br', ['reports:read'])
+  // Operador SLM com a gestão do Almoxarifado retirada individualmente.
+  const reader = await staff('rel-frota@example.gov.br', ['reports:read'], ['warehouse:manage'])
   const vehicle = await post('/fleet/vehicles', admin, { placa: 'REL-1234', modelo: 'Sedan', situacao: 'disponivel' })
   assert.equal(vehicle.status, 201, vehicle.text)
   const log = (extra: Record<string, unknown>) =>

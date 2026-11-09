@@ -1,6 +1,6 @@
 import type { Pool, PoolClient } from 'pg'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
-import { eventCatalog, isEventType, moduleNames } from '../integrations/catalog.js'
+import { eventCatalog, isEventType, maxAgeHoursOf, maxAgeTable, moduleNames } from '../integrations/catalog.js'
 import type { EventContext, EventType, IntegrationModule } from '../integrations/catalog.js'
 import { maskEmail } from '../integrations/redaction.js'
 import { actionCategories } from '../requests/settingsRules.js'
@@ -11,6 +11,48 @@ import { getDatabasePool } from './pool.js'
 import { protocolSql } from './protocolSql.js'
 import { readSystemSettings } from './settingsRepository.js'
 import { withTransaction } from './withTransaction.js'
+import { demandVisibleRecipients, withEmailPreference } from '../demands/demandNotifications.js'
+import { accessSql, isAccessSchemaMigrated, resolveAccess } from './accessSchema.js'
+import type { AccessRow } from './accessSchema.js'
+import type { Permission } from '../auth/permissions.js'
+import { quotaUsageToday } from '../integrations/emailQuota.js'
+
+/**
+ * Situação exigida da conta dona do aviso, no momento do envio. Diferente da regra de "conta
+ * aprovada": a confirmação de cadastro vale para quem ainda está pendente, e a rejeição, para quem
+ * foi rejeitado. Se a situação mudou, o aviso perdeu o sentido e não sai.
+ */
+const accountNoticeStatus: Record<string, 'pending' | 'approved' | 'rejected' | 'inactive'> = {
+  account_registration_received: 'pending',
+  account_approved: 'approved',
+  account_rejected: 'rejected',
+  account_activated: 'approved',
+  account_deactivated: 'inactive',
+  account_access_changed: 'approved',
+  account_password_changed: 'approved',
+  security_new_login: 'approved',
+  security_login_blocked: 'approved',
+  security_sessions_revoked: 'approved',
+}
+
+/** Avisos administrativos: o destinatário precisa continuar com a permissão que o tornou destinatário. */
+const holderNoticePermission: Record<string, Permission> = {
+  account_registration_pending: 'users:approve',
+  security_login_blocked_admin: 'users:manage',
+}
+
+const responsibleNotices = ['request_assigned', 'request_unassigned', 'request_overdue']
+
+/**
+ * Nunca reprocessáveis: BLOCKED_BEFORE_ACTIVATION (fila selada pela migração 019, gerada antes da
+ * proteção) e RECIPIENT_OUTSIDE_TEST_LIST (destinatário fora da lista de testes).
+ */
+export const permanentlyBlockedCodes = new Set(['BLOCKED_BEFORE_ACTIVATION', 'RECIPIENT_OUTSIDE_TEST_LIST'])
+const closedRequestStatuses = ['concluido', 'concluida', 'cancelado', 'cancelada', 'rejeitada', 'emitida']
+
+export type NoticeCheck =
+  | { allowed: true; accountName?: string }
+  | { allowed: false; code: 'RECIPIENT_ACCESS_REVOKED' | 'RECIPIENT_ADDRESS_CHANGED' | 'NOTICE_OBSOLETE' }
 
 /** Fila, histórico de envio e notificações. O trabalho com os provedores fica no worker. */
 
@@ -36,6 +78,10 @@ export type ClaimedEmail = {
   resourceId: string | null
   protocol: string
   context: EventContext
+  /** Quando a mensagem entrou na fila: depois da validade do evento, ela não sai. */
+  createdAt: Date
+  /** Acontecimentos equivalentes reunidos nesta mensagem (migração 019). Sem ela, 1. */
+  groupedCount: number
 }
 
 export type ClaimedCalendarItem = {
@@ -80,7 +126,7 @@ export class IntegrationRepository {
    * não leva descrição, responsável nem nada dos passageiros.
    */
   async templateData(module: IntegrationModule, resourceId: string | null): Promise<Partial<EventContext>> {
-    if (!resourceId || module === 'system') return {}
+    if (!resourceId || module === 'system' || module === 'demands') return {}
     const pool = getDatabasePool()
     if (module === 'warehouse') {
       const request = await pool.query<{ nome: string; setor: string | null; entregue_em: Date | null }>(
@@ -130,6 +176,37 @@ export class IntegrationRepository {
     }
   }
 
+  /**
+   * Aviso de demanda, conferido no momento do envio pela mesma regra da publicação. A demanda que
+   * deixou de existir ou o endereço que não é mais de uma conta aprovada não recebem nada.
+   */
+  async demandEmailCheck(resourceId: string | null, recipient: string, templateKey: string): Promise<
+    | { allowed: true; restricted: boolean }
+    | { allowed: false; restricted: boolean; code: 'NOTICE_OBSOLETE' | 'RECIPIENT_ACCESS_REVOKED' | 'RECIPIENT_PREFERENCE_DISABLED' }
+  > {
+    if (!resourceId) return { allowed: false, restricted: true, code: 'NOTICE_OBSOLETE' }
+    const pool = this.poolProvider()
+    const demand = await pool.query<{ restrita: boolean }>(
+      `SELECT restrita FROM public.demands WHERE id = $1 AND excluida_em IS NULL`,
+      [resourceId],
+    )
+    // Demanda excluída (só rascunho pode ser): o aviso perdeu o objeto.
+    if (!demand.rows[0]) return { allowed: false, restricted: true, code: 'NOTICE_OBSOLETE' }
+    const restricted = demand.rows[0].restrita
+    const account = await pool.query<{ id: string }>(
+      `SELECT id::text AS id FROM public.auth_users WHERE lower(trim(email)) = $1 AND status = 'approved'`,
+      [recipient.trim().toLowerCase()],
+    )
+    if (account.rows.length !== 1) return { allowed: false, restricted, code: 'RECIPIENT_ACCESS_REVOKED' }
+    const visible = await demandVisibleRecipients(pool, resourceId, [account.rows[0].id])
+    if (visible.length !== 1) return { allowed: false, restricted, code: 'RECIPIENT_ACCESS_REVOKED' }
+    const kind = templateKey.replace(/^demand_/, '')
+    if ((await withEmailPreference(pool, visible, kind)).length !== 1) {
+      return { allowed: false, restricted, code: 'RECIPIENT_PREFERENCE_DISABLED' }
+    }
+    return { allowed: true, restricted }
+  }
+
   async claimEmails(limit: number): Promise<ClaimedEmail[]> {
     return withTransaction(this.poolProvider(), async (client) => {
       const result = await client.query<{
@@ -143,6 +220,8 @@ export class IntegrationRepository {
         resource_id: string | null
         protocol: string | null
         payload: EventContext
+        created_at: Date
+        grouped_count: number
       }>(
         `UPDATE public.email_deliveries d
             SET status = 'sending', locked_until = now() + make_interval(secs => $2)
@@ -157,7 +236,8 @@ export class IntegrationRepository {
                FOR UPDATE SKIP LOCKED
             )
         RETURNING d.id::text AS id, d.event_id::text AS event_id, d.template_key, d.recipient, d.cc,
-                  d.attempts, e.module, e.resource_id::text AS resource_id, e.protocol, e.payload`,
+                  d.attempts, e.module, e.resource_id::text AS resource_id, e.protocol, e.payload,
+                  d.created_at, COALESCE((to_jsonb(d)->>'grouped_count')::int, 1) AS grouped_count`,
         [limit, leaseSeconds],
       )
       return result.rows.map((row) => ({
@@ -171,8 +251,174 @@ export class IntegrationRepository {
         resourceId: row.resource_id,
         protocol: row.protocol ?? '',
         context: row.payload,
+        createdAt: row.created_at,
+        groupedCount: row.grouped_count,
       }))
     })
+  }
+
+  /**
+   * Devolve à fila sem contar tentativa: a cota do dia acabou ou não pôde ser conferida. O código fica
+   * visível no histórico, e a mensagem sai quando houver capacidade, se ainda estiver na validade.
+   */
+  async deferEmail(item: Pick<ClaimedEmail, 'id'>, until: Date, code: string) {
+    await this.poolProvider().query(
+      `UPDATE public.email_deliveries
+          SET status = 'pending', locked_until = NULL, next_attempt_at = $2, last_error_code = $3
+        WHERE id = $1 AND status = 'sending'`,
+      [item.id, until, code],
+    )
+  }
+
+  /** Conta aprovada dona do endereço, com as permissões efetivas de agora. */
+  private async approvedAccountByEmail(email: string) {
+    const pool = this.poolProvider()
+    const sql = accessSql(await isAccessSchemaMigrated(pool))
+    const result = await pool.query<AccessRow & { id: string }>(
+      `SELECT u.id::text AS id, ${sql.columns}
+         FROM public.auth_users u
+         ${sql.join}
+        WHERE lower(trim(u.email)) = $1 AND u.status = 'approved'`,
+      [email.trim().toLowerCase()],
+    )
+    if (result.rows.length !== 1) return null
+    const access = resolveAccess(result.rows[0])
+    return access ? { id: result.rows[0].id, permissions: access.permissions } : null
+  }
+
+  /**
+   * Revalidação no envio dos avisos de conta, segurança, administração e responsável, segundo o
+   * significado de cada evento. Os demais eventos seguem como antes, e Demandas tem regra própria.
+   */
+  async noticeRecipientCheck(item: Pick<ClaimedEmail, 'templateKey' | 'recipient' | 'resourceId' | 'module'>): Promise<NoticeCheck> {
+    const pool = this.poolProvider()
+    const recipient = item.recipient.trim().toLowerCase()
+    const requiredStatus = accountNoticeStatus[item.templateKey]
+    if (requiredStatus) {
+      if (!item.resourceId) return { allowed: false, code: 'NOTICE_OBSOLETE' }
+      const account = await pool.query<{ status: string; email: string | null; full_name: string | null }>(
+        `SELECT status, lower(trim(email)) AS email, full_name FROM public.auth_users WHERE id = $1`,
+        [item.resourceId],
+      )
+      const row = account.rows[0]
+      if (!row) return { allowed: false, code: 'NOTICE_OBSOLETE' }
+      // O endereço mudou depois do aviso: o antigo não recebe nada sobre a conta.
+      if (row.email !== recipient) return { allowed: false, code: 'RECIPIENT_ADDRESS_CHANGED' }
+      if (row.status !== requiredStatus) return { allowed: false, code: 'NOTICE_OBSOLETE' }
+      // O nome só vai à própria pessoa, que é a destinatária destes avisos.
+      return { allowed: true, accountName: row.full_name?.trim() || undefined }
+    }
+
+    const holderPermission = holderNoticePermission[item.templateKey]
+    if (holderPermission) {
+      const holder = await this.approvedAccountByEmail(recipient)
+      if (!holder || !holder.permissions.includes(holderPermission)) {
+        return { allowed: false, code: 'RECIPIENT_ACCESS_REVOKED' }
+      }
+      if (item.templateKey === 'account_registration_pending') {
+        const pending = await pool.query(`SELECT 1 FROM public.auth_users WHERE status = 'pending' LIMIT 1`)
+        if (pending.rows.length === 0) return { allowed: false, code: 'NOTICE_OBSOLETE' }
+      }
+      return { allowed: true }
+    }
+
+    if (responsibleNotices.includes(item.templateKey)) {
+      const module = item.module
+      if (!item.resourceId || (module !== 'maintenance' && module !== 'fleet' && module !== 'flights')) {
+        return { allowed: false, code: 'NOTICE_OBSOLETE' }
+      }
+      const person = await this.approvedAccountByEmail(recipient)
+      const required: Permission[] = [`${module}:read` as Permission, `${module}:update` as Permission]
+      if (!person || !required.every((permission) => person.permissions.includes(permission))) {
+        return { allowed: false, code: 'RECIPIENT_ACCESS_REVOKED' }
+      }
+      const request = await pool.query<{ responsavel_id: string | null; status: string; overdue: boolean }>(
+        `SELECT r.responsavel_id::text AS responsavel_id, r.status,
+                COALESCE((to_jsonb(r)->>'prazo_em')::timestamptz < now(), false) AS overdue
+           FROM public.service_requests r WHERE r.id = $1`,
+        [item.resourceId],
+      )
+      const row = request.rows[0]
+      if (!row) return { allowed: false, code: 'NOTICE_OBSOLETE' }
+      const isResponsible = row.responsavel_id === person.id
+      if (item.templateKey === 'request_assigned' && !isResponsible) return { allowed: false, code: 'NOTICE_OBSOLETE' }
+      if (item.templateKey === 'request_unassigned' && isResponsible) return { allowed: false, code: 'NOTICE_OBSOLETE' }
+      if (
+        item.templateKey === 'request_overdue' &&
+        (!isResponsible || !row.overdue || closedRequestStatuses.includes(row.status))
+      ) {
+        return { allowed: false, code: 'NOTICE_OBSOLETE' }
+      }
+      return { allowed: true }
+    }
+    return { allowed: true }
+  }
+
+  /**
+   * Varredura da validade: "pendente" e "não configurado" que passaram do prazo do evento viram falha
+   * EXPIRED, com registro em integration_attempts. Nada é apagado, nada é reenviado. Roda a cada ciclo
+   * do worker, com ou sem serviço de e-mail ativo.
+   */
+  async expireStaleEmails(limit = 500) {
+    const { types, hours } = maxAgeTable()
+    const present = await this.poolProvider().query<{ present: boolean }>(
+      `SELECT to_regclass('public.email_deliveries') IS NOT NULL AS present`,
+    )
+    if (!present.rows[0]?.present) return 0
+    return withTransaction(this.poolProvider(), async (client) => {
+      const expired = await client.query<{ id: string; attempts: number }>(
+        `UPDATE public.email_deliveries d
+            SET status = 'failed', last_error_code = 'EXPIRED', locked_until = NULL
+          WHERE d.id IN (
+            SELECT x.id FROM public.email_deliveries x
+             WHERE x.status IN ('pending', 'not_configured')
+               AND x.created_at < now() - make_interval(hours => COALESCE(
+                     (SELECT l.hours FROM unnest($1::text[], $2::int[]) AS l(template_key, hours)
+                       WHERE l.template_key = x.template_key),
+                     $3))
+             ORDER BY x.created_at
+             LIMIT $4
+             FOR UPDATE SKIP LOCKED
+          )
+        RETURNING d.id::text AS id, d.attempts`,
+        [types, hours, maxAgeHoursOf(''), limit],
+      )
+      for (const row of expired.rows) {
+        await this.recordAttempt(client, 'email', row.id, row.attempts + 1, 'failure', 'EXPIRED')
+      }
+      return expired.rows.length
+    })
+  }
+
+  /**
+   * Retrato da fila para decidir a ativação: o que está guardado sem serviço, o que já expirou e o
+   * consumo do dia. Só totais e datas, sem destinatários.
+   */
+  async queueOverview() {
+    const pool = this.poolProvider()
+    const present = await pool.query<{ present: boolean }>(
+      `SELECT to_regclass('public.email_deliveries') IS NOT NULL AS present`,
+    )
+    if (!present.rows[0]?.present) return null
+    const result = await pool.query<{ not_configured: number; pending: number; expired: number; blocked_by_list: number; sealed: number; oldest: Date | null }>(
+      `SELECT count(*) FILTER (WHERE status = 'not_configured')::int AS not_configured,
+              count(*) FILTER (WHERE status IN ('pending', 'sending'))::int AS pending,
+              count(*) FILTER (WHERE status = 'failed' AND last_error_code = 'EXPIRED')::int AS expired,
+              count(*) FILTER (WHERE status = 'failed' AND last_error_code = 'RECIPIENT_OUTSIDE_TEST_LIST')::int AS blocked_by_list,
+              count(*) FILTER (WHERE status = 'failed' AND last_error_code = 'BLOCKED_BEFORE_ACTIVATION')::int AS sealed,
+              min(created_at) FILTER (WHERE status IN ('not_configured', 'pending')) AS oldest
+         FROM public.email_deliveries`,
+    )
+    const row = result.rows[0]
+    return {
+      notConfigured: row.not_configured,
+      pending: row.pending,
+      expired: row.expired,
+      blockedByTestList: row.blocked_by_list,
+      blockedBeforeActivation: row.sealed,
+      oldestWaitingAt: row.oldest,
+      quota: await quotaUsageToday(pool),
+    }
   }
 
   async markEmailSent(
@@ -593,14 +839,29 @@ export class IntegrationRepository {
     const table = channel === 'email' ? 'public.email_deliveries' : 'public.calendar_sync_items'
 
     await withTransaction(this.poolProvider(), async (client) => {
-      const found = await client.query<{ status: string }>(
-        `SELECT status FROM ${table} WHERE id = $1 FOR UPDATE`,
+      const found = await client.query<{ status: string; last_error_code: string | null; template_key: string | null; created_at: Date }>(
+        channel === 'email'
+          ? `SELECT status, last_error_code, template_key, created_at FROM ${table} WHERE id = $1 FOR UPDATE`
+          : `SELECT status, last_error_code, NULL::text AS template_key, created_at FROM ${table} WHERE id = $1 FOR UPDATE`,
         [id],
       )
       const current = found.rows[0]
       if (!current) throw notFound()
       if (current.status !== 'failed' && current.status !== 'not_configured') {
         throw conflict('Só é possível reprocessar itens com falha ou gerados sem o serviço ativo.')
+      }
+      // Bloqueio definitivo: gerada antes da ativação ou fora da lista de testes. Nem a remoção futura
+      // da lista libera, porque o destinatário nunca foi autorizado para este envio.
+      if (channel === 'email' && permanentlyBlockedCodes.has(current.last_error_code ?? '')) {
+        throw conflict('Esta mensagem foi bloqueada de forma definitiva e não pode ser reprocessada.')
+      }
+      // Mensagem vencida não volta: o aviso perdeu o sentido, e o histórico fica como está.
+      if (
+        channel === 'email' &&
+        (current.last_error_code === 'EXPIRED' ||
+          Date.now() - current.created_at.getTime() > maxAgeHoursOf(current.template_key ?? '') * 3_600_000)
+      ) {
+        throw conflict('Esta mensagem passou da validade e não pode ser reprocessada.')
       }
 
       await client.query(

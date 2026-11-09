@@ -19,11 +19,29 @@ export type ManagedUser = {
   revokedPermissions?: string[]
 }
 
+export type PermissionKind = 'read' | 'create' | 'update' | 'schedule' | 'manage'
+
+export type PermissionEntry = {
+  key: string
+  label: string
+  kind: PermissionKind
+  description: string
+  note?: string
+}
+
+export const permissionKindLabels: Record<PermissionKind, string> = {
+  read: 'Consulta',
+  create: 'Criação',
+  update: 'Alteração',
+  schedule: 'Agendamento',
+  manage: 'Administração',
+}
+
 export type PermissionCatalog = {
   groups: Array<{
     key: string
     label: string
-    permissions: Array<{ key: string; label: string }>
+    permissions: PermissionEntry[]
   }>
   profiles: Array<{ key: UserRole; permissions: string[] }>
   restricted: string[]
@@ -200,6 +218,11 @@ export const auditActionLabels: Record<string, string> = {
   'auth.password_recovery_requested': 'Recuperação de senha solicitada',
   'auth.password_recovery_completed': 'Recuperação de senha concluída',
   'auth.password_recovery_failed': 'Código de recuperação incorreto',
+  'auth.password_recovery_email_sent': 'E-mail de recuperação de senha enviado',
+  'auth.password_recovery_email_failed': 'Falha no envio do e-mail de recuperação de senha',
+  'config.email_test_sent': 'Teste de modelo de e-mail enviado',
+  'config.email_test_failed': 'Falha no envio de teste de modelo de e-mail',
+  'email.recipient_blocked': 'E-mail bloqueado: destinatário fora da lista de testes',
   'administrator.bootstrap': 'Administrador inicial criado',
   'administrator.recovered': 'Senha de administrador redefinida por CLI',
   'flights.cpf_read': 'CPF completo consultado',
@@ -270,6 +293,13 @@ const detailLabels: Record<string, string> = {
   role: 'Perfil',
   fields: 'Campos',
   automaticallyRevoked: 'Revogadas automaticamente',
+  effectiveAdded: 'Acessos ganhos',
+  effectiveRemoved: 'Acessos perdidos',
+  effectivePermissions: 'Acessos efetivos',
+  slmMember: 'Equipe SLM',
+  channel: 'Canal',
+  template: 'Modelo',
+  domains: 'Domínios',
   reason: 'Motivo',
   operation: 'Operação',
   module: 'Módulo',
@@ -308,7 +338,9 @@ export function auditDetailEntries(details: Record<string, unknown>) {
       label: detailLabels[key],
       value: Array.isArray(value)
         ? value.join(', ')
-        : (key === 'reason' && reasonLabels[String(value)]) || String(value),
+        : (key === 'reason' && reasonLabels[String(value)]) ||
+          (key === 'slmMember' && (value === 'true' ? 'sim' : 'não')) ||
+          String(value),
     }))
 }
 

@@ -4617,6 +4617,79 @@ body,
   background: #fff8e6;
 }
 
+.users-permission > div {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+/* Explicação de cada permissão: nome, natureza, finalidade e restrições. */
+.permission-description {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.permission-description-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.permission-description-text {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.permission-description-note {
+  color: var(--warning);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.permission-kind {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.permission-kind-schedule {
+  background: var(--institutional-soft);
+  color: var(--institutional);
+}
+
+.permission-kind-manage {
+  background: var(--accent-soft);
+  color: var(--warning);
+}
+
+.permission-key {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.permission-scope-notice {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--info-border);
+  border-radius: 7px;
+  background: var(--info-soft);
+  color: var(--info-text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.demand-checks label.permission-check {
+  align-items: flex-start;
+  flex: 1 1 100%;
+}
+
 .page-section button.danger {
   border-color: #b42318;
   background: #ffffff;

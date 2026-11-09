@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { mock, test } from 'node:test'
+import { randomBytes } from 'node:crypto'
+import { verifyPasswordRecoveryCode } from './passwordRecovery.js'
 import {
   isPasswordRecoveryConfigured,
   processPasswordRecoveryRequest,
@@ -31,6 +33,16 @@ test('só considera configurado com segredo e e-mail definidos', () => {
       false,
     )
   }
+})
+
+test('em produção, só considera configurado com pepper de ao menos 32 caracteres', () => {
+  const email = { RESEND_API_KEY: 'chave', RESEND_FROM: 'sistema@example.gov.br' }
+  const valid = `${'x'.repeat(40)}\n`
+
+  assert.equal(isPasswordRecoveryConfigured({ ...email, NODE_ENV: 'production', PASSWORD_RESET_PEPPER: valid }), true)
+  assert.equal(isPasswordRecoveryConfigured({ ...email, NODE_ENV: 'production', PASSWORD_RESET_PEPPER: 'segredo' }), false)
+  assert.equal(isPasswordRecoveryConfigured({ ...email, NODE_ENV: 'production', PASSWORD_RESET_PEPPER: '   ' }), false)
+  assert.equal(isPasswordRecoveryConfigured({ ...email, NODE_ENV: 'production' }), false)
 })
 
 test('sem configuração, não toca no banco e deixa o motivo no log', async () => {
@@ -74,6 +86,34 @@ test('envia o código original e guarda somente o hash', async () => {
   assert.match(sentCode, /^\d{6}$/)
   assert.match(storedHash, /^[0-9a-f]{64}$/)
   assert.equal(storedHash.includes(sentCode), false)
+})
+
+test('com configuração válida, o código enviado confere com o hash guardado', async () => {
+  const previous = process.env.PASSWORD_RESET_PEPPER
+  // Fictício, com quebra de linha no fim, como ao colar o valor num painel.
+  process.env.PASSWORD_RESET_PEPPER = `${randomBytes(32).toString('hex')}\n`
+  let storedHash = ''
+  let sentCode = ''
+
+  try {
+    await processPasswordRecoveryRequest(account.email, {
+      isConfigured: () => true,
+      createCode: async (_email, codeHash) => {
+        storedHash = codeHash
+        return account
+      },
+      invalidateCodes: async () => {},
+      send: async (_recipient, code) => {
+        sentCode = code
+      },
+    })
+
+    assert.equal(verifyPasswordRecoveryCode(sentCode, storedHash), true)
+    assert.equal(verifyPasswordRecoveryCode(sentCode, storedHash, process.env.PASSWORD_RESET_PEPPER.trim()), true)
+    assert.equal(verifyPasswordRecoveryCode(sentCode === '000000' ? '000001' : '000000', storedHash), false)
+  } finally {
+    process.env.PASSWORD_RESET_PEPPER = previous
+  }
 })
 
 test('conta inexistente não recebe e-mail', async () => {

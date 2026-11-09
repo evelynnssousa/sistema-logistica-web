@@ -989,6 +989,30 @@ export class ServiceRequestRepository {
           reason: justification?.summary ?? null,
         },
       })
+      // Agendar com outro responsável é também uma mudança de responsável: os dois são avisados.
+      if (current.responsavel_id !== responsibleId) {
+        const stamp = Date.now()
+        await publishIntegrationEvent(client, {
+          type: 'request_assigned',
+          key: `${id}:assign:${responsibleId}:${stamp}`,
+          module,
+          resourceId: id,
+          protocol: current.protocolo,
+          actorId: actor.userId,
+          responsibleId,
+        })
+        if (current.responsavel_id) {
+          await publishIntegrationEvent(client, {
+            type: 'request_unassigned',
+            key: `${id}:unassign:${current.responsavel_id}:${stamp}`,
+            module,
+            resourceId: id,
+            protocol: current.protocolo,
+            actorId: actor.userId,
+            responsibleId: current.responsavel_id,
+          })
+        }
+      }
       if (module !== 'flights') await requestCalendarSync(client, id, module, 'upsert')
       if (module === 'fleet' && kind !== 'schedule') {
         await publishTripDriverEvent(client, {

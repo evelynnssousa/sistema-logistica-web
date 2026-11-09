@@ -50,6 +50,13 @@ export const defaultSettings = {
     >,
     // Dias sem andamento para avisar a equipe. Sem valor definido, nenhum prazo é presumido.
     pendingReminderDays: null as number | null,
+    // E-mails de segurança. O aviso de cada novo acesso começa desligado, para não virar ruído.
+    securityEmails: {
+      newLogin: false,
+      lockout: true,
+      sessionsRevoked: true,
+      adminAlerts: true,
+    },
   },
   attachments: {
     maxFileMb: 10,
@@ -305,6 +312,7 @@ export function validateSettings(
         body.pendingReminderDays === ''
           ? null
           : integer(body.pendingReminderDays, 'O aviso de solicitações paradas', 1, 365),
+      securityEmails: readSecurityEmails(body.securityEmails),
     }
   }
 
@@ -383,6 +391,25 @@ export function validateSettings(
 }
 
 /** Junta o que está gravado com o padrão, para um campo novo nunca ficar indefinido. */
+/** Liga ou desliga cada e-mail de segurança. O que não vier informado fica no padrão. */
+function readSecurityEmails(value: unknown) {
+  const defaults = defaultSettings.notifications.securityEmails
+  if (value === undefined || value === null) return { ...defaults }
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new RequestValidationError('E-mails de segurança inválidos.')
+  }
+  const body = value as Record<string, unknown>
+  return Object.fromEntries(
+    (Object.keys(defaults) as (keyof typeof defaults)[]).map((key) => {
+      const item = body[key]
+      if (item !== undefined && typeof item !== 'boolean') {
+        throw new RequestValidationError('E-mails de segurança inválidos.')
+      }
+      return [key, item ?? defaults[key]]
+    }),
+  ) as typeof defaults
+}
+
 export function mergeSettings(rows: readonly { secao: string; valor: unknown }[]): SystemSettings {
   const merged = structuredClone(defaultSettings) as SystemSettings
   for (const row of rows) {

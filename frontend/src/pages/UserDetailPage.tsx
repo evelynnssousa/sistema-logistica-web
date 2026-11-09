@@ -7,6 +7,7 @@ import { useAuthenticatedUser, useHasPermission } from '../auth/UserContext'
 import { Alert } from '../components/ui/Feedback'
 import { useConfirm } from '../components/ui/useConfirm'
 import InstitutionalLinksEditor from '../components/InstitutionalLinksEditor'
+import PermissionDescription, { PermissionScopeNotice } from '../components/PermissionDescription'
 import {
   auditActionLabels,
   describeAuditDetails,
@@ -488,12 +489,22 @@ function UserDetailPage() {
             </p>
           )}
 
-          <h2>Permissões individuais</h2>
+          <h2>Permissões</h2>
           <p>
-            Somam ou retiram em relação ao perfil, sem promover o usuário. A
-            retirada prevalece, exceto sobre as permissões essenciais do
-            administrador. Permissões especiais dependem do perfil e da equipe SLM.
+            Cada perfil tem um conjunto padrão de permissões. As escolhas
+            individuais somam ou retiram em relação a esse padrão, sem promover o
+            usuário, e a retirada prevalece, exceto sobre as permissões essenciais
+            do administrador. Permissões especiais dependem do perfil e da equipe SLM.
           </p>
+          {role === 'slm_operator' && (
+            <p className="users-note" role="note">
+              O perfil Operador SLM já inclui agendar serviços, gerenciar o
+              Almoxarifado e registrar a previsão de entrega, que só valem enquanto
+              o usuário integrar a equipe SLM. CPF completo, abertura em nome de
+              outros setores e a Central de Operações continuam por concessão individual.
+            </p>
+          )}
+          <PermissionScopeNotice />
 
           {role === 'driver' && (
             <Alert tone="info">
@@ -514,6 +525,18 @@ function UserDetailPage() {
                   (override === 'grant' ||
                     (override === 'profile' && fromProfile) ||
                     isProtectedPermission)
+                const origin =
+                  override === 'grant'
+                    ? fromProfile
+                      ? 'padrão do perfil, também concedida individualmente'
+                      : 'concedida individualmente'
+                    : override === 'deny'
+                      ? isProtectedPermission
+                        ? 'padrão do perfil'
+                        : 'retirada individualmente'
+                      : fromProfile
+                        ? 'padrão do perfil'
+                        : 'fora do perfil'
 
                 return (
                   <div
@@ -521,13 +544,13 @@ function UserDetailPage() {
                     key={permission.key}
                   >
                     <div>
-                      <strong>{permission.label}</strong>
+                      <PermissionDescription permission={permission} />
                       <small>
-                        {permission.key} ·{' '}
-                        {effective ? 'Com acesso' : 'Sem acesso'}
-                        {fromProfile ? ' · incluída no perfil' : ''}
-                        {blocked ? ' · exige perfil elegível e equipe SLM' : ''}
+                        {effective ? 'Com acesso' : 'Sem acesso'} · {origin}
+                        {blocked ? ' · não vale para este perfil e esta situação na equipe SLM' : ''}
                         {isProtectedPermission ? ' · essencial' : ''}
+                        {' · '}
+                        <code className="permission-key">{permission.key}</code>
                       </small>
                     </div>
                     <select

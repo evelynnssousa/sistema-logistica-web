@@ -162,13 +162,13 @@ async function run({ playwright, baseUrl, runId, password }) {
       assert.equal(await requester.locator('.detail-action').count(), 0)
     })
 
-    await step('o agendamento só aparece com a concessão individual', async () => {
+    await step('o agendamento aparece pelo perfil do Operador SLM da equipe, sem concessão manual', async () => {
       await operator.goto(maintenanceUrl)
       await operator.waitForSelector('.request-detail-page')
-      assert.equal(await operator.locator('.detail-action h3', { hasText: 'Agendar' }).count(), 0)
-      await grant(admin, operator, ['requests:schedule'])
-      await operator.goto(maintenanceUrl)
       await operator.locator('.detail-action h3', { hasText: 'Agendar' }).waitFor()
+      const me = await operator.evaluate(async () => (await (await fetch('/api/auth/me')).json()).user)
+      assert.equal(me.slmMember, true)
+      assert.ok(me.permissions.includes('requests:schedule'))
     })
 
     await step('operadora agenda, reagenda, inicia e conclui; o histórico acompanha', async () => {
@@ -276,13 +276,19 @@ async function run({ playwright, baseUrl, runId, password }) {
     })
 
     await step('almoxarifado: catálogo, pedido interno, pedido externo e entrega', async () => {
-      // Sem warehouse:manage, a central não mostra as abas de gestão.
+      // Sem warehouse:manage, a central não mostra as abas de gestão ao Solicitante.
+      await requester.goto('/almoxarifado')
+      await requester.waitForSelector('.inventory-page')
+      await requester.locator('.module-tabs a', { hasText: 'Solicitações' }).waitFor()
+      assert.equal(await requester.locator('.module-tabs a', { hasText: 'Materiais' }).count(), 0)
+      assert.equal(await requester.locator('.module-tabs a', { hasText: 'Estoque interno' }).count(), 0)
+      await requester.goto('/almoxarifado/materiais')
+      await requester.waitForSelector('.access-denied')
+      // O Operador SLM da equipe gerencia o Almoxarifado pelo perfil.
       await operator.goto('/almoxarifado')
       await operator.waitForSelector('.inventory-page')
-      await operator.locator('.module-tabs a', { hasText: 'Solicitações' }).waitFor()
-      assert.equal(await operator.locator('.module-tabs a', { hasText: 'Materiais' }).count(), 0)
-      await operator.goto('/almoxarifado/materiais')
-      await operator.waitForSelector('.access-denied')
+      await operator.locator('.module-tabs a', { hasText: 'Materiais' }).waitFor()
+      await operator.locator('.module-tabs a', { hasText: 'Estoque interno' }).waitFor()
 
       // O endereço antigo do portal cai dentro do módulo, com o menu do sistema.
       await operator.goto('/portal/almoxarifado')

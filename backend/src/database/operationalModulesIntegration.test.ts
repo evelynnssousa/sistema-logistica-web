@@ -131,12 +131,14 @@ async function staff(
   email: string,
   grants: Permission[] = [],
   sector = 'CPC',
+  denied: Permission[] = [],
 ): Promise<Session> {
   const user = await createUser(email, 'slm_operator', sector)
   const result = await setAccess(user.id, {
     role: 'slm_operator',
     slmMember: true,
     grantedPermissions: grants,
+    deniedPermissions: denied,
   })
   assert.equal(result.status, 200, result.text)
   return user
@@ -467,22 +469,23 @@ test('abrir em nome de outro setor exige equipe SLM e concessão, mesmo para adm
   assert.equal(detail.body.request.openedBy, 'Pessoa nome-com')
 })
 
-test('agendar: Solicitante nunca; Operador SLM com concessão; Administrador só na equipe SLM', async () => {
+test('agendar: Solicitante nunca; Operador SLM da equipe pelo perfil; Administrador só na equipe SLM', async () => {
   const requester = await createUser('ag-solicitante@example.gov.br')
-  const operatorWithout = await staff('ag-sem@example.gov.br')
+  // Operador SLM com o agendamento retirado individualmente.
+  const operatorWithout = await staff('ag-sem@example.gov.br', [], 'CPC', ['requests:schedule'])
   const created = await post('/maintenance/requests', requester, maintenanceBody())
   const path = `/maintenance/requests/${created.body.id}/schedule`
   const body = { dataAgendada: '2027-03-01T13:00:00.000Z' }
 
   assert.equal((await post(path, requester, body)).status, 403)
   assert.equal((await post(path, operatorWithout, body)).status, 403)
-  // Responsável precisa ser elegível. Quem agenda é da SLM, com a concessão (P-08).
-  const scheduler = await staff('ag-agendador@example.gov.br', ['requests:schedule'])
+  // Responsável precisa ser elegível. Quem agenda é da SLM, pelo perfil, sem concessão (P-08).
+  const scheduler = await staff('ag-agendador@example.gov.br')
   assert.equal((await post(path, scheduler, { ...body, responsavelId: requester.id })).status, 400)
   assert.equal((await post(path, scheduler, { ...body, responsavelId: operatorWithout.id })).status, 200)
 
-  const operatorRevoked = await staff('ag-revogada@example.gov.br', ['requests:schedule'])
-  await setAccess(operatorRevoked.id, { role: 'slm_operator', slmMember: true })
+  const operatorRevoked = await staff('ag-revogada@example.gov.br')
+  await setAccess(operatorRevoked.id, { role: 'slm_operator', slmMember: true, deniedPermissions: ['requests:schedule'] })
   assert.equal(
     (await post(path, operatorRevoked, { ...body, comentario: 'Novo horário' })).status,
     403,
@@ -796,7 +799,8 @@ test('almoxarifado: pedido interno, pedido externo, central e permissões', asyn
   const requester = await createUser('alm-solicitante@example.gov.br')
   const other = await createUser('alm-outro@example.gov.br')
   const manager = await staff('alm-gestora@example.gov.br', ['warehouse:manage'])
-  const operator = await staff('alm-operadora@example.gov.br')
+  // Operador SLM com a gestão do Almoxarifado retirada individualmente.
+  const operator = await staff('alm-operadora@example.gov.br', [], 'CPC', ['warehouse:manage'])
 
   // Catálogo só com warehouse:manage, e unidade padronizada.
   assert.equal((await post('/warehouse/materials', operator, { name: 'X' })).status, 403)

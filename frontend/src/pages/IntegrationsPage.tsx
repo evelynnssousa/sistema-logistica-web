@@ -46,6 +46,20 @@ const modeLabels: Record<ChannelMode, { label: string; detail: string }> = {
   },
 }
 
+/** Motivos que não são falha do serviço, e os da cota diária. */
+const emailErrorLabels: Record<string, string> = {
+  EXPIRED: 'expirado: passou da validade do aviso',
+  NOTICE_OBSOLETE: 'não enviado: a situação mudou depois do aviso',
+  RECIPIENT_ACCESS_REVOKED: 'não enviado: o destinatário perdeu o acesso',
+  RECIPIENT_ADDRESS_CHANGED: 'não enviado: o e-mail da conta mudou',
+  RECIPIENT_PREFERENCE_DISABLED: 'não enviado: a pessoa desligou o aviso por e-mail',
+  RECIPIENT_OUTSIDE_TEST_LIST: 'bloqueado: destinatário fora da lista de testes',
+  BLOCKED_BEFORE_ACTIVATION: 'bloqueado: gerado antes da ativação controlada',
+  DAILY_LIMIT_REACHED: 'aguardando: limite diário atingido',
+  QUOTA_NOT_CONFIGURED: 'aguardando: limite diário não configurado',
+  QUOTA_UNAVAILABLE: 'aguardando: limite diário não pôde ser conferido',
+}
+
 const emailStatusLabels: Record<string, string> = {
   pending: 'Na fila',
   sending: 'Enviando',
@@ -66,7 +80,10 @@ const yesNo = (value: boolean) => (value ? 'Sim' : 'Não')
 
 const requestLink = (module: string, id: string | null) => {
   if (!id || module === 'system') return null
-  return module === 'warehouse' ? `/almoxarifado/pedidos/${id}` : `${modulePaths[module]}/${id}`
+  if (module === 'warehouse') return `/almoxarifado/pedidos/${id}`
+  // A própria tela da demanda confere, de novo, quem pode abri-la.
+  if (module === 'demands') return `/demandas/${id}`
+  return modulePaths[module] ? `${modulePaths[module]}/${id}` : null
 }
 
 function StatusTab() {
@@ -100,6 +117,18 @@ function StatusTab() {
           <div className="detail-info"><dt>Envio autorizado na configuração</dt><dd>{yesNo(status.email.flagEnabled)}</dd></div>
           <div className="detail-info"><dt>Credenciais presentes</dt><dd>{yesNo(status.email.credentialsPresent)}</dd></div>
           <div className="detail-info"><dt>Endereço público para os links</dt><dd>{yesNo(status.email.publicUrlPresent)}</dd></div>
+          {status.email.restriction && (
+            <div className="detail-info">
+              <dt>Destinatários</dt>
+              <dd>
+                {status.email.restriction.mode === 'test'
+                  ? `Envio restrito a contas de teste: ${status.email.restriction.allowedRecipients} autorizado(s)`
+                  : 'Sem restrição de destinatários'}
+                {status.email.restriction.rejectedEntries > 0 &&
+                  ` · ${status.email.restriction.rejectedEntries} entrada(s) recusada(s)`}
+              </dd>
+            </div>
+          )}
           <div className="detail-info">
             <dt>Destinatários internos configurados</dt>
             <dd>{Object.values(status.email.internalRecipients).reduce((sum, total) => sum + total, 0)}</dd>
@@ -127,6 +156,39 @@ function StatusTab() {
           </div>
         </dl>
       </section>
+      {status.queue && (
+        <section className="ui-card integration-status-card" aria-labelledby="status-queue">
+          <h2 id="status-queue">Fila de e-mails e cota diária</h2>
+          <p>
+            Mensagens guardadas sem serviço ativo não saem sozinhas. As que passam da validade do aviso ficam
+            como expiradas, no histórico, e não podem ser reprocessadas.
+          </p>
+          <dl className="detail-grid">
+            <div className="detail-info"><dt>Não enviadas: serviço não configurado</dt><dd>{status.queue.notConfigured}</dd></div>
+            <div className="detail-info"><dt>Na fila</dt><dd>{status.queue.pending}</dd></div>
+            <div className="detail-info"><dt>Expiradas</dt><dd>{status.queue.expired}</dd></div>
+            <div className="detail-info"><dt>Bloqueadas: fora da lista de testes</dt><dd>{status.queue.blockedByTestList ?? 0}</dd></div>
+            <div className="detail-info"><dt>Bloqueadas: anteriores à ativação</dt><dd>{status.queue.blockedBeforeActivation ?? 0}</dd></div>
+            <div className="detail-info">
+              <dt>Mais antiga aguardando</dt>
+              <dd>{status.queue.oldestWaitingAt ? formatDateTime(status.queue.oldestWaitingAt) : 'Nenhuma'}</dd>
+            </div>
+            {status.queue.quota ? (
+              <>
+                <div className="detail-info">
+                  <dt>Limite diário (UTC)</dt>
+                  <dd>{status.queue.quota.dailyLimit ?? 'Não configurado'}</dd>
+                </div>
+                <div className="detail-info"><dt>Reserva da recuperação de senha</dt><dd>{status.queue.quota.recoveryReserve}</dd></div>
+                <div className="detail-info"><dt>Usado hoje pelas notificações</dt><dd>{status.queue.quota.notificationsUsed}</dd></div>
+                <div className="detail-info"><dt>Usado hoje pela recuperação</dt><dd>{status.queue.quota.recoveryUsed}</dd></div>
+              </>
+            ) : (
+              <div className="detail-info"><dt>Controle da cota</dt><dd>Depende da migração 019</dd></div>
+            )}
+          </dl>
+        </section>
+      )}
     </div>
   )
 }
@@ -230,6 +292,7 @@ function EmailsTab() {
             { value: 'fleet', label: 'Frota' },
             { value: 'flights', label: 'Passagens aéreas' },
             { value: 'warehouse', label: 'Almoxarifado' },
+            { value: 'demands', label: 'Controle de Demandas' },
             { value: 'system', label: 'Sistema' },
           ]}
         />
@@ -281,7 +344,9 @@ function EmailsTab() {
                           {emailStatusLabels[email.status] ?? email.status}
                           {email.simulated && email.status === 'sent' && ' (simulado)'}
                           {email.deliveryStatus && <small> · Provedor: {email.deliveryStatus}</small>}
-                          {email.errorCode && email.status !== 'not_configured' && <small> · {email.errorCode}</small>}
+                          {email.errorCode && email.status !== 'not_configured' && (
+                            <small> · {emailErrorLabels[email.errorCode] ?? email.errorCode}</small>
+                          )}
                         </td>
                         <td>{email.attempts}</td>
                         {canManage && (

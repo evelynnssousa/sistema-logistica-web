@@ -56,8 +56,28 @@ async function call(path: string, options: { method?: string; body?: unknown; se
   const setCookie = (response.headers.get('set-cookie') ?? '').split(';')[0]
   const body = JSON.parse(text) as Record<string, any>
   if (setCookie && body.csrfToken) csrfTokens.set(setCookie, body.csrfToken)
+  await settleAccountNotices(path)
   return { status: response.status, body, text, setCookie }
 }
+/**
+ * Avisos da conta de acesso (cadastro, aprovação, perfil) entram na mesma fila desde 07/11/2026 e têm
+ * testes próprios (emailNotificationsIntegration.test.ts). Aqui, saem da fila antes de serem tentados,
+ * para estes testes continuarem conferindo só as mensagens das solicitações.
+ */
+async function settleAccountNotices(path: string) {
+  if (!path.startsWith('/auth/register') && !path.startsWith('/admin/')) return
+  await pool
+    .query(
+      `DELETE FROM public.email_deliveries
+        WHERE attempts = 0 AND status IN ('pending', 'not_configured')
+          AND (template_key LIKE 'account\\_%' OR template_key LIKE 'security\\_%')`,
+    )
+    .catch((error: { code?: string }) => {
+      // Único caso previsto: antes da migração 006 a fila não existe (42P01). Qualquer outro erro aparece.
+      if (error?.code !== '42P01') throw error
+    })
+}
+
 
 const post = (path: string, session: Session, body: unknown = {}) =>
   call(path, { method: 'POST', session, body })
@@ -99,9 +119,9 @@ function setAccess(userId: string, grants: Permission[], denied: Permission[] = 
   })
 }
 
-async function staff(email: string, grants: Permission[] = ['requests:schedule']): Promise<Session> {
+async function staff(email: string, grants: Permission[] = ['requests:schedule'], denied: Permission[] = []): Promise<Session> {
   const user = await createUser(email, 'slm_operator', 'CPC')
-  const result = await setAccess(user.id, grants)
+  const result = await setAccess(user.id, grants, denied)
   assert.equal(result.status, 200, result.text)
   return user
 }
@@ -1000,7 +1020,8 @@ test('agenda: filtros por status e responsável, e compromisso que atravessa o p
 
 test('relatórios: indicadores reais, com a limitação informada e no alcance de quem consulta', async () => {
   const requester = await createUser('rel@example.gov.br')
-  const operator = await staff('rel-op@example.gov.br')
+  // Sem a gestão do Almoxarifado (retirada individual), para conferir o alcance do relatório.
+  const operator = await staff('rel-op@example.gov.br', ['requests:schedule'], ['warehouse:manage'])
   const period = 'from=2020-01-01T00:00:00.000Z&to=2100-01-01T00:00:00.000Z'
 
   const before = (await call(`/reports/operational?${period}&module=maintenance`, { session: operator })).body

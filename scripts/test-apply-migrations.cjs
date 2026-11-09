@@ -158,9 +158,9 @@ async function twoStepBackup(url) {
     const applied = run(second, url, extra)
     assert.equal(applied.status, 0, `${applied.stdout}\n${applied.stderr}`)
     assert.match(applied.stdout, /Backup conferido/)
-    assert.match(applied.stdout, /17 migrações aplicadas/)
+    assert.match(applied.stdout, /18 migrações aplicadas/)
     assert.equal(await present(client, 'driver_occurrence_types'), true)
-    console.log('✔ com arquivo e dados iguais, a segunda etapa aplica as 17 migrações')
+    console.log('✔ com arquivo e dados iguais, a segunda etapa aplica as 18 migrações')
   } finally {
     await client.end().catch(() => undefined)
     rmSync(directory, { recursive: true, force: true })
@@ -208,7 +208,7 @@ async function main() {
 
     const applied = run(apply, url)
     assert.equal(applied.status, 0, `${applied.stdout}\n${applied.stderr}`)
-    assert.match(applied.stdout, /17 migrações aplicadas/)
+    assert.match(applied.stdout, /18 migrações aplicadas/)
     assert.match(applied.stdout, /aplicada {2}018_public_api_privileges/)
     assert.match(applied.stdout, /Objetos de public acessíveis à API pública: nenhum/)
     assert.match(applied.stdout, /Tabelas novas acessíveis à API pública: nenhuma/)
@@ -218,7 +218,7 @@ async function main() {
     assert.equal(account.rows[0].n, 1)
     const access = await client.query(`SELECT profile, slm_member FROM public.auth_user_access`)
     assert.deepEqual(access.rows, [{ profile: 'administrator', slm_member: false }])
-    console.log('✔ aplica as 17 migrações e a conferência final passa, com os privilégios do Supabase')
+    console.log('✔ aplica as 18 migrações e a conferência final passa, com os privilégios do Supabase')
 
     assert.match(applied.stdout, /Sequências novas acessíveis à API pública: nenhuma/)
     for (const sequence of newSequences) {
@@ -374,7 +374,7 @@ async function main() {
     assert.equal(resumed.status, 0, `${resumed.stdout}\n${resumed.stderr}`)
     assert.match(resumed.stdout, /presente {2}006_integrations/)
     assert.match(resumed.stdout, /aplicada {2}007_operations_center/)
-    assert.match(resumed.stdout, /12 migrações aplicadas/)
+    assert.match(resumed.stdout, /13 migrações aplicadas/)
     console.log('✔ rodar de novo retoma de onde parou, sem repetir as aplicadas')
     await client.end()
 

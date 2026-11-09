@@ -65,6 +65,8 @@ export type IntegrationStatus = {
     credentialsPresent: boolean
     publicUrlPresent: boolean
     internalRecipients: Record<string, number>
+    /** Lista de destinatários de teste: só o modo e as contagens. */
+    restriction?: { mode: 'test' | 'off'; allowedRecipients: number; rejectedEntries: number }
   }
   calendar: {
     mode: ChannelMode
@@ -76,6 +78,23 @@ export type IntegrationStatus = {
   }
   worker: { enabled: boolean }
   pendingReminderDays: number | null
+  /** Retrato da fila de e-mails. null: sem a migração 006. */
+  queue?: {
+    notConfigured: number
+    pending: number
+    expired: number
+    blockedByTestList?: number
+    blockedBeforeActivation?: number
+    oldestWaitingAt: string | null
+    /** null: sem a migração 019, ou sem leitura possível. */
+    quota: {
+      dailyLimit: number | null
+      recoveryReserve: number
+      adminGroupMinutes: number
+      notificationsUsed: number
+      recoveryUsed: number
+    } | null
+  } | null
 }
 
 export const getIntegrationStatus = () =>

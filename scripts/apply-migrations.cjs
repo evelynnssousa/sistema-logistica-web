@@ -56,6 +56,7 @@ const migrations = [
   { file: '017_driver_portal_settings', marker: 'driver_occurrence_types' },
   // Não cria tabela: vale como aplicada quando a 017 existe e nada de public está aberto à API pública.
   { file: '018_public_api_privileges', marker: 'driver_occurrence_types', closesPublicApi: true },
+  { file: '019_email_quota', marker: 'email_daily_usage' },
 ]
 
 function readDatabaseUrl() {
@@ -408,9 +409,12 @@ async function main() {
   try {
     const states = []
     for (const item of migrations) states.push({ ...item, present: await isApplied(client, item) })
-    const firstPending = states.findIndex((item) => !item.present)
     const pending = states.filter((item) => !item.present)
-    if (firstPending >= 0 && states.slice(firstPending).some((item) => item.present)) {
+    // A 018 não cria tabela: volta a pendente se alguém reabrir um privilégio, mesmo com as
+    // seguintes aplicadas, e reaplicá-la é idempotente. A ordem vale para as que criam tabela.
+    const ordered = states.filter((item) => !item.closesPublicApi)
+    const firstPending = ordered.findIndex((item) => !item.present)
+    if (firstPending >= 0 && ordered.slice(firstPending).some((item) => item.present)) {
       throw new Error('As migrações presentes estão fora de ordem. Confira o banco à mão. Nada foi aplicado.')
     }
     for (const item of states) console.log(`${item.present ? 'presente' : 'PENDENTE'}  ${item.file}`)

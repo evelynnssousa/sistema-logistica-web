@@ -16,7 +16,7 @@ import type { TemplateValues, VariableScope } from './templateVariables.js'
  * passageiro, descrição do pedido ou dado de contato: nem há campo para isso no contexto.
  */
 
-export type IntegrationModule = RequestModule | 'warehouse' | 'system'
+export type IntegrationModule = RequestModule | 'warehouse' | 'system' | 'demands'
 
 export const moduleNames: Record<IntegrationModule, string> = {
   maintenance: 'Manutenção',
@@ -24,6 +24,7 @@ export const moduleNames: Record<IntegrationModule, string> = {
   flights: 'Passagens aéreas',
   warehouse: 'Almoxarifado',
   system: 'Sistema',
+  demands: 'Controle de Demandas',
 }
 
 const modulePaths: Record<Exclude<IntegrationModule, 'system'>, { list: string; item: string }> = {
@@ -31,6 +32,7 @@ const modulePaths: Record<Exclude<IntegrationModule, 'system'>, { list: string; 
   fleet: { list: '/frota', item: '/frota' },
   flights: { list: '/passagens-aereas', item: '/passagens-aereas' },
   warehouse: { list: '/almoxarifado/solicitacoes', item: '/almoxarifado/pedidos' },
+  demands: { list: '/demandas', item: '/demandas' },
 }
 
 export function resourcePath(module: IntegrationModule, resourceId: string | null) {
@@ -81,6 +83,22 @@ export type EventContext = {
   deliveredAt?: string | null
   /** Nome do acontecimento, nos avisos do Portal do Motorista à equipe. */
   portalEventLabel?: string | null
+  // Avisos da conta e de segurança. Nunca levam senha, código, link de recuperação ou endereço IP.
+  /** Nome da pessoa dona da conta, lido na mesma transação do acontecimento. */
+  accountName?: string | null
+  /** Nome do perfil de acesso, como a tela o exibe. */
+  profileLabel?: string | null
+  /** Momento do acontecimento, em ISO. */
+  occurredAt?: string | null
+  /** Demanda restrita: o e-mail não leva título, conteúdo nem anexos. */
+  restricted?: boolean
+  /** Quantos acontecimentos equivalentes um aviso administrativo agrupado representa. */
+  groupedCount?: number
+  /**
+   * Bloqueio de acesso: "account" quando o limite da própria conta foi atingido (qualquer origem);
+   * "address" quando foi o limite da conta a partir de um mesmo endereço de rede.
+   */
+  blockScope?: 'account' | 'address' | null
 }
 
 type Definition = {
@@ -91,8 +109,21 @@ type Definition = {
   toRequester: boolean
   /** Avisa também quem atende: e-mail configurado para o módulo e notificação interna. */
   toTeam: boolean
-  /** Avisa também a pessoa responsável pelo atendimento, só na plataforma. */
+  /** Avisa também a pessoa responsável pelo atendimento na plataforma. */
   toResponsible?: boolean
+  /**
+   * O responsável recebe também o e-mail. Só sai para conta aprovada que ainda atende o módulo
+   * (leitura e atualização), conferida na mesma transação.
+   */
+  emailResponsible?: boolean
+  /** E-mail à pessoa dona da conta, no endereço lido pela própria transação (accountEmail). */
+  toAccount?: boolean
+  /** E-mail e notificação a quem tem esta permissão, com conta aprovada. */
+  toHolders?: Permission
+  /** Nome da seção no assunto e no corpo, no lugar do módulo (ex.: "Conta de acesso"). */
+  sectionLabel?: string
+  /** Destino fixo do link, no lugar do registro (ex.: /minha-conta). null: a mensagem não leva link. */
+  path?: string | null
   /** Assunto institucional fixo: "Texto — Protocolo", sem o módulo e a sigla ao final. */
   plainSubject?: boolean
   headline: (context: EventContext) => string
@@ -174,6 +205,23 @@ function printableChange(value: string | null) {
 
 const requestModules = ['maintenance', 'fleet', 'flights'] as const
 const scheduledModules = ['maintenance', 'fleet'] as const
+
+/** Aviso do Controle de Demandas: o texto é fixo, e o título só entra fora das restritas. */
+function demandEvent(label: string, category: string, message: string): Definition {
+  return {
+    label,
+    category,
+    modules: ['demands'],
+    toRequester: false,
+    toTeam: false,
+    headline: () => label,
+    lines: (context) => [
+      message,
+      ...(context.restricted ? ['Demanda restrita: os detalhes ficam disponíveis apenas no sistema.'] : []),
+    ],
+    notice: () => message,
+  }
+}
 
 export const eventCatalog = {
   request_received: {
@@ -312,9 +360,22 @@ export const eventCatalog = {
     toRequester: false,
     toTeam: false,
     toResponsible: true,
+    emailResponsible: true,
     headline: () => 'Solicitação atribuída',
     lines: () => ['Uma solicitação foi atribuída a você.'],
     notice: () => 'Solicitação atribuída a você.',
+  },
+  request_unassigned: {
+    label: 'Retirada de responsável',
+    category: 'atribuicao',
+    modules: requestModules,
+    toRequester: false,
+    toTeam: false,
+    toResponsible: true,
+    emailResponsible: true,
+    headline: () => 'Solicitação retirada da sua responsabilidade',
+    lines: () => ['Uma solicitação deixou de estar sob a sua responsabilidade.'],
+    notice: () => 'Solicitação retirada da sua responsabilidade.',
   },
   request_overdue: {
     label: 'Prazo vencido',
@@ -323,6 +384,7 @@ export const eventCatalog = {
     toRequester: false,
     toTeam: false,
     toResponsible: true,
+    emailResponsible: true,
     headline: () => 'Prazo vencido',
     lines: () => ['O prazo de uma solicitação sob sua responsabilidade venceu.'],
     notice: () => 'Prazo vencido. Confira a solicitação.',
@@ -634,6 +696,228 @@ export const eventCatalog = {
         ? `Sincronização da solicitação ${context.protocol} falhou.`
         : `Envio de e-mail da solicitação ${context.protocol} falhou.`,
   },
+  // -------------------------------------------------------------------------
+  // Conta de acesso. Vão à pessoa dona da conta (toAccount), sem motivo interno da decisão.
+  // -------------------------------------------------------------------------
+  account_registration_received: {
+    label: 'Cadastro recebido',
+    category: 'conta',
+    modules: ['system'],
+    toRequester: false,
+    toTeam: false,
+    toAccount: true,
+    sectionLabel: 'Conta de acesso',
+    path: null,
+    headline: () => 'Cadastro recebido',
+    lines: () => [
+      'Recebemos o seu pedido de cadastro no sistema.',
+      'Ele será analisado por um administrador, e você receberá a decisão por e-mail.',
+      'Se você não fez este pedido, ignore esta mensagem.',
+    ],
+    notice: () => 'Cadastro recebido.',
+  },
+  account_registration_pending: {
+    label: 'Novo cadastro aguardando análise',
+    category: 'aprovacao',
+    modules: ['system'],
+    toRequester: false,
+    toTeam: false,
+    toHolders: 'users:approve',
+    sectionLabel: 'Administração',
+    path: '/cadastros-pendentes',
+    headline: () => 'Novo cadastro aguardando análise',
+    // Nem nome nem e-mail de quem pediu: os dados ficam na tela de cadastros pendentes.
+    lines: (context) => [
+      (context.groupedCount ?? 1) > 1
+        ? `Foram recebidos ${context.groupedCount} novos pedidos de cadastro, que aguardam análise na página de cadastros pendentes.`
+        : 'Há um novo pedido de cadastro aguardando análise na página de cadastros pendentes.',
+    ],
+    notice: () => 'Novo cadastro aguardando análise.',
+  },
+  account_approved: {
+    label: 'Cadastro aprovado',
+    category: 'conta',
+    modules: ['system'],
+    toRequester: false,
+    toTeam: false,
+    toAccount: true,
+    sectionLabel: 'Conta de acesso',
+    path: '/',
+    headline: () => 'Cadastro aprovado',
+    lines: (context) => [
+      'O seu cadastro foi aprovado. Você já pode acessar o sistema com o e-mail e a senha cadastrados.',
+      ...(context.profileLabel ? [`Perfil de acesso: ${context.profileLabel}`] : []),
+    ],
+    notice: () => 'Cadastro aprovado.',
+  },
+  account_rejected: {
+    label: 'Cadastro não aprovado',
+    category: 'conta',
+    modules: ['system'],
+    toRequester: false,
+    toTeam: false,
+    toAccount: true,
+    sectionLabel: 'Conta de acesso',
+    path: null,
+    headline: () => 'Cadastro não aprovado',
+    lines: () => [
+      'O seu pedido de cadastro no sistema não foi aprovado.',
+      'Em caso de dúvida, procure a equipe de Serviços de Logística e Manutenção.',
+    ],
+    notice: () => 'Cadastro não aprovado.',
+  },
+  account_activated: {
+    label: 'Conta ativada',
+    category: 'conta',
+    modules: ['system'],
+    toRequester: false,
+    toTeam: false,
+    toAccount: true,
+    sectionLabel: 'Conta de acesso',
+    path: '/',
+    headline: () => 'Conta ativada',
+    lines: () => ['A sua conta foi ativada por um administrador. Você já pode acessar o sistema.'],
+    notice: () => 'Conta ativada.',
+  },
+  account_deactivated: {
+    label: 'Conta desativada',
+    category: 'conta',
+    modules: ['system'],
+    toRequester: false,
+    toTeam: false,
+    toAccount: true,
+    sectionLabel: 'Conta de acesso',
+    path: null,
+    headline: () => 'Conta desativada',
+    lines: () => [
+      'A sua conta foi desativada por um administrador, e as sessões abertas foram encerradas.',
+      'Em caso de dúvida, procure a equipe de Serviços de Logística e Manutenção.',
+    ],
+    notice: () => 'Conta desativada.',
+  },
+  account_access_changed: {
+    label: 'Perfil ou permissões alterados',
+    category: 'conta',
+    modules: ['system'],
+    toRequester: false,
+    toTeam: false,
+    toAccount: true,
+    sectionLabel: 'Conta de acesso',
+    path: '/minha-conta',
+    headline: () => 'Perfil ou permissões alterados',
+    // A lista de permissões não sai por e-mail: a pessoa a consulta em Minha conta.
+    lines: (context) => [
+      'O perfil ou as permissões da sua conta foram alterados por um administrador.',
+      ...(context.profileLabel ? [`Perfil de acesso: ${context.profileLabel}`] : []),
+      'Consulte os detalhes em Minha conta.',
+    ],
+    notice: () => 'Perfil ou permissões alterados.',
+  },
+  account_password_changed: {
+    label: 'Senha alterada',
+    category: 'conta',
+    modules: ['system'],
+    toRequester: false,
+    toTeam: false,
+    toAccount: true,
+    sectionLabel: 'Conta de acesso',
+    path: null,
+    headline: () => 'Senha alterada',
+    lines: (context) => [
+      `A senha da sua conta foi alterada${context.occurredAt ? ` em ${formatMoment(context.occurredAt)}` : ''}, e as sessões abertas foram encerradas.`,
+      'Se não foi você, solicite imediatamente a recuperação de senha e procure a equipe responsável.',
+    ],
+    notice: () => 'Senha alterada.',
+  },
+
+  // -------------------------------------------------------------------------
+  // Segurança. Ligados ou desligados em Parâmetros > Notificações. Sem IP, senha ou código.
+  // -------------------------------------------------------------------------
+  security_new_login: {
+    label: 'Novo acesso à conta',
+    category: 'seguranca',
+    modules: ['system'],
+    toRequester: false,
+    toTeam: false,
+    toAccount: true,
+    sectionLabel: 'Segurança da conta',
+    path: '/minha-conta',
+    headline: () => 'Novo acesso à sua conta',
+    lines: (context) => [
+      `A sua conta foi acessada${context.occurredAt ? ` em ${formatMoment(context.occurredAt)}` : ''}.`,
+      'Se não foi você, solicite a recuperação de senha e encerre as sessões em Minha conta.',
+    ],
+    notice: () => 'Novo acesso à conta.',
+  },
+  security_login_blocked: {
+    label: 'Acesso bloqueado temporariamente',
+    category: 'seguranca',
+    modules: ['system'],
+    toRequester: false,
+    toTeam: false,
+    toAccount: true,
+    sectionLabel: 'Segurança da conta',
+    path: null,
+    headline: () => 'Acesso bloqueado temporariamente',
+    lines: (context) => [
+      context.blockScope === 'address'
+        ? 'Houve várias tentativas de acesso sem sucesso à sua conta a partir de um mesmo endereço de rede, e novas tentativas desse endereço foram bloqueadas por alguns minutos.'
+        : 'Houve várias tentativas de acesso sem sucesso à sua conta, e novas tentativas foram bloqueadas por alguns minutos.',
+      'Se não foi você, solicite a recuperação de senha e procure a equipe responsável.',
+    ],
+    notice: () => 'Acesso bloqueado temporariamente.',
+  },
+  security_login_blocked_admin: {
+    label: 'Alerta de bloqueio de acesso',
+    category: 'seguranca',
+    modules: ['system'],
+    toRequester: false,
+    toTeam: false,
+    toHolders: 'users:manage',
+    sectionLabel: 'Administração',
+    path: '/usuarios',
+    headline: () => 'Conta com acesso bloqueado',
+    // A conta não é identificada no e-mail: o registro fica na auditoria, para quem pode consultá-la.
+    lines: (context) => [
+      (context.groupedCount ?? 1) > 1
+        ? `${context.groupedCount} bloqueios temporários de acesso foram registrados após várias tentativas sem sucesso.`
+        : 'Uma conta teve o acesso bloqueado temporariamente após várias tentativas sem sucesso.',
+      'Consulte a auditoria de acessos no sistema.',
+    ],
+    notice: () => 'Conta com acesso bloqueado temporariamente.',
+  },
+  security_sessions_revoked: {
+    label: 'Sessões encerradas pela administração',
+    category: 'seguranca',
+    modules: ['system'],
+    toRequester: false,
+    toTeam: false,
+    toAccount: true,
+    sectionLabel: 'Segurança da conta',
+    path: '/',
+    headline: () => 'Sessões encerradas',
+    lines: (context) => [
+      `As sessões abertas da sua conta foram encerradas por um administrador${context.occurredAt ? ` em ${formatMoment(context.occurredAt)}` : ''}.`,
+      'Para continuar, entre novamente no sistema.',
+    ],
+    notice: () => 'Sessões encerradas pela administração.',
+  },
+
+  // -------------------------------------------------------------------------
+  // Controle de Demandas. Publicados por demands/demandNotifications.ts, que escolhe os
+  // destinatários: só quem tem acesso à demanda e pediu o aviso por e-mail. Em demanda restrita,
+  // o contexto nem traz o título.
+  // -------------------------------------------------------------------------
+  demand_atribuicao: demandEvent('Demanda atribuída', 'atribuicao', 'Uma demanda foi atribuída a você.'),
+  demand_responsavel: demandEvent('Responsável alterado', 'atribuicao', 'O responsável pela demanda foi alterado.'),
+  demand_mencao: demandEvent('Menção em comentário', 'demandas', 'Você foi mencionado em um comentário da demanda.'),
+  demand_comentario: demandEvent('Novo registro na demanda', 'demandas', 'Há um novo registro em uma demanda que você acompanha.'),
+  demand_prazo_alterado: demandEvent('Prazo alterado', 'demandas', 'O prazo da demanda foi alterado.'),
+  demand_prazo_proximo: demandEvent('Prazo próximo', 'demandas', 'O prazo da demanda está próximo.'),
+  demand_atraso: demandEvent('Demanda atrasada', 'pendencia', 'A demanda está com o prazo vencido.'),
+  demand_status: demandEvent('Mudança de situação', 'demandas', 'A situação da demanda mudou.'),
+  demand_recorrencia: demandEvent('Nova ocorrência recorrente', 'demandas', 'Uma nova ocorrência recorrente da demanda foi gerada.'),
+  demand_providencia: demandEvent('Providência pendente', 'pendencia', 'A demanda aguarda uma providência.'),
 } satisfies Record<string, Definition>
 
 export type EventType = keyof typeof eventCatalog
@@ -645,8 +929,72 @@ export function isEventType(value: string): value is EventType {
 }
 
 export function audienceOf(type: EventType) {
-  const { toRequester, toTeam, toResponsible = false, toDriver = false } = definitionOf(type)
-  return { toRequester, toTeam, toResponsible, toDriver }
+  const {
+    toRequester,
+    toTeam,
+    toResponsible = false,
+    toDriver = false,
+    emailResponsible = false,
+    toAccount = false,
+    toHolders = null,
+  } = definitionOf(type)
+  return { toRequester, toTeam, toResponsible, toDriver, emailResponsible, toAccount, toHolders }
+}
+
+/**
+ * Validade de uma mensagem na fila, em horas, contada da criação. Passado o prazo, ela não sai mais:
+ * fica como falha EXPIRED, sem alerta à equipe, e não pode ser reprocessada. Vale para "pendente" e
+ * para "não configurado", para que ligar o serviço nunca envie avisos que perderam o sentido.
+ */
+export const noticeMaxAgeHours = {
+  /** Novo acesso, bloqueio, sessões encerradas, senha alterada: só fazem sentido logo depois. */
+  security: 24,
+  /** Cadastro, decisão, ativação e perfil. */
+  account: 7 * 24,
+  /** Atribuição, retirada e prazo vencido. */
+  responsible: 3 * 24,
+  /** Controle de Demandas. */
+  demands: 3 * 24,
+  /** Demais avisos das solicitações (recebimento, agendamento, devolução etc.). */
+  default: 30 * 24,
+} as const
+
+const securityEvents: readonly string[] = [
+  'security_new_login', 'security_login_blocked', 'security_login_blocked_admin', 'security_sessions_revoked',
+  'account_password_changed',
+]
+const responsibleEvents: readonly string[] = ['request_assigned', 'request_unassigned', 'request_overdue']
+
+export function maxAgeHoursOf(type: string) {
+  if (securityEvents.includes(type)) return noticeMaxAgeHours.security
+  if (type.startsWith('account_')) return noticeMaxAgeHours.account
+  if (responsibleEvents.includes(type)) return noticeMaxAgeHours.responsible
+  if (type.startsWith('demand_')) return noticeMaxAgeHours.demands
+  return noticeMaxAgeHours.default
+}
+
+/** Prazo de cada evento conhecido, para a varredura da fila em uma só consulta. */
+export function maxAgeTable() {
+  const types = Object.keys(eventCatalog)
+  return { types, hours: types.map(maxAgeHoursOf) }
+}
+
+/** Avisos administrativos que podem ser agrupados: o texto não identifica nenhuma conta. */
+export const groupableEvents: readonly EventType[] = ['account_registration_pending', 'security_login_blocked_admin']
+
+/** Nome exibido no assunto e no corpo: a seção do evento ou, sem ela, o módulo. */
+function sectionOf(type: EventType, module: IntegrationModule) {
+  return definitionOf(type).sectionLabel ?? moduleNames[module]
+}
+
+/**
+ * Destino do link da mensagem e da notificação. Avisos da conta têm destino fixo, ou nenhum, para
+ * não levar quem perdeu o acesso a uma tela de administração.
+ */
+export function linkPathOf(type: EventType, module: IntegrationModule, resourceId: string | null) {
+  const definition = definitionOf(type)
+  if (definition.path !== undefined) return definition.path
+  return resourcePath(module, resourceId)
 }
 
 export function categoryOf(type: EventType) {
@@ -657,6 +1005,8 @@ export function categoryOf(type: EventType) {
 export function teamPermissions(module: IntegrationModule): Permission[] {
   if (module === 'warehouse') return ['warehouse:manage']
   if (module === 'system') return ['integrations:manage']
+  // O acesso às demandas vem do setor e da diretoria, conferidos por demandNotifications.
+  if (module === 'demands') return []
   return [`${module}:update` as Permission, `${module}:read` as Permission, 'requests:read_all']
 }
 
@@ -664,6 +1014,7 @@ export function teamPermissions(module: IntegrationModule): Permission[] {
 export function requesterPermissions(module: IntegrationModule): Permission[] {
   if (module === 'warehouse') return ['warehouse:read']
   if (module === 'system') return ['integrations:read']
+  if (module === 'demands') return []
   return [`${module}:read` as Permission]
 }
 
@@ -676,7 +1027,7 @@ function reference(context: EventContext) {
 export function renderNotification(type: EventType, context: EventContext) {
   const definition = definitionOf(type)
   return {
-    title: `${moduleNames[context.module]}${reference(context)}`,
+    title: `${sectionOf(type, context.module)}${reference(context)}`,
     message: redactForOutbound(definition.notice(context)),
     category: definition.category,
   }
@@ -706,7 +1057,7 @@ export function renderSubject(type: EventType, context: EventContext, override?:
   }
   // O protocolo e o módulo continuam sempre no assunto, mesmo com texto próprio.
   return redactForOutbound(
-    `${fill(override?.subject, context) || definition.headline(context)} - ${moduleNames[context.module]}${reference(context)} - JUCESP`,
+    `${fill(override?.subject, context) || definition.headline(context)} - ${sectionOf(type, context.module)}${reference(context)} - JUCESP`,
   )
 }
 
@@ -755,6 +1106,9 @@ export function valuesOf(context: EventContext): TemplateValues {
     trecho_ida: context.outbound ?? undefined,
     trecho_volta: context.inbound ?? undefined,
     localizador: context.locator ?? undefined,
+    nome_usuario: context.accountName ?? undefined,
+    perfil_acesso: context.profileLabel ?? undefined,
+    data_hora: context.occurredAt ? formatMoment(context.occurredAt) : undefined,
   }
 }
 
@@ -788,8 +1142,10 @@ const returnEvents: readonly string[] = ['request_info_requested', 'request_retu
 
 /** Variáveis compatíveis com o evento, para a tela oferecer e o servidor conferir. */
 export function allowedVariables(type: EventType) {
+  const definition = definitionOf(type)
   const scope: VariableScope = {
-    modules: definitionOf(type).modules,
+    modules: definition.modules,
+    account: Boolean(definition.toAccount),
     schedule: schedulingEvents.includes(type),
     reason: reasonEvents.includes(type),
     returned: returnEvents.includes(type),
@@ -877,13 +1233,13 @@ export function renderEmail(
         ]
   )
   const lines = rawLines.flatMap((line) => (line.includes('{{') ? fillLines(line, values) : [line])).map(redactForOutbound)
-  const moduleLabel = moduleNames[context.module]
+  const moduleLabel = sectionOf(type, context.module)
 
   const text = [
     headline,
     '',
-    `Módulo: ${moduleLabel}`,
-    ...(context.protocol ? [`Protocolo: ${context.protocol}`] : []),
+    `${definition.sectionLabel ? 'Assunto' : 'Módulo'}: ${moduleLabel}`,
+    ...(context.protocol ? [`${context.module === 'demands' ? 'Demanda' : 'Protocolo'}: ${context.protocol}`] : []),
     '',
     ...lines.map(plainLine),
     ...(link ? ['', `Acompanhe pelo sistema: ${link}`] : []),
@@ -896,7 +1252,7 @@ export function renderEmail(
   <div style="padding:16px;border:1px solid #dedfda;border-top:0">
     <h2 style="margin:0 0 12px;font-size:20px">${escapeHtml(headline)}</h2>
     <p style="margin:0 0 12px;color:#4d5560">${escapeHtml(moduleLabel)}${
-      context.protocol ? ` · Protocolo ${escapeHtml(context.protocol)}` : ''
+      context.protocol ? ` · ${context.module === 'demands' ? 'Demanda' : 'Protocolo'} ${escapeHtml(context.protocol)}` : ''
     }</p>
     ${linesToHtml(lines)}
     ${link ? `<p style="margin:16px 0 0"><a href="${escapeHtml(link)}" style="color:#034ea2">Acompanhar pelo sistema</a></p>` : ''}
@@ -1065,6 +1421,9 @@ export function listTemplates() {
         requester: definition.toRequester,
         team: definition.toTeam,
         responsible: definition.toResponsible ?? false,
+        responsibleEmail: definition.emailResponsible ?? false,
+        account: definition.toAccount ?? false,
+        holders: definition.toHolders ?? null,
       },
       subject: sample.subject,
       body: sample.text,

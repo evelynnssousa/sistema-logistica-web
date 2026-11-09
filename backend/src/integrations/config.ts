@@ -1,4 +1,5 @@
 import { isEmailConfigured } from '../auth/email.js'
+import { restrictionSummary } from './recipientAllowlist.js'
 import { logSecurityEvent } from '../security/logger.js'
 import type { IntegrationModule } from './catalog.js'
 
@@ -137,6 +138,8 @@ export function integrationStatus(environment: Environment = process.env) {
       internalRecipients: Object.fromEntries(
         reportedModules.map((module) => [module, internalRecipients(module, environment).length]),
       ),
+      // Lista de destinatários de teste: só o modo e as contagens, nunca os endereços.
+      restriction: restrictionSummary(environment),
     },
     calendar: {
       mode: calendarMode(undefined, environment),

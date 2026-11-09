@@ -6,6 +6,7 @@ import {
 } from '../auth/passwordRecovery.js'
 import { insertAuthAuditEvent } from './authAuditRepository.js'
 import { getDatabasePool } from './pool.js'
+import { publishAccountEvent } from '../integrations/accountNotices.js'
 import { withTransaction } from './withTransaction.js'
 
 type RecoveryAccount = {
@@ -190,11 +191,12 @@ async function completeRecovery(
     [recoveryId],
   )
 
-  await client.query(
+  const updated = await client.query<{ email: string | null }>(
     `UPDATE public.auth_users
         SET password_hash = $2,
             updated_at = now()
-      WHERE id = $1`,
+      WHERE id = $1
+      RETURNING email`,
     [accountId, passwordHash],
   )
 
@@ -229,6 +231,17 @@ async function completeRecovery(
     subjectUserId: accountId,
     sessionId: null,
     eventType: 'password_recovery_completed',
+  })
+
+  // Confirmação ao titular, sem código, link ou senha: avisa a troca a quem não a pediu.
+  const now = new Date()
+  await publishAccountEvent(client, {
+    type: 'account_password_changed',
+    key: `${accountId}:password:${recoveryId}`,
+    userId: accountId,
+    email: updated.rows[0]?.email ?? null,
+    actorId: null,
+    context: { occurredAt: now.toISOString() },
   })
 
 }

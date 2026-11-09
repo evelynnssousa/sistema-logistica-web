@@ -5,16 +5,19 @@ import { readSystemSettings } from '../database/settingsRepository.js'
 import { driverNotificationEvents } from '../requests/driverPortalRules.js'
 import type { DriverNotificationEvent } from '../requests/driverPortalRules.js'
 import { describeError, logSecurityEvent } from '../security/logger.js'
+import type { Permission } from '../auth/permissions.js'
 import {
   audienceOf,
+  groupableEvents,
+  linkPathOf,
   renderNotification,
   renderSubject,
   requesterPermissions,
-  resourcePath,
   teamPermissions,
 } from './catalog.js'
 import type { EventContext, EventType, IntegrationModule } from './catalog.js'
 import { calendarMode, carbonCopies, emailMode, internalRecipients } from './config.js'
+import { quotaSettings } from './emailQuota.js'
 import { redactForOutbound } from './redaction.js'
 
 type Client = Pick<PoolClient, 'query'>
@@ -159,7 +162,155 @@ export type PublishInput = {
   responsibleId?: string | null
   /** Conta do motorista da viagem, para os eventos que vão a ele. */
   driverUserId?: string | null
+  /**
+   * Endereço da pessoa dona da conta, lido pela transação que causou o aviso. Vale para cadastro
+   * pendente ou rejeitado e conta desativada, que não passam pela busca de contas aprovadas.
+   */
+  accountEmail?: string | null
   context?: Omit<EventContext, 'module' | 'protocol'>
+}
+
+/** Situação inicial de um e-mail na fila: sem serviço ativo, fica registrado e não sai sozinho. */
+export function initialEmailStatus() {
+  return emailMode() === 'none' ? 'not_configured' : 'pending'
+}
+
+/**
+ * Uma linha na fila central. A restrição única (evento, destinatário) impede a duplicidade, e o
+ * worker monta o texto na hora do envio. Usada também pelo Controle de Demandas.
+ */
+export async function enqueueEmail(
+  client: Client,
+  input: {
+    eventId: string
+    templateKey: string
+    audience: 'requester' | 'internal'
+    recipient: string
+    cc?: readonly string[]
+    subject: string
+    /**
+     * Agrupamento de avisos administrativos equivalentes (mesmo modelo e destinatário). Dentro da
+     * janela, o acontecimento soma na mensagem ainda não enviada; se a anterior acabou de sair, a nova
+     * espera o fim da janela e reúne o que vier até lá. Exige a migração 019.
+     */
+    groupMinutes?: number
+  },
+) {
+  const status = initialEmailStatus()
+  const recipient = input.recipient.trim().toLowerCase()
+  if (input.groupMinutes && input.groupMinutes > 0 && (await hasGroupingColumn(client))) {
+    // Dois acontecimentos simultâneos para a mesma pessoa não criam duas mensagens.
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`email-group:${input.templateKey}:${recipient}`])
+    const open = await client.query<{ id: string }>(
+      `SELECT id::text AS id FROM public.email_deliveries
+        WHERE template_key = $1 AND recipient = $2 AND attempts = 0
+          AND status IN ('pending', 'not_configured')
+          AND created_at > now() - make_interval(mins => $3)
+        ORDER BY created_at DESC
+        LIMIT 1
+        FOR UPDATE`,
+      [input.templateKey, recipient, input.groupMinutes],
+    )
+    if (open.rows[0]) {
+      await client.query(
+        `UPDATE public.email_deliveries SET grouped_count = grouped_count + 1 WHERE id = $1`,
+        [open.rows[0].id],
+      )
+      return
+    }
+    const recent = await client.query<{ last: Date | null }>(
+      `SELECT max(COALESCE(sent_at, created_at)) AS last FROM public.email_deliveries
+        WHERE template_key = $1 AND recipient = $2 AND status IN ('sent', 'sending')
+          AND COALESCE(sent_at, created_at) > now() - make_interval(mins => $3)`,
+      [input.templateKey, recipient, input.groupMinutes],
+    )
+    const last = recent.rows[0]?.last ?? null
+    await client.query(
+      `INSERT INTO public.email_deliveries
+        (event_id, template_key, audience, recipient, cc, subject, status, last_error_code, next_attempt_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+               CASE WHEN $9::timestamptz IS NULL THEN now() ELSE $9::timestamptz + make_interval(mins => $10) END)
+       ON CONFLICT (event_id, recipient) DO NOTHING`,
+      [
+        input.eventId,
+        input.templateKey,
+        input.audience,
+        recipient,
+        [...(input.cc ?? [])],
+        input.subject,
+        status,
+        status === 'not_configured' ? 'EMAIL_NOT_CONFIGURED' : null,
+        last,
+        input.groupMinutes,
+      ],
+    )
+    return
+  }
+  await client.query(
+    `INSERT INTO public.email_deliveries
+      (event_id, template_key, audience, recipient, cc, subject, status, last_error_code)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (event_id, recipient) DO NOTHING`,
+    [
+      input.eventId,
+      input.templateKey,
+      input.audience,
+      recipient,
+      [...(input.cc ?? [])],
+      input.subject,
+      status,
+      status === 'not_configured' ? 'EMAIL_NOT_CONFIGURED' : null,
+    ],
+  )
+}
+
+/** A coluna grouped_count chega com a migração 019. Sem ela, cada aviso segue individual. */
+async function hasGroupingColumn(client: Client) {
+  const result = await client.query<{ present: boolean }>(
+    `SELECT to_regclass('public.email_daily_usage') IS NOT NULL AS present`,
+  )
+  return result.rows[0]?.present === true
+}
+
+/** Contas aprovadas que têm todas as permissões, com o endereço. */
+async function loadHolders(client: Client, required: readonly Permission[], excludeUserId: string | null) {
+  const migrated = await isAccessSchemaMigrated(client)
+  const sql = accessSql(migrated)
+  const result = await client.query<AccessRow & { id: string; email: string | null }>(
+    `SELECT u.id::text AS id, u.email, ${sql.columns}
+       FROM public.auth_users u
+       ${sql.join}
+      WHERE u.status = 'approved'`,
+  )
+  return result.rows
+    .filter((row) => row.id !== excludeUserId)
+    .filter((row) => {
+      const access = resolveAccess(row)
+      return access !== null && required.every((permission) => access.permissions.includes(permission))
+    })
+    .map((row) => ({ id: row.id, email: row.email?.trim().toLowerCase() || null }))
+}
+
+/**
+ * O responsável só recebe e-mail se a conta estiver aprovada e ainda atender o módulo: quem perdeu
+ * a permissão depois da atribuição não recebe nada por e-mail.
+ */
+async function responsibleAddress(client: Client, module: IntegrationModule, userId: string) {
+  if (module !== 'maintenance' && module !== 'fleet' && module !== 'flights') return null
+  const required: Permission[] = [`${module}:read` as Permission, `${module}:update` as Permission]
+  const migrated = await isAccessSchemaMigrated(client)
+  const sql = accessSql(migrated)
+  const result = await client.query<AccessRow & { email: string | null }>(
+    `SELECT u.email, ${sql.columns}
+       FROM public.auth_users u
+       ${sql.join}
+      WHERE u.id = $1 AND u.status = 'approved'`,
+    [userId],
+  )
+  const row = result.rows[0]
+  const access = row ? resolveAccess(row) : null
+  if (!row || !access || !required.every((permission) => access.permissions.includes(permission))) return null
+  return row.email?.trim().toLowerCase() || null
 }
 
 async function loadTeam(client: Client, module: IntegrationModule, excludeUserId: string | null) {
@@ -218,27 +369,12 @@ async function fanOut(client: Client, input: PublishInput) {
   if (!eventId) return
 
   // E-mails: sem serviço ativo, ficam registrados e só saem por reprocessamento autorizado.
-  const status = emailMode() === 'none' ? 'not_configured' : 'pending'
   const subject = renderSubject(input.type, context)
   // Avisar por e-mail que o e-mail falhou poderia falhar de novo e gerar outro aviso, sem fim.
   const emailAllowed = !(input.type === 'integration_failure' && context.channel === 'email')
+  const groupMinutes = groupableEvents.includes(input.type) ? quotaSettings().adminGroupMinutes : 0
   const enqueue = (audienceName: 'requester' | 'internal', recipient: string, cc: string[]) =>
-    client.query(
-      `INSERT INTO public.email_deliveries
-        (event_id, template_key, audience, recipient, cc, subject, status, last_error_code)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       ON CONFLICT (event_id, recipient) DO NOTHING`,
-      [
-        eventId,
-        input.type,
-        audienceName,
-        recipient,
-        cc,
-        subject,
-        status,
-        status === 'not_configured' ? 'EMAIL_NOT_CONFIGURED' : null,
-      ],
-    )
+    enqueueEmail(client, { eventId, templateKey: input.type, audience: audienceName, recipient, cc, subject, groupMinutes })
 
   const notified = new Map<string, readonly string[]>()
 
@@ -269,6 +405,23 @@ async function fanOut(client: Client, input: PublishInput) {
 
   if (audience.toResponsible && input.responsibleId && input.responsibleId !== input.actorId) {
     notified.set(input.responsibleId, requesterPermissions(input.module))
+    if (audience.emailResponsible) {
+      const email = await responsibleAddress(client, input.module, input.responsibleId)
+      if (email) await enqueue('internal', email, [])
+    }
+  }
+
+  // Pessoa dona da conta: o endereço vem da transação, sem nenhuma notificação na plataforma,
+  // porque o cadastro pode estar pendente, rejeitado ou desativado.
+  if (audience.toAccount && input.accountEmail?.trim()) {
+    await enqueue('requester', input.accountEmail.trim().toLowerCase(), [])
+  }
+
+  if (audience.toHolders) {
+    for (const holder of await loadHolders(client, [audience.toHolders], input.actorId)) {
+      if (holder.email) await enqueue('internal', holder.email, [])
+      if (!notified.has(holder.id)) notified.set(holder.id, [audience.toHolders])
+    }
   }
 
   if (audience.toDriver && input.driverUserId) {
@@ -284,7 +437,7 @@ async function fanOut(client: Client, input: PublishInput) {
   // Notificações internas: texto mínimo, com o destino da informação.
   const notification = renderNotification(input.type, context)
   // O motorista não abre a tela da Frota: o aviso leva ao portal dele.
-  const link = audience.toDriver ? '/motorista' : resourcePath(input.module, input.resourceId)
+  const link = audience.toDriver ? '/motorista' : linkPathOf(input.type, input.module, input.resourceId)
   for (const [userId, required] of notified) {
     await client.query(
       `INSERT INTO public.user_notifications

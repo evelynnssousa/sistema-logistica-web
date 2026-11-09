@@ -412,6 +412,16 @@ export class CommunicationRepository {
   }
 
   /** Devolve true quando as tentativas acabaram. Falha temporária espera mais a cada vez. */
+  /** Volta à fila sem contar tentativa: a cota do dia acabou ou não pôde ser conferida. */
+  async defer(id: string, until: Date, code: string) {
+    await this.poolProvider().query(
+      `UPDATE public.manual_emails
+          SET status = 'pending', travado_ate = NULL, proxima_tentativa = $2, codigo_erro = $3
+        WHERE id = $1 AND status = 'sending'`,
+      [id, until, code],
+    )
+  }
+
   async markFailed(item: { id: string; attempts: number }, outcome: { code: string; retryable: boolean }) {
     const attempts = item.attempts + 1
     const final = !outcome.retryable || attempts >= maxAttempts

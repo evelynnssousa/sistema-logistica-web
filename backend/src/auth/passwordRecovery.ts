@@ -7,6 +7,50 @@ import {
 
 export const PASSWORD_RECOVERY_TTL_MS = 10 * 60 * 1000
 export const PASSWORD_RECOVERY_MAX_ATTEMPTS = 5
+export const PASSWORD_RESET_PEPPER_MIN_LENGTH = 32
+
+/**
+ * PASSWORD_RESET_PEPPER como entra no HMAC: sem espaços nem quebras de linha nas extremidades,
+ * que costumam sobrar ao colar o valor num painel. Vazio equivale a ausente. A conferência
+ * (passwordResetPepperProblem) e o HMAC usam sempre este mesmo valor.
+ */
+export function normalizePasswordResetPepper(raw: string | undefined): string | undefined {
+  const value = raw?.trim()
+  return value ? value : undefined
+}
+
+export function passwordResetPepperProblem(raw: string | undefined): string | null {
+  const value = normalizePasswordResetPepper(raw)
+  if (!value) return 'ausente'
+  if (value.length < PASSWORD_RESET_PEPPER_MIN_LENGTH) {
+    return `curto demais: use ao menos ${PASSWORD_RESET_PEPPER_MIN_LENGTH} caracteres aleatórios`
+  }
+  return null
+}
+
+/**
+ * Ausente: a recuperação de senha fica desligada, em qualquer ambiente.
+ * Em produção, só vale com ao menos 32 caracteres (e a API nem inicia com um valor mais curto).
+ * Fora de produção, um valor curto continua aceito, como em testes e no ambiente local.
+ */
+export function isPasswordResetPepperUsable(environment: NodeJS.ProcessEnv = process.env): boolean {
+  const problem = passwordResetPepperProblem(environment.PASSWORD_RESET_PEPPER)
+  if (problem === 'ausente') return false
+  return environment.NODE_ENV !== 'production' || problem === null
+}
+
+/**
+ * Chamada no início da API (server.ts). Em produção, um segredo definido mas curto impede a
+ * inicialização, como o PROXY_SHARED_SECRET fraco: melhor não subir do que proteger os códigos
+ * com um segredo fraco. A mensagem nunca traz o valor.
+ */
+export function assertPasswordResetPepperForStartup(environment: NodeJS.ProcessEnv = process.env): void {
+  if (environment.NODE_ENV !== 'production') return
+  const problem = passwordResetPepperProblem(environment.PASSWORD_RESET_PEPPER)
+  if (problem && problem !== 'ausente') {
+    throw new Error(`PASSWORD_RESET_PEPPER precisa ter ao menos ${PASSWORD_RESET_PEPPER_MIN_LENGTH} caracteres.`)
+  }
+}
 
 export function generatePasswordRecoveryCode(): string {
   return randomInt(0, 1_000_000).toString().padStart(6, '0')
@@ -20,11 +64,12 @@ export function hashPasswordRecoveryCode(
     throw new Error('Código de recuperação inválido.')
   }
 
-  if (!pepper?.trim()) {
+  const key = normalizePasswordResetPepper(pepper)
+  if (!key) {
     throw new Error('Segredo de recuperação não configurado.')
   }
 
-  return createHmac('sha256', pepper)
+  return createHmac('sha256', key)
     .update(code, 'utf8')
     .digest('hex')
 }
@@ -69,10 +114,11 @@ export function hashPasswordRecoveryToken(
   if (!isPasswordRecoveryToken(token)) {
     throw new Error('Link de recuperação inválido.')
   }
-  if (!pepper?.trim()) {
+  const key = normalizePasswordResetPepper(pepper)
+  if (!key) {
     throw new Error('Segredo de recuperação não configurado.')
   }
-  return createHmac('sha256', pepper).update(`link:${token}`, 'utf8').digest('hex')
+  return createHmac('sha256', key).update(`link:${token}`, 'utf8').digest('hex')
 }
 
 /**

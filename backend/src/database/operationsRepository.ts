@@ -451,6 +451,18 @@ export class OperationsRepository {
           responsibleId: input.responsibleId,
         })
       }
+      // Transferência ou retirada: quem deixou de ser responsável também é avisado.
+      if (current.responsavel_id) {
+        await publishIntegrationEvent(client, {
+          type: 'request_unassigned',
+          key: `${id}:unassign:${current.responsavel_id}:${Date.now()}`,
+          module: current.module,
+          resourceId: id,
+          protocol: current.protocolo,
+          actorId: actor.userId,
+          responsibleId: current.responsavel_id,
+        })
+      }
     })
   }
 

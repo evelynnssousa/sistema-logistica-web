@@ -143,6 +143,7 @@ test('antes da migração: as colunas antigas valem, mas ninguém é da equipe S
   assert.equal(operator.user.slmMember, false)
   assert.equal(operator.user.permissions.includes('requests:schedule'), false)
   assert.equal(operator.user.permissions.includes('warehouse:manage'), false)
+  assert.equal(operator.user.permissions.includes('warehouse:forecast'), false)
 
   const cpf = await login('cpf@example.gov.br')
   assert.equal(cpf.user.role, 'requester')

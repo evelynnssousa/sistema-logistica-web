@@ -30,7 +30,8 @@ import { recordAuthAuditEvent } from '../database/authAuditRepository.js'
 import { PasswordRecoveryRepository } from '../database/passwordRecoveryRepository.js'
 import { UserRepository } from '../database/userRepository.js'
 import { requireCsrf } from '../middleware/requireCsrf.js'
-import { authRateLimits } from '../security/authRateLimits.js'
+import { publishLoginBlocked } from '../integrations/accountNotices.js'
+import { authRateLimits, loginBlockWindowMs } from '../security/authRateLimits.js'
 import { describeError, logSecurityEvent } from '../security/logger.js'
 import { readPublishedConfig } from '../database/configRepository.js'
 import { getDatabasePool } from '../database/pool.js'
@@ -226,11 +227,12 @@ authRouter.post('/auth/login', async (request, response) => {
 
     // Não revelar se o usuário existe ou se está inativo.
     if (!account || !passwordMatches) {
-      const limitReached = [
-        pairLimit,
-        accountLimit,
-        authRateLimits.loginIp.consume(ip),
-      ].some((limit) => limit.remaining === 0)
+      const ipLimit = authRateLimits.loginIp.consume(ip)
+      const limitReached = [pairLimit, accountLimit, ipLimit].some((limit) => limit.remaining === 0)
+      // Qual limite foi atingido: o da conta (qualquer origem) ou o da conta a partir deste endereço.
+      // Só o do IP, compartilhado por toda a instituição, não diz nada sobre a conta: sem aviso.
+      const blockScope =
+        accountLimit.remaining === 0 ? 'account' : pairLimit.remaining === 0 ? 'address' : null
 
       const fingerprint = identifierFingerprint(normalizedIdentifier)
       logSecurityEvent('login_failed', { identifier: fingerprint })
@@ -256,6 +258,8 @@ authRouter.post('/auth/login', async (request, response) => {
           result: 'denied',
           details: { identifier: fingerprint, ip },
         })
+        // Aviso à pessoa titular, sem esperar: a resposta é a mesma, exista a conta ou não.
+        if (account && blockScope) void publishLoginBlocked(account.id, loginBlockWindowMs, blockScope)
       }
 
       response.status(401).json({

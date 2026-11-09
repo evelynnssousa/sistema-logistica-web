@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { errorMessage } from '../api/modulesApi'
 import { getAttachmentCapacity, getParameters, priorityLabels, saveParameters } from '../api/operationsApi'
-import type { ParametersResponse, SystemSettings } from '../api/operationsApi'
+import type { ParametersResponse, SecurityEmails, SystemSettings } from '../api/operationsApi'
 import { roleLabels } from '../app/roleLabels'
 import { useCatalog } from '../app/useCatalog'
 import { Alert } from './ui/Feedback'
@@ -104,6 +104,13 @@ function OperationsBlock({ value, canManage }: { value: SystemSettings['operatio
 
 const profiles = ['administrator', 'slm_operator', 'requester'] as const
 
+const securityOptions: { key: keyof SecurityEmails; label: string }[] = [
+  { key: 'newLogin', label: 'Avisar a pessoa a cada novo acesso à conta' },
+  { key: 'lockout', label: 'Avisar a pessoa quando o acesso for bloqueado por tentativas' },
+  { key: 'sessionsRevoked', label: 'Avisar a pessoa quando um administrador encerrar as sessões dela' },
+  { key: 'adminAlerts', label: 'Avisar os administradores sobre contas bloqueadas por tentativas' },
+]
+
 function NotificationsBlock({
   value,
   options,
@@ -115,6 +122,9 @@ function NotificationsBlock({
 }) {
   const [disabled, setDisabled] = useState(value.disabled)
   const [reminderDays, setReminderDays] = useState(String(value.pendingReminderDays ?? ''))
+  const [security, setSecurity] = useState<SecurityEmails>(
+    value.securityEmails ?? { newLogin: false, lockout: true, sessionsRevoked: true, adminAlerts: true },
+  )
 
   function toggle(profile: string, category: string, enabled: boolean) {
     setDisabled((current) => {
@@ -131,7 +141,7 @@ function NotificationsBlock({
       title="Notificações por perfil"
       description="Define o que cada perfil recebe. Ninguém passa a ver o que suas permissões não permitem."
       canManage={canManage}
-      onSave={() => saveParameters('notifications', { disabled, pendingReminderDays: reminderDays })}
+      onSave={() => saveParameters('notifications', { disabled, pendingReminderDays: reminderDays, securityEmails: security })}
     >
       <label className="maintenance-form-field">
         <span>Avisar a equipe sobre solicitações paradas há (dias)</span>
@@ -146,6 +156,24 @@ function NotificationsBlock({
           onChange={(event) => setReminderDays(event.target.value)}
         />
       </label>
+      <fieldset className="maintenance-form-field">
+        <legend>E-mails de segurança</legend>
+        <p>
+          Avisos à pessoa dona da conta e aos administradores. Nunca levam senha, código ou endereço de
+          acesso. Só saem com o serviço de e-mail ativado pela instituição.
+        </p>
+        {securityOptions.map((option) => (
+          <label key={option.key}>
+            <input
+              type="checkbox"
+              disabled={!canManage}
+              checked={security[option.key]}
+              onChange={(event) => setSecurity((current) => ({ ...current, [option.key]: event.target.checked }))}
+            />{' '}
+            {option.label}
+          </label>
+        ))}
+      </fieldset>
       <div className="data-table-wrapper">
         <table className="data-table parameter-table">
           <thead>

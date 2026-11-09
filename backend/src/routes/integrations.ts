@@ -49,7 +49,7 @@ function idParam(request: Request, name: string) {
 
 const emailStatuses = ['pending', 'sending', 'sent', 'failed', 'not_configured']
 const calendarStatuses = ['pending', 'syncing', 'synced', 'failed', 'not_configured']
-const modules = ['maintenance', 'fleet', 'flights', 'warehouse', 'system']
+const modules = ['maintenance', 'fleet', 'flights', 'warehouse', 'system', 'demands']
 
 function oneOf(allowed: readonly string[], value: unknown) {
   return typeof value === 'string' && allowed.includes(value) ? value : undefined
@@ -106,7 +106,12 @@ router.get(
     // O aviso de paradas é ajustado pela tela: mostra o valor que realmente vale.
     response.json({
       success: true,
-      status: { ...integrationStatus(), pendingReminderDays: await configuredReminderDays() },
+      status: {
+        ...integrationStatus(),
+        pendingReminderDays: await configuredReminderDays(),
+        // Só totais e datas: o que está guardado sem serviço, o que expirou e o consumo do dia.
+        queue: await integrations.queueOverview(),
+      },
     })
   }),
 )

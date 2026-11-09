@@ -10,6 +10,7 @@ import type { AccessRow } from './accessSchema.js'
 import { insertAuthAuditEvent } from './authAuditRepository.js'
 import { getDatabasePool } from './pool.js'
 import { withTransaction } from './withTransaction.js'
+import { publishAccountEvent, securityEmailEnabled } from '../integrations/accountNotices.js'
 
 type SessionRow = AccessRow & {
   token_hash: string
@@ -92,6 +93,21 @@ export class PostgresSessionStore implements SessionStore {
         sessionId: row.id,
         eventType: 'session_created',
       })
+      if (await securityEmailEnabled(client, 'newLogin')) {
+        const email = await client.query<{ email: string | null }>(
+          `SELECT email FROM public.auth_users WHERE id = $1`,
+          [row.user_id],
+        )
+        await publishAccountEvent(client, {
+          type: 'security_new_login',
+          key: `${row.user_id}:login:${row.id}`,
+          userId: row.user_id,
+          email: email.rows[0]?.email ?? null,
+          // Quem entrou é a própria pessoa, mas o aviso existe justamente para ela.
+          actorId: null,
+          context: { occurredAt: new Date(session.issuedAt).toISOString() },
+        })
+      }
     })
   }
 

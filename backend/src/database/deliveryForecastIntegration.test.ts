@@ -55,8 +55,28 @@ async function call(path: string, options: { method?: string; body?: unknown; se
   const setCookie = (response.headers.get('set-cookie') ?? '').split(';')[0]
   const body = JSON.parse(text) as Record<string, any>
   if (setCookie && body.csrfToken) csrfTokens.set(setCookie, body.csrfToken)
+  await settleAccountNotices(path)
   return { status: response.status, body, text, setCookie }
 }
+/**
+ * Avisos da conta de acesso (cadastro, aprovação, perfil) entram na mesma fila desde 07/11/2026 e têm
+ * testes próprios (emailNotificationsIntegration.test.ts). Aqui, saem da fila antes de serem tentados,
+ * para estes testes continuarem conferindo só as mensagens das solicitações.
+ */
+async function settleAccountNotices(path: string) {
+  if (!path.startsWith('/auth/register') && !path.startsWith('/admin/')) return
+  await pool
+    .query(
+      `DELETE FROM public.email_deliveries
+        WHERE attempts = 0 AND status IN ('pending', 'not_configured')
+          AND (template_key LIKE 'account\\_%' OR template_key LIKE 'security\\_%')`,
+    )
+    .catch((error: { code?: string }) => {
+      // Único caso previsto: antes da migração 006 a fila não existe (42P01). Qualquer outro erro aparece.
+      if (error?.code !== '42P01') throw error
+    })
+}
+
 
 const post = (path: string, session: Session, body: unknown = {}) =>
   call(path, { method: 'POST', session, body })
@@ -94,13 +114,14 @@ async function createUser(email: string, role: 'requester' | 'slm_operator' = 'r
   return signIn(email)
 }
 
-// Equipe SLM do Almoxarifado: administra o módulo e, por concessão própria, informa a previsão (P-08).
-async function staff(email: string, grants: Permission[] = ['warehouse:manage', 'warehouse:forecast']): Promise<Session> {
+// Equipe SLM do Almoxarifado: o perfil Operador SLM administra o módulo e informa a previsão
+// (P-08, padrão desde 08/11/2026). Os cenários negativos retiram a permissão individualmente.
+async function staff(email: string, denied: Permission[] = []): Promise<Session> {
   const user = await createUser(email, 'slm_operator')
   const result = await call(`/admin/users/${user.id}/access`, {
     method: 'PUT',
     session: admin,
-    body: { role: 'slm_operator', slmMember: true, grantedPermissions: grants, deniedPermissions: [] },
+    body: { role: 'slm_operator', slmMember: true, grantedPermissions: [], deniedPermissions: denied },
   })
   assert.equal(result.status, 200, result.text)
   return user
@@ -242,7 +263,7 @@ test('sem a migração 011, os pedidos seguem funcionando e só a previsão pede
 
 test('previsão: permissões, validações, histórico interno e comunicação única', async () => {
   const manager = await staff('previsao-gestora@example.gov.br')
-  const operator = await staff('previsao-operadora@example.gov.br', ['requests:schedule'])
+  const operator = await staff('previsao-operadora@example.gov.br', ['warehouse:manage', 'warehouse:forecast'])
   const requester = await createUser('previsao-pede@example.gov.br')
   const other = await createUser('previsao-outra@example.gov.br')
   const { id, protocol } = await internalRequest(requester)

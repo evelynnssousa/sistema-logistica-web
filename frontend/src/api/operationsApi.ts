@@ -540,9 +540,21 @@ export const listUserSessions = (userId: string) =>
 // ---------------------------------------------------------------------------
 // Parâmetros
 // ---------------------------------------------------------------------------
+export type SecurityEmails = {
+  newLogin: boolean
+  lockout: boolean
+  sessionsRevoked: boolean
+  adminAlerts: boolean
+}
+
 export type SystemSettings = {
   operations: { staleDays: number; deadlineDays: Record<string, number | null> }
-  notifications: { disabled: Record<string, string[]>; pendingReminderDays: number | null }
+  notifications: {
+    disabled: Record<string, string[]>
+    pendingReminderDays: number | null
+    /** E-mails de segurança. Ausente em respostas antigas: valem os padrões do servidor. */
+    securityEmails?: SecurityEmails
+  }
   attachments: { maxFileMb: number; maxTotalMb: number; allowedKinds: string[] }
   calendar: { workdayStart: string; workdayEnd: string }
   emailTemplates: { overrides: Record<string, { subject?: string; intro?: string }> }

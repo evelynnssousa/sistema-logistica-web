@@ -91,11 +91,12 @@ function PreferencesDialog({ onClose }: { onClose: () => void }) {
           </fieldset>
           <label className="demand-check">
             <input type="checkbox" checked={email} onChange={(event) => setEmail(event.target.checked)} />
-            Quero receber também por e-mail institucional, quando esse envio for habilitado
+            Quero receber também por e-mail institucional
           </label>
           <p className="demand-muted">
-            Hoje, os avisos do módulo chegam só pelo sino e pela página de Notificações. O envio por e-mail
-            ainda depende de configuração da instituição.
+            Os avisos chegam sempre pelo sino e pela página de Notificações. Por e-mail, só para quem marcar
+            esta opção, respeitando os tipos silenciados acima, e só depois de a instituição ativar o serviço
+            de e-mail. Em demanda restrita, o e-mail leva apenas o número, sem título nem conteúdo.
           </p>
           <div className="demand-dialog-actions">
             <button type="submit" className="maintenance-primary-button">Salvar preferências</button>

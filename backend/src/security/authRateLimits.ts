@@ -3,6 +3,9 @@ import { RateLimiter } from './rateLimiter.js'
 const fifteenMinutes = 15 * 60 * 1000
 const oneHour = 60 * 60 * 1000
 
+/** Janela dos limites de login: também separa um aviso de bloqueio do seguinte. */
+export const loginBlockWindowMs = fifteenMinutes
+
 /**
  * Os limites por IP são folgados porque toda a JUCESP pode sair pelo mesmo
  * endereço público. A proteção mais rígida fica na combinação IP + conta.

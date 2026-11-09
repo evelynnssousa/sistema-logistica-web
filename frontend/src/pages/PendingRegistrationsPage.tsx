@@ -8,6 +8,7 @@ import {
   getPermissionCatalog,
 } from '../auth/usersApi'
 import type { InstitutionalLinks, InstitutionalOptions, PermissionCatalog } from '../auth/usersApi'
+import PermissionDescription, { PermissionScopeNotice } from '../components/PermissionDescription'
 import { Alert } from '../components/ui/Feedback'
 import InstitutionalLinksEditor from '../components/InstitutionalLinksEditor'
 import Modal from '../components/ui/Modal'
@@ -144,16 +145,28 @@ function ApprovalSetupDialog({
           </Alert>
         )}
 
+        {selectedRole === 'slm_operator' && (
+          <Alert tone="info">
+            O perfil Operador SLM já inclui agendar serviços de Manutenção e Frota, gerenciar o Almoxarifado e registrar a
+            previsão de entrega, que só valem enquanto a pessoa integrar a equipe SLM. CPF completo, abertura em nome de
+            outros setores e a Central de Operações continuam por concessão individual.
+          </Alert>
+        )}
+
         {catalog && (
           <details className="demand-details">
             <summary>Permissões adicionais</summary>
+            <p className="demand-muted">
+              As permissões que o perfil escolhido já inclui não aparecem aqui. Marque só o que esta pessoa precisa a mais.
+            </p>
+            <PermissionScopeNotice />
             {catalog.groups.map((group) => (
               <fieldset className="demand-checks demand-checks-inline" key={group.key}>
                 <legend>{group.label}</legend>
                 {group.permissions
                   .filter((permission) => !fromProfile.has(permission.key))
                   .map((permission) => (
-                    <label key={permission.key}>
+                    <label key={permission.key} className="permission-check">
                       <input
                         type="checkbox"
                         disabled={blocked(permission.key)}
@@ -167,7 +180,7 @@ function ApprovalSetupDialog({
                           }))
                         }
                       />
-                      {permission.label}
+                      <PermissionDescription permission={permission} />
                     </label>
                   ))}
               </fieldset>

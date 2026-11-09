@@ -22,6 +22,7 @@ import { applyInstitutionalLinks } from './institutionalLinkRepository.js'
 import type { InstitutionalInput } from './institutionalLinkRepository.js'
 import { getDatabasePool } from './pool.js'
 import { DomainError, withTransaction } from './withTransaction.js'
+import { profileLabels, publishAccountEvent, securityEmailEnabled } from '../integrations/accountNotices.js'
 
 export type CreatePendingUserInput = {
   name: string
@@ -526,6 +527,7 @@ export class UserRepository {
           sessionId: null,
           eventType: 'registration_submitted',
         })
+        await publishRegistrationNotices(client, id, email)
 
         return { id, outcome: 'created' }
       }
@@ -572,6 +574,7 @@ export class UserRepository {
             : {}),
         },
       })
+      await publishRegistrationNotices(client, current.id, email)
 
       return { id: current.id, outcome: 'resubmitted' }
     })
@@ -874,11 +877,27 @@ export class UserRepository {
           details,
         })
 
+      // Perfil e equipe mudam o acesso efetivo sem passar pelas concessões: a auditoria
+      // registra o que a pessoa ganhou e perdeu de fato, inclusive o padrão do perfil.
+      const nextPermissions = computeEffectivePermissions(
+        input.role,
+        grantedPermissions,
+        input.deniedPermissions,
+        input.slmMember,
+      )
+      const effectiveChange = {
+        effectiveAdded: difference(nextPermissions, previous.permissions),
+        effectiveRemoved: difference(previous.permissions, nextPermissions),
+      }
+
       if (previous.role !== input.role) {
-        await audit('role_changed', { from: previous.role, to: input.role })
+        await audit('role_changed', { from: previous.role, to: input.role, ...effectiveChange })
       }
       if (previous.slmMember !== input.slmMember) {
-        await audit(input.slmMember ? 'slm_member_added' : 'slm_member_removed')
+        await audit(
+          input.slmMember ? 'slm_member_added' : 'slm_member_removed',
+          previous.role === input.role ? effectiveChange : undefined,
+        )
       }
 
       const grantedAdded = difference(grantedPermissions, previous.grantedPermissions)
@@ -901,14 +920,24 @@ export class UserRepository {
         })
       }
 
+      const accessChanged =
+        previous.role !== input.role ||
+        previous.slmMember !== input.slmMember ||
+        grantedAdded.length + grantedRemoved.length + deniedAdded.length + deniedRemoved.length > 0
+      if (accessChanged) {
+        await publishAccountEvent(client, {
+          type: 'account_access_changed',
+          key: `${userId}:access:${Date.now()}`,
+          userId,
+          email: target.email,
+          actorId: actor.userId,
+          context: previous.role !== input.role ? { profileLabel: profileLabels[input.role] } : undefined,
+        })
+      }
+
       // A auditoria compara o acesso efetivo, e não o que o navegador enviou.
       const couldReadCpf = previous.permissions.includes('flights:cpf:read')
-      const canReadCpf = computeEffectivePermissions(
-        input.role,
-        grantedPermissions,
-        input.deniedPermissions,
-        input.slmMember,
-      ).includes('flights:cpf:read')
+      const canReadCpf = nextPermissions.includes('flights:cpf:read')
       if (couldReadCpf !== canReadCpf) {
         await audit(
           canReadCpf ? 'cpf_access_granted' : 'cpf_access_revoked',
@@ -979,6 +1008,13 @@ export class UserRepository {
           subjectUserId: userId,
           sessionId: null,
           eventType: isActive ? 'account_activated' : 'account_deactivated',
+        })
+        await publishAccountEvent(client, {
+          type: isActive ? 'account_activated' : 'account_deactivated',
+          key: `${userId}:${isActive ? 'activated' : 'deactivated'}:${Date.now()}`,
+          userId,
+          email: target.email,
+          actorId: actor.userId,
         })
       }
 
@@ -1160,6 +1196,17 @@ export class UserRepository {
         eventType: 'sessions_revoked',
         details: { total: String(removed.rows.length) },
       })
+      if (removed.rows.length > 0 && (await securityEmailEnabled(client, 'sessionsRevoked'))) {
+        const now = new Date()
+        await publishAccountEvent(client, {
+          type: 'security_sessions_revoked',
+          key: `${userId}:sessions-revoked:${now.getTime()}`,
+          userId,
+          email: target.email,
+          actorId: actor.userId,
+          context: { occurredAt: now.toISOString() },
+        })
+      }
       return removed.rows.length
     })
   }
@@ -1351,8 +1398,8 @@ export class UserRepository {
         throw new AccountAuthorizationError()
       }
 
-      const locked = await client.query<{ id: string; status: string }>(
-        `SELECT id::text AS id, status
+      const locked = await client.query<{ id: string; status: string; email: string | null }>(
+        `SELECT id::text AS id, status, email
            FROM public.auth_users
           WHERE id = $1
           FOR UPDATE`,
@@ -1389,7 +1436,8 @@ export class UserRepository {
         // Só há concessões quando um administrador as pede, e elas ficam na auditoria.
         const slmMember = decision.slmMember ?? decision.role === 'slm_operator'
         const grantedPermissions = decision.grantedPermissions ?? []
-        if (await isAccessSchemaMigrated(client)) {
+        const accessMigrated = await isAccessSchemaMigrated(client)
+        if (accessMigrated) {
           await persistUserAccess(client, {
             userId,
             role: decision.role,
@@ -1409,7 +1457,18 @@ export class UserRepository {
           subjectUserId: userId,
           sessionId: null,
           eventType: 'registration_approved',
-          details: { role: decision.role },
+          // Acesso efetivo na aprovação, com o padrão do perfil. Sem a migração 003,
+          // ninguém integra a equipe SLM, e o cálculo segue a mesma regra.
+          details: {
+            role: decision.role,
+            slmMember: String(accessMigrated && slmMember),
+            effectivePermissions: computeEffectivePermissions(
+              decision.role,
+              accessMigrated ? grantedPermissions : [],
+              [],
+              accessMigrated && slmMember,
+            ),
+          },
         })
 
         if (decision.lotation) {
@@ -1441,6 +1500,15 @@ export class UserRepository {
         }
         if (decision.links) await applyInstitutionalLinks(client, actor.userId, userId, decision.links)
 
+        await publishAccountEvent(client, {
+          type: 'account_approved',
+          key: `${userId}:approved:${Date.now()}`,
+          userId,
+          email: pending.email,
+          actorId: actor.userId,
+          context: { profileLabel: profileLabels[decision.role] },
+        })
+
         return { id: userId, status: 'approved', role: decision.role }
       }
 
@@ -1463,8 +1531,38 @@ export class UserRepository {
         sessionId: null,
         eventType: 'registration_rejected',
       })
+      // O endereço informado no pedido, lido acima: a conta rejeitada nunca passa por "aprovada".
+      await publishAccountEvent(client, {
+        type: 'account_rejected',
+        key: `${userId}:rejected:${Date.now()}`,
+        userId,
+        email: pending.email,
+        actorId: actor.userId,
+      })
 
       return { id: userId, status: 'rejected', role: null }
     })
   }
+}
+
+/**
+ * Cadastro novo ou reenviado: confirmação a quem pediu e aviso a quem aprova. Duplicado não gera
+ * nada, para que repetir um e-mail já cadastrado não envie mensagens a ninguém.
+ */
+async function publishRegistrationNotices(client: PoolClient, userId: string, email: string) {
+  const stamp = Date.now()
+  await publishAccountEvent(client, {
+    type: 'account_registration_received',
+    key: `${userId}:registration:${stamp}`,
+    userId,
+    email,
+    actorId: null,
+  })
+  await publishAccountEvent(client, {
+    type: 'account_registration_pending',
+    key: `${userId}:registration-pending:${stamp}`,
+    userId,
+    email: null,
+    actorId: null,
+  })
 }

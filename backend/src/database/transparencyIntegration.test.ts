@@ -52,8 +52,28 @@ async function call(path: string, options: { method?: string; body?: unknown; se
   const body = (type.includes('json') ? JSON.parse(text) : {}) as Record<string, any>
   const setCookie = (response.headers.get('set-cookie') ?? '').split(';')[0]
   if (setCookie && body.csrfToken) csrfTokens.set(setCookie, body.csrfToken)
+  await settleAccountNotices(path)
   return { status: response.status, body, text, raw, type, setCookie, disposition: response.headers.get('content-disposition') ?? '' }
 }
+/**
+ * Avisos da conta de acesso (cadastro, aprovação, perfil) entram na mesma fila desde 07/11/2026 e têm
+ * testes próprios (emailNotificationsIntegration.test.ts). Aqui, saem da fila antes de serem tentados,
+ * para estes testes continuarem conferindo só as mensagens das solicitações.
+ */
+async function settleAccountNotices(path: string) {
+  if (!path.startsWith('/auth/register') && !path.startsWith('/admin/')) return
+  await pool
+    .query(
+      `DELETE FROM public.email_deliveries
+        WHERE attempts = 0 AND status IN ('pending', 'not_configured')
+          AND (template_key LIKE 'account\\_%' OR template_key LIKE 'security\\_%')`,
+    )
+    .catch((error: { code?: string }) => {
+      // Único caso previsto: antes da migração 006 a fila não existe (42P01). Qualquer outro erro aparece.
+      if (error?.code !== '42P01') throw error
+    })
+}
+
 
 const post = (path: string, session: Session, body: unknown = {}) => call(path, { method: 'POST', session, body })
 const put = (path: string, session: Session, body: unknown) => call(path, { method: 'PUT', session, body })
@@ -938,9 +958,10 @@ test('P-08: administrador fora da SLM mantém o controle do Almoxarifado; previs
   const unitId = unit.body.option.id
   const sector = await post('/settings/catalog/sectors', admin, { label: 'Setor P-08' })
   assert.equal(sector.status, 201, sector.text)
-  const staff = async (email: string, grants: Permission[] = ['warehouse:manage', 'warehouse:forecast']) => {
+  // Sem concessões: desde 08/11/2026, o perfil Operador SLM já traz a gestão e a previsão.
+  const staff = async (email: string, denied: Permission[] = []) => {
     const user = await createUser(email, 'slm_operator')
-    const result = await put(`/admin/users/${user.id}/access`, admin, { role: 'slm_operator', slmMember: true, grantedPermissions: grants, deniedPermissions: [] })
+    const result = await put(`/admin/users/${user.id}/access`, admin, { role: 'slm_operator', slmMember: true, grantedPermissions: [], deniedPermissions: denied })
     assert.equal(result.status, 200, result.text)
     return user
   }
@@ -1004,13 +1025,13 @@ test('P-08: administrador fora da SLM mantém o controle do Almoxarifado; previs
   const unchanged = await call(`/warehouse/requests/${open}`, { session: admin })
   assert.equal(unchanged.body.request.deliveryForecast, null, 'a recusa não grava nada')
 
-  // 7. Operador SLM autorizado executa a ação restrita.
+  // 7. Operador SLM da equipe executa a ação restrita pelo perfil, sem concessão manual.
   const slm = await staff('slm-p08@example.gov.br')
   const allowed = await put(`/warehouse/requests/${open}/delivery-forecast`, slm, { date: firstDate })
   assert.equal(allowed.status, 200, allowed.text)
-  // Operador da SLM só com a administração do módulo, sem a concessão da previsão, é recusado.
-  const withoutForecast = await staff('slm-sem-previsao-p08@example.gov.br', ['warehouse:manage'])
-  assert.equal((await put(`/warehouse/requests/${open}/delivery-forecast`, withoutForecast, { date: secondDate, justification: 'Tentativa sem concessão' })).status, 403)
+  // Operador da SLM com a previsão retirada individualmente é recusado.
+  const withoutForecast = await staff('slm-sem-previsao-p08@example.gov.br', ['warehouse:forecast'])
+  assert.equal((await put(`/warehouse/requests/${open}/delivery-forecast`, withoutForecast, { date: secondDate, justification: 'Tentativa com a previsão retirada' })).status, 403)
 
   // 8. Usuário comum: nada administrativo, nem por concessão da previsão.
   const requester = await createUser('comum-p08@example.gov.br')

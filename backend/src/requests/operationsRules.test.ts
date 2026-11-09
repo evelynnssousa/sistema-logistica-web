@@ -127,7 +127,12 @@ test('formulários: campos conferidos no servidor, sem presumir personalização
 
 test('aviso de paradas: sem valor na tela nem no ambiente, não há lembrete', () => {
   const save = (pendingReminderDays: unknown) => validateSettings('notifications', { pendingReminderDays })
-  assert.deepEqual(save(''), { disabled: { administrator: [], slm_operator: [], requester: [] }, pendingReminderDays: null })
+  assert.deepEqual(save(''), {
+    disabled: { administrator: [], slm_operator: [], requester: [] },
+    pendingReminderDays: null,
+    // Sem valor enviado, os e-mails de segurança ficam no padrão.
+    securityEmails: { newLogin: false, lockout: true, sessionsRevoked: true, adminAlerts: true },
+  })
   assert.equal((save('7') as { pendingReminderDays: number }).pendingReminderDays, 7)
   assert.throws(() => save(0), RequestValidationError)
   assert.equal(defaultSettings.notifications.pendingReminderDays, null)

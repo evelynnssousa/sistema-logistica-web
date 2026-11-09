@@ -10,6 +10,8 @@ import {
   isRestrictedPermission,
   isPermission,
   onlyKnownPermissions,
+  permissionGroups,
+  permissionKinds,
   permissionsForProfile,
   restrictedPermissions,
 } from './permissions.js'
@@ -51,20 +53,118 @@ test('o solicitante não recebe privilégios por padrão', () => {
   }
 })
 
-test('o operador SLM atende, sem permissões especiais nem administração', () => {
+/** Conjunto operacional que o perfil Operador SLM concede a quem integra a equipe SLM. */
+const slmOperationalDefaults = ['requests:schedule', 'warehouse:manage', 'warehouse:forecast'] as const
+
+/** Administração do sistema e acessos que dependem de concessão individual. */
+const outsideOperatorProfile = [
+  'requests:create_on_behalf', 'flights:cpf:read', 'slm_central:read', 'slm_central:manage',
+  'users:read', 'users:approve', 'users:manage', 'settings:read', 'settings:manage', 'audit:read',
+  'maintenance:manage', 'fleet:manage', 'fleet:execution_correct', 'calendar:manage',
+  'integrations:read', 'integrations:manage', 'monitoring:read', 'demands:directorate', 'demands:configure',
+  'email_templates:edit', 'email_templates:publish', 'forms:edit', 'forms:publish', 'config_versions:restore',
+  'driver_portal:access',
+] as const
+
+test('o operador SLM recebe o conjunto operacional da SLM, sem administração nem acessos individuais', () => {
   const permissions = permissionsForProfile('slm_operator')
 
   for (const permission of [
-    'requests:read_all', 'requests:update', 'requests:create',
-    'maintenance:schedule', 'fleet:schedule',
+    'requests:create', 'requests:read_own', 'requests:read_all', 'requests:update', 'requests:cancel',
+    'maintenance:read', 'maintenance:create', 'maintenance:update', 'maintenance:schedule',
+    'fleet:read', 'fleet:create', 'fleet:update', 'fleet:schedule',
+    'flights:read', 'flights:create', 'flights:update',
+    'warehouse:read', 'reports:read', 'calendar:read', 'communications:read', 'communications:send',
+    ...slmOperationalDefaults,
   ] as const) {
     assert.ok(permissions.includes(permission), permission)
   }
-  for (const permission of [
-    'requests:schedule', 'requests:create_on_behalf', 'flights:cpf:read', 'calendar:manage',
-    'warehouse:manage', 'users:read', 'users:manage', 'settings:read', 'settings:manage', 'audit:read',
-  ] as const) {
+  for (const permission of outsideOperatorProfile) {
     assert.equal(permissions.includes(permission), false, permission)
+  }
+})
+
+test('operador SLM na equipe agenda Manutenção e Frota e opera o Almoxarifado sem concessão manual', () => {
+  const effective = computeEffectivePermissions('slm_operator', [], [], true)
+  for (const permission of [
+    ...slmOperationalDefaults, 'maintenance:schedule', 'fleet:schedule', 'warehouse:read',
+  ] as const) {
+    assert.ok(effective.includes(permission), permission)
+  }
+  const identity = { role: 'slm_operator' as const, slmMember: true, permissions: effective }
+  for (const permission of slmOperationalDefaults) {
+    assert.ok(holdsPermission(identity, permission), permission)
+  }
+  // Administração do sistema e acessos individuais continuam fora.
+  for (const permission of outsideOperatorProfile) {
+    assert.equal(effective.includes(permission), false, permission)
+  }
+})
+
+test('operador fora da equipe SLM não recebe o conjunto operacional, nem pelo perfil nem por concessão', () => {
+  // Caso real: contas antigas, anteriores à migração 003, têm perfil de operador sem equipe.
+  const outside = computeEffectivePermissions('slm_operator', [], [], false)
+  const forcedGrant = computeEffectivePermissions('slm_operator', [...slmOperationalDefaults], [], false)
+  for (const permission of slmOperationalDefaults) {
+    assert.equal(outside.includes(permission), false, permission)
+    assert.equal(forcedGrant.includes(permission), false, `${permission}, concessão gravada`)
+    // Identidade montada por outro caminho também não passa.
+    assert.equal(
+      holdsPermission({ role: 'slm_operator', slmMember: false, permissions: [permission] }, permission),
+      false,
+      `${permission}, identidade forjada`,
+    )
+  }
+  // O restante do atendimento continua com o perfil.
+  for (const permission of ['requests:read_all', 'requests:update', 'warehouse:read', 'maintenance:schedule'] as const) {
+    assert.ok(outside.includes(permission), permission)
+  }
+})
+
+test('incluir e retirar a equipe SLM liga e desliga o conjunto operacional, sem resíduo', () => {
+  const before = computeEffectivePermissions('slm_operator', [], [], false)
+  const joined = computeEffectivePermissions('slm_operator', [], [], true)
+  // Ao sair da equipe, o perfil passa a Solicitante (regra do servidor), e nada fica.
+  const left = computeEffectivePermissions('requester', [], [], false)
+  for (const permission of slmOperationalDefaults) {
+    assert.equal(before.includes(permission), false, permission)
+    assert.ok(joined.includes(permission), permission)
+    assert.equal(left.includes(permission), false, permission)
+  }
+  for (const permission of ['requests:read_all', 'requests:update', 'communications:send'] as const) {
+    assert.equal(left.includes(permission), false, permission)
+  }
+})
+
+test('a retirada individual prevalece sobre o conjunto operacional do perfil', () => {
+  const effective = computeEffectivePermissions('slm_operator', [], ['warehouse:manage', 'requests:schedule'], true)
+  assert.equal(effective.includes('warehouse:manage'), false)
+  assert.equal(effective.includes('requests:schedule'), false)
+  assert.ok(effective.includes('warehouse:forecast'), 'a previsão segue o perfil')
+})
+
+test('mudar o perfil não apaga concessões individuais legítimas', () => {
+  const granted = ['reports:read', 'integrations:read'] as const
+  const asOperator = computeEffectivePermissions('slm_operator', granted, [], true)
+  const asAdministrator = computeEffectivePermissions('administrator', granted, [], true)
+  const asRequester = computeEffectivePermissions('requester', granted, [], false)
+  for (const permission of granted) {
+    assert.ok(asOperator.includes(permission), permission)
+    assert.ok(asAdministrator.includes(permission), permission)
+    assert.ok(asRequester.includes(permission), permission)
+  }
+})
+
+test('administrador fora da SLM não recebe atribuições operacionais exclusivas da SLM', () => {
+  const outside = computeEffectivePermissions('administrator', [], [], false)
+  for (const permission of ['requests:schedule', 'warehouse:forecast', 'requests:create_on_behalf', 'flights:cpf:read', 'slm_central:read', 'slm_central:manage'] as const) {
+    assert.equal(outside.includes(permission), false, permission)
+  }
+  // E o operador SLM não recebe a administração do sistema.
+  const operator = computeEffectivePermissions('slm_operator', [], [], true)
+  for (const permission of essentialAdministratorPermissions) {
+    assert.equal(operator.includes(permission), false, permission)
+    assert.ok(outside.includes(permission), permission)
   }
 })
 
@@ -144,9 +244,9 @@ test('usuário comum não recebe administração do Almoxarifado nem previsão',
   assert.equal(requester.includes('requests:schedule'), false)
   // Concessão de previsão a quem não é da SLM não vale, nem marcada como SLM.
   assert.equal(computeEffectivePermissions('requester', ['warehouse:forecast'], [], true).includes('warehouse:forecast'), false)
-  // O Operador SLM só recebe a previsão por concessão individual.
-  assert.equal(computeEffectivePermissions('slm_operator', [], [], true).includes('warehouse:forecast'), false)
-  assert.ok(computeEffectivePermissions('slm_operator', ['warehouse:forecast'], [], true).includes('warehouse:forecast'))
+  // O Operador SLM recebe a previsão pelo perfil, mas só na equipe SLM.
+  assert.ok(computeEffectivePermissions('slm_operator', [], [], true).includes('warehouse:forecast'))
+  assert.equal(computeEffectivePermissions('slm_operator', [], [], false).includes('warehouse:forecast'), false)
 })
 
 test('concessão gravada sem elegibilidade não vale, seja qual for a origem', () => {
@@ -250,9 +350,9 @@ test('Solicitante e Motorista nunca administram o Almoxarifado, nem por dado gra
       `motorista, slmMember=${slmMember}`,
     )
   }
-  // Operador SLM: só por concessão individual, e só na equipe.
-  assert.equal(computeEffectivePermissions('slm_operator', [], [], true).includes('warehouse:manage'), false)
-  assert.ok(computeEffectivePermissions('slm_operator', ['warehouse:manage'], [], true).includes('warehouse:manage'))
+  // Operador SLM: pelo perfil, e só na equipe.
+  assert.ok(computeEffectivePermissions('slm_operator', [], [], true).includes('warehouse:manage'))
+  assert.equal(computeEffectivePermissions('slm_operator', [], [], false).includes('warehouse:manage'), false)
   assert.equal(computeEffectivePermissions('slm_operator', ['warehouse:manage'], [], false).includes('warehouse:manage'), false)
 })
 
@@ -273,4 +373,38 @@ test('a verificação efetiva recusa identidade montada com warehouse:manage sem
   assert.ok(holdsPermission(forged('administrator', true), 'warehouse:forecast'))
   // Permissão comum segue só a identidade.
   assert.ok(holdsPermission(forged('requester', false), 'warehouse:read'))
+})
+
+test('toda permissão tem nome, explicação, natureza e grupo, sem chaves técnicas no texto', () => {
+  const keyPattern = /\b[a-z_]+:[a-z_]+(?::[a-z_]+)?\b/
+  const seen = new Set<string>()
+  for (const group of permissionGroups) {
+    assert.ok(group.label.trim(), group.key)
+    for (const permission of group.permissions) {
+      seen.add(permission.key)
+      assert.ok(permission.label.trim().length > 3, permission.key)
+      assert.ok(permission.description.trim().length > 20, `${permission.key}: explicação`)
+      assert.ok(permissionKinds.includes(permission.kind), `${permission.key}: natureza`)
+      const texts = [permission.label, permission.description, 'note' in permission ? permission.note : '']
+      for (const text of texts) {
+        assert.equal(keyPattern.test(text), false, `${permission.key}: o texto não cita chaves técnicas`)
+      }
+    }
+  }
+  assert.deepEqual([...seen].sort(), [...allPermissions].sort())
+})
+
+test('as permissões especiais e as atribuições da SLM explicam a restrição na própria tela', () => {
+  const entries = new Map<string, { note?: string; kind: string }>(
+    permissionGroups.flatMap((group) => group.permissions.map((permission) => [permission.key, permission] as const)),
+  )
+  for (const permission of restrictedPermissions) {
+    assert.ok(entries.get(permission)?.note, `${permission}: observação de restrição`)
+  }
+  assert.match(entries.get('requests:schedule')?.note ?? '', /equipe SLM/)
+  assert.match(entries.get('warehouse:forecast')?.note ?? '', /equipe SLM/)
+  assert.match(entries.get('flights:cpf:read')?.note ?? '', /concessão individual/)
+  assert.equal(entries.get('requests:schedule')?.kind, 'schedule')
+  assert.equal(entries.get('warehouse:manage')?.kind, 'manage')
+  assert.equal(entries.get('users:approve')?.kind, 'manage')
 })

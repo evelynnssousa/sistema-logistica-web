@@ -2,6 +2,7 @@
 import './loadEnvironment.js'
 import app from './app.js'
 import { isPasswordRecoveryConfigured } from './auth/passwordRecoveryService.js'
+import { assertPasswordResetPepperForStartup } from './auth/passwordRecovery.js'
 import { isRemoteDatabaseConfigured } from './auth/reservedTestEmails.js'
 import { shouldRunSessionCleanup } from './auth/sessionCleanupPolicy.js'
 import { startSessionCleanup } from './auth/sessionRuntime.js'
@@ -11,6 +12,9 @@ import { startIntegrationWorker } from './integrations/worker.js'
 import { shouldRunMonitoring, startMonitoring } from './monitoring/healthChecks.js'
 import { logSecurityEvent } from './security/logger.js'
 import { checkEnvironment } from './config/environmentCheck.js'
+
+// Em produção, PASSWORD_RESET_PEPPER definido e curto impede o início (ausente só desliga a recuperação).
+assertPasswordResetPepperForStartup()
 
 const PORT = Number(process.env.PORT) || 3000
 

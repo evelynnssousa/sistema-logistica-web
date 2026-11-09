@@ -1,6 +1,7 @@
 import { createSign } from 'node:crypto'
 import { Resend } from 'resend'
 import { isReservedTestEmail } from '../auth/reservedTestEmails.js'
+import { RECIPIENT_OUTSIDE_TEST_LIST, realSendGuard } from './recipientAllowlist.js'
 import { calendarCredentials, calendarIdFor, calendarMode, emailMode } from './config.js'
 import type { CalendarCredentials } from './config.js'
 
@@ -57,14 +58,23 @@ type ResendLike = Pick<Resend, 'emails'>
 export function createResendTransport(
   client: ResendLike,
   from: string,
+  /**
+   * Última barreira da lista de destinatários permitidos (recipientAllowlist.ts): devolve os endereços
+   * bloqueados. A conferência principal acontece antes, sem consumir cota.
+   */
+  guard: (addresses: readonly string[]) => readonly string[] = () => [],
 ): EmailTransport {
   return {
     provider: 'resend',
     simulated: false,
     async send(message) {
+      const addresses = [message.to, ...(message.moreTo ?? []), ...message.cc]
       // Domínios reservados só existem em testes: nunca chegam ao provedor.
-      if ([message.to, ...(message.moreTo ?? []), ...message.cc].some(isReservedTestEmail)) {
+      if (addresses.some(isReservedTestEmail)) {
         throw new IntegrationError('RESERVED_ADDRESS', false)
+      }
+      if (guard(addresses).length > 0) {
+        throw new IntegrationError(RECIPIENT_OUTSIDE_TEST_LIST, false)
       }
 
       let result
@@ -101,15 +111,25 @@ export function createResendTransport(
   }
 }
 
+let testEmailTransport: EmailTransport | null | undefined
+
+/** Só para testes: substitui o transporte escolhido pelo ambiente. undefined restaura. */
+export function setEmailTransportForTests(transport: EmailTransport | null | undefined) {
+  testEmailTransport = transport
+}
+
 export function resolveEmailTransport(
   environment: NodeJS.ProcessEnv = process.env,
 ): EmailTransport | null {
+  // Nunca em produção: a substituição existe só para os testes automatizados.
+  if (testEmailTransport !== undefined && environment.NODE_ENV !== 'production') return testEmailTransport
   const mode = emailMode(environment)
   if (mode === 'simulated') return simulatedEmailTransport
   if (mode === 'provider') {
     return createResendTransport(
       new Resend(environment.RESEND_API_KEY!.trim()),
       environment.RESEND_FROM!.trim(),
+      realSendGuard(environment),
     )
   }
   return null

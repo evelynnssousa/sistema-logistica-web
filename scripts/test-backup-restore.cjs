@@ -32,6 +32,7 @@ const migrations = [
   '016_driver_portal.sql',
   '017_driver_portal_settings.sql',
   '018_public_api_privileges.sql',
+  '019_email_quota.sql',
 ]
 
 function run(script, args, environment) {

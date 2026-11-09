@@ -2,7 +2,7 @@
  * Biblioteca de informações dinâmicas dos modelos de e-mail, escritas como {{protocolo}}. A lista é
  * fechada: um modelo não alcança nenhum outro dado, e CPF e passageiros não têm variável.
  */
-type VariableGroup = 'base' | 'request' | 'schedule' | 'reason' | 'return' | 'warehouse' | 'ticket'
+type VariableGroup = 'base' | 'request' | 'schedule' | 'reason' | 'return' | 'warehouse' | 'ticket' | 'account'
 
 const definitions = [
   { key: 'nome_solicitante', label: 'Nome do solicitante', group: 'base', example: 'Pessoa de Exemplo' },
@@ -32,6 +32,10 @@ const definitions = [
   { key: 'trecho_ida', label: 'Ida: origem, destino, data e horário', group: 'ticket', example: 'Origem → Destino, 15/01/2030 às 10:00' },
   { key: 'trecho_volta', label: 'Volta: origem, destino, data e horário', group: 'ticket', example: 'Destino → Origem, 20/01/2030 às 18:00' },
   { key: 'localizador', label: 'Localizador da reserva', group: 'ticket', example: 'ABC123' },
+  // Avisos da conta: só o nome, o perfil e o momento. Nunca senha, código ou link de recuperação.
+  { key: 'nome_usuario', label: 'Nome da pessoa dona da conta', group: 'account', example: 'Pessoa de Exemplo' },
+  { key: 'perfil_acesso', label: 'Perfil de acesso', group: 'account', example: 'Solicitante' },
+  { key: 'data_hora', label: 'Data e horário do acontecimento', group: 'account', example: '15/01/2030 10:00' },
 ] as const
 
 export const templateVariables = definitions.map(({ key, label, example }) => ({ key, label, example }))
@@ -48,11 +52,14 @@ export type VariableScope = {
   reason?: boolean
   returned?: boolean
   ticket?: boolean
+  /** Avisos à pessoa dona da conta. */
+  account?: boolean
 }
 
 /** Só as variáveis compatíveis com o evento: o que ele não tem, o modelo não oferece. */
 export function variablesForEvent(scope: VariableScope): TemplateVariable[] {
-  const isSystem = scope.modules.every((module) => module === 'system')
+  // Demandas seguem a regra do sistema: nenhuma variável alcança o título ou o conteúdo da demanda.
+  const isSystem = scope.modules.every((module) => module === 'system' || module === 'demands')
   const isWarehouse = scope.modules.includes('warehouse')
   const isFlight = scope.modules.includes('flights')
   const groups = new Set<VariableGroup>(['base'])
@@ -62,6 +69,7 @@ export function variablesForEvent(scope: VariableScope): TemplateVariable[] {
   if (scope.returned) groups.add('return')
   if (isWarehouse) groups.add('warehouse')
   if (scope.ticket) groups.add('ticket')
+  if (scope.account) groups.add('account')
   return definitions
     .filter((item) => groups.has(item.group) && !(isSystem && ['nome_solicitante', 'setor'].includes(item.key)))
     .map((item) => item.key)

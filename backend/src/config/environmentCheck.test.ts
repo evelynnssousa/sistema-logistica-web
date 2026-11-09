@@ -61,6 +61,22 @@ test('ambiente vazio: avisos de funções indisponíveis, erro só no banco', ()
   assert.equal(levelOf(findings, 'PASSWORD_RESET_PEPPER'), 'aviso')
 })
 
+test('PASSWORD_RESET_PEPPER: espaços nas extremidades não contam, nem para o tamanho', () => {
+  const base = { DATABASE_URL: 'postgresql://x' }
+  const level = (pepper: string | undefined, NODE_ENV = 'development') =>
+    levelOf(checkEnvironment({ ...base, NODE_ENV, PASSWORD_RESET_PEPPER: pepper }), 'PASSWORD_RESET_PEPPER')
+
+  assert.equal(level(` ${randomBytes(32).toString('hex')}\n`), 'ok')
+  assert.equal(level(`   ${'a'.repeat(31)}   `), 'erro')
+  assert.equal(level(`   ${'a'.repeat(31)}   `, 'production'), 'erro')
+  assert.equal(level(' \n '), 'aviso')
+  assert.equal(level(undefined, 'production'), 'aviso')
+  const finding = checkEnvironment({ ...base, NODE_ENV: 'production', PASSWORD_RESET_PEPPER: 'curto-ficticio' })
+    .find((item) => item.variable === 'PASSWORD_RESET_PEPPER')
+  assert.match(finding?.message ?? '', /a API não inicia/)
+  assert.equal(finding?.message.includes('curto-ficticio'), false)
+})
+
 test('valores inválidos são erros que bloqueiam', () => {
   const findings = checkEnvironment({
     DATABASE_URL: 'postgresql://x',

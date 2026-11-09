@@ -1,160 +1,494 @@
 import type { AuthRole } from './roles.js'
 
+/**
+ * Natureza de cada permissão, mostrada na tela de usuários: consulta, criação, alteração,
+ * agendamento ou administração.
+ */
+export const permissionKinds = ['read', 'create', 'update', 'schedule', 'manage'] as const
+
+export type PermissionKind = (typeof permissionKinds)[number]
+
+const SLM_ONLY =
+  'Atribuição da equipe SLM: só vale para quem integra a equipe SLM, inclusive para o Administrador.'
+const UNUSED =
+  'Reservada: nenhuma operação do sistema a verifica hoje, então concedê-la ou retirá-la não muda o acesso.'
+
+/**
+ * Catálogo das permissões. A chave é a que o servidor verifica e não muda; nome,
+ * explicação, natureza e observação existem só para a tela de usuários. As explicações
+ * nunca citam chaves técnicas, para que a tela e os testes de navegador localizem cada
+ * permissão pela própria chave sem ambiguidade.
+ */
 export const permissionGroups = [
   {
     key: 'requests',
-    label: 'Solicitações',
+    label: 'Solicitações (todos os módulos)',
     permissions: [
-      { key: 'requests:create', label: 'Criar solicitações para o próprio setor' },
-      { key: 'requests:create_on_behalf', label: 'Abrir solicitações em nome de outros setores (exige equipe SLM)' },
-      { key: 'requests:read_own', label: 'Consultar as próprias solicitações' },
-      { key: 'requests:read_all', label: 'Consultar solicitações de todos os setores' },
-      { key: 'requests:update', label: 'Atender e atualizar solicitações' },
-      { key: 'requests:schedule', label: 'Realizar agendamentos' },
-      { key: 'requests:cancel', label: 'Cancelar solicitações' },
-      { key: 'requests:manage', label: 'Administrar solicitações' },
+      {
+        key: 'requests:create',
+        label: 'Criar solicitações',
+        kind: 'create',
+        description:
+          'Permite registrar novas solicitações para o próprio setor de lotação, nos módulos em que o usuário também pode criar.',
+      },
+      {
+        key: 'requests:create_on_behalf',
+        label: 'Abrir solicitações em nome de outros setores',
+        kind: 'create',
+        description:
+          'Permite registrar uma solicitação indicando outro setor como solicitante, por exemplo ao receber um pedido por telefone ou e-mail.',
+        note:
+          'Só vale para Administrador ou Operador SLM que integre a equipe SLM, e sempre por concessão individual. Pertencer à CPC ou a qualquer outro setor não basta.',
+      },
+      {
+        key: 'requests:read_own',
+        label: 'Consultar as próprias solicitações',
+        kind: 'read',
+        description: 'Permite acompanhar as solicitações abertas pelo próprio usuário.',
+      },
+      {
+        key: 'requests:read_all',
+        label: 'Consultar solicitações de todos os setores',
+        kind: 'read',
+        description:
+          'Permite visualizar as solicitações de todos os solicitantes nos módulos que o usuário acessa. É necessária para o atendimento.',
+      },
+      {
+        key: 'requests:update',
+        label: 'Atender e atualizar solicitações',
+        kind: 'update',
+        description:
+          'Permite registrar o andamento dos serviços: alterar dados, iniciar, concluir, devolver ao solicitante e registrar ocorrências, nos módulos em que o usuário também pode atualizar.',
+      },
+      {
+        key: 'requests:schedule',
+        label: 'Agendar serviços',
+        kind: 'schedule',
+        description:
+          'Permite definir e alterar a data e o horário de execução das solicitações e, na Frota, designar o motorista da viagem. Também exige a permissão de agendamento do módulo.',
+        note: SLM_ONLY,
+      },
+      {
+        key: 'requests:cancel',
+        label: 'Cancelar solicitações',
+        kind: 'update',
+        description: 'Permite cancelar as solicitações que o usuário pode consultar.',
+      },
+      {
+        key: 'requests:manage',
+        label: 'Administrar solicitações',
+        kind: 'manage',
+        description: 'Prevista para a administração geral das solicitações.',
+        note: UNUSED,
+      },
     ],
   },
   {
     key: 'maintenance',
     label: 'Manutenção',
     permissions: [
-      { key: 'maintenance:read', label: 'Acessar o módulo' },
-      { key: 'maintenance:create', label: 'Criar solicitações' },
-      { key: 'maintenance:update', label: 'Atualizar solicitações' },
-      { key: 'maintenance:schedule', label: 'Agendar serviços' },
-      { key: 'maintenance:manage', label: 'Administrar o módulo' },
+      {
+        key: 'maintenance:read',
+        label: 'Acessar o módulo Manutenção',
+        kind: 'read',
+        description:
+          'Permite abrir o módulo. Quais solicitações aparecem depende de consultar as próprias ou as de todos os setores.',
+      },
+      {
+        key: 'maintenance:create',
+        label: 'Criar solicitações de Manutenção',
+        kind: 'create',
+        description: 'Permite registrar solicitações de manutenção, junto com a permissão geral de criar solicitações.',
+      },
+      {
+        key: 'maintenance:update',
+        label: 'Atualizar solicitações de Manutenção',
+        kind: 'update',
+        description:
+          'Permite registrar o andamento e as execuções das solicitações de manutenção, junto com a permissão geral de atender e atualizar.',
+      },
+      {
+        key: 'maintenance:schedule',
+        label: 'Agendar serviços de Manutenção',
+        kind: 'schedule',
+        description:
+          'Libera o agendamento no módulo Manutenção. Sozinha não permite agendar: exige também a permissão geral de agendar serviços.',
+      },
+      {
+        key: 'maintenance:manage',
+        label: 'Administrar o cadastro de equipamentos',
+        kind: 'manage',
+        description: 'Permite cadastrar e alterar os equipamentos atendidos pela Manutenção.',
+      },
     ],
   },
   {
     key: 'fleet',
     label: 'Frota',
     permissions: [
-      { key: 'fleet:read', label: 'Acessar o módulo' },
-      { key: 'fleet:create', label: 'Criar solicitações' },
-      { key: 'fleet:update', label: 'Atualizar solicitações' },
-      { key: 'fleet:schedule', label: 'Agendar serviços' },
-      { key: 'fleet:manage', label: 'Administrar o módulo e o cadastro de motoristas' },
-      { key: 'fleet:execution_correct', label: 'Corrigir horários de execução das viagens (auditado)' },
+      {
+        key: 'fleet:read',
+        label: 'Acessar o módulo Frota',
+        kind: 'read',
+        description:
+          'Permite abrir o módulo. Quais solicitações aparecem depende de consultar as próprias ou as de todos os setores.',
+      },
+      {
+        key: 'fleet:create',
+        label: 'Criar solicitações de Frota',
+        kind: 'create',
+        description: 'Permite registrar solicitações de transporte, junto com a permissão geral de criar solicitações.',
+      },
+      {
+        key: 'fleet:update',
+        label: 'Atualizar solicitações de Frota',
+        kind: 'update',
+        description:
+          'Permite registrar o andamento e as ocorrências das viagens, junto com a permissão geral de atender e atualizar.',
+      },
+      {
+        key: 'fleet:schedule',
+        label: 'Agendar viagens da Frota',
+        kind: 'schedule',
+        description:
+          'Libera o agendamento no módulo Frota e a consulta dos motoristas disponíveis. Para agendar ou designar o motorista, exige também a permissão geral de agendar serviços.',
+      },
+      {
+        key: 'fleet:manage',
+        label: 'Administrar veículos e motoristas',
+        kind: 'manage',
+        description: 'Permite cadastrar e alterar os veículos, seus registros e o cadastro de motoristas.',
+      },
+      {
+        key: 'fleet:execution_correct',
+        label: 'Corrigir horários de execução das viagens',
+        kind: 'update',
+        description: 'Permite corrigir os horários de saída e chegada registrados nas viagens.',
+        note: 'Cada correção fica registrada na auditoria.',
+      },
     ],
   },
   {
     key: 'driver_portal',
     label: 'Portal do Motorista',
     permissions: [
-      { key: 'driver_portal:access', label: 'Usar o Portal do Motorista (exclusiva do perfil Motorista)' },
+      {
+        key: 'driver_portal:access',
+        label: 'Usar o Portal do Motorista',
+        kind: 'update',
+        description: 'Permite ao motorista consultar as viagens designadas a ele e registrar a execução.',
+        note: 'Exclusiva do perfil Motorista: não pode ser concedida a outros perfis.',
+      },
     ],
   },
   {
     key: 'flights',
     label: 'Passagens aéreas',
     permissions: [
-      { key: 'flights:read', label: 'Acessar o módulo' },
-      { key: 'flights:create', label: 'Criar solicitações' },
-      { key: 'flights:update', label: 'Atualizar solicitações' },
-      { key: 'flights:manage', label: 'Administrar o módulo' },
-      { key: 'flights:cpf:read', label: 'Consultar o CPF completo dos passageiros (auditado; exige equipe SLM)' },
+      {
+        key: 'flights:read',
+        label: 'Acessar o módulo Passagens aéreas',
+        kind: 'read',
+        description:
+          'Permite abrir o módulo. Quais solicitações aparecem depende de consultar as próprias ou as de todos os setores.',
+      },
+      {
+        key: 'flights:create',
+        label: 'Criar solicitações de passagens',
+        kind: 'create',
+        description: 'Permite registrar solicitações de passagens aéreas, junto com a permissão geral de criar solicitações.',
+      },
+      {
+        key: 'flights:update',
+        label: 'Atender solicitações de passagens',
+        kind: 'update',
+        description:
+          'Permite avançar as etapas, alterar passageiros e registrar e escolher cotações, junto com a permissão geral de atender e atualizar.',
+      },
+      {
+        key: 'flights:manage',
+        label: 'Administrar o módulo Passagens aéreas',
+        kind: 'manage',
+        description: 'Prevista para a administração do módulo.',
+        note: UNUSED,
+      },
+      {
+        key: 'flights:cpf:read',
+        label: 'Consultar o CPF completo dos passageiros',
+        kind: 'read',
+        description:
+          'Permite exibir o CPF sem máscara dos passageiros nas solicitações que o usuário pode consultar. Sem ela, o CPF aparece mascarado.',
+        note:
+          'Dado pessoal: exige a equipe SLM e concessão individual, inclusive para o Administrador. Nenhum perfil a concede, e cada consulta fica na auditoria.',
+      },
     ],
   },
   {
     key: 'settings',
     label: 'Configurações',
     permissions: [
-      { key: 'settings:read', label: 'Consultar configurações' },
-      { key: 'settings:manage', label: 'Alterar configurações' },
+      {
+        key: 'settings:read',
+        label: 'Consultar configurações',
+        kind: 'read',
+        description: 'Permite visualizar as listas de opções e os parâmetros do sistema, sem alterá-los.',
+      },
+      {
+        key: 'settings:manage',
+        label: 'Alterar configurações',
+        kind: 'manage',
+        description: 'Permite criar, alterar, ativar e desativar opções e parâmetros do sistema.',
+      },
     ],
   },
   {
     key: 'email_templates',
     label: 'Modelos de e-mail',
     permissions: [
-      { key: 'email_templates:read', label: 'Consultar modelos' },
-      { key: 'email_templates:edit', label: 'Editar modelos e salvar rascunhos' },
-      { key: 'email_templates:publish', label: 'Publicar modelos' },
+      {
+        key: 'email_templates:read',
+        label: 'Consultar modelos de e-mail',
+        kind: 'read',
+        description: 'Permite ver os modelos de e-mail usados pelo sistema.',
+      },
+      {
+        key: 'email_templates:edit',
+        label: 'Editar modelos de e-mail',
+        kind: 'update',
+        description: 'Permite alterar modelos e salvar rascunhos, sem colocá-los em uso.',
+      },
+      {
+        key: 'email_templates:publish',
+        label: 'Publicar modelos de e-mail',
+        kind: 'manage',
+        description: 'Permite colocar em uso uma nova versão de um modelo de e-mail.',
+      },
     ],
   },
   {
     key: 'forms',
     label: 'Gerenciador de formulários',
     permissions: [
-      { key: 'forms:read', label: 'Consultar formulários' },
-      { key: 'forms:edit', label: 'Editar formulários e salvar rascunhos' },
-      { key: 'forms:publish', label: 'Publicar formulários' },
+      {
+        key: 'forms:read',
+        label: 'Consultar formulários',
+        kind: 'read',
+        description: 'Permite ver a definição dos formulários do sistema.',
+      },
+      {
+        key: 'forms:edit',
+        label: 'Editar formulários',
+        kind: 'update',
+        description: 'Permite alterar formulários e salvar rascunhos, sem colocá-los em uso.',
+      },
+      {
+        key: 'forms:publish',
+        label: 'Publicar formulários',
+        kind: 'manage',
+        description: 'Permite colocar em uso uma nova versão de um formulário.',
+      },
     ],
   },
   {
     key: 'config_versions',
     label: 'Versões de configuração',
-    permissions: [{ key: 'config_versions:restore', label: 'Restaurar versões anteriores de modelos e formulários' }],
+    permissions: [
+      {
+        key: 'config_versions:restore',
+        label: 'Restaurar versões anteriores',
+        kind: 'manage',
+        description: 'Permite restaurar uma versão anterior de modelos de e-mail e formulários.',
+      },
+    ],
   },
   {
     key: 'communications',
     label: 'Central de comunicação',
     permissions: [
-      { key: 'communications:read', label: 'Consultar o histórico de e-mails das solicitações que atende' },
-      { key: 'communications:send', label: 'Enviar e-mails e anexos pelo sistema' },
+      {
+        key: 'communications:read',
+        label: 'Consultar o histórico de e-mails',
+        kind: 'read',
+        description: 'Permite ver os e-mails enviados pelo sistema nas solicitações que o usuário atende.',
+      },
+      {
+        key: 'communications:send',
+        label: 'Enviar e-mails pelo sistema',
+        kind: 'create',
+        description: 'Permite redigir e enviar e-mails, com anexos, a partir das solicitações, e reenviar os que falharam.',
+      },
     ],
   },
   {
     key: 'warehouse',
     label: 'Almoxarifado',
     permissions: [
-      { key: 'warehouse:read', label: 'Acessar o módulo' },
-      { key: 'warehouse:manage', label: 'Administrar o módulo (só Administrador e Operador SLM)' },
-      { key: 'warehouse:forecast', label: 'Informar e alterar a previsão de entrega (exige equipe SLM)' },
+      {
+        key: 'warehouse:read',
+        label: 'Acessar o módulo Almoxarifado',
+        kind: 'read',
+        description:
+          'Permite abrir o módulo, pedir materiais e acompanhar os pedidos. Sozinha não mostra quantidades em estoque nem valores.',
+      },
+      {
+        key: 'warehouse:manage',
+        label: 'Gerenciar o Almoxarifado',
+        kind: 'manage',
+        description:
+          'Permite as operações internas: cadastrar materiais, consultar e movimentar o estoque, registrar pedidos externos, alterar itens e situação dos pedidos, registrar entregas e fazer conferências de inventário.',
+        note:
+          'Revela quantidades e saldos do estoque: só vale para o Administrador e para o Operador SLM da equipe SLM. Solicitante e Motorista nunca a recebem.',
+      },
+      {
+        key: 'warehouse:forecast',
+        label: 'Registrar previsão de entrega',
+        kind: 'update',
+        description:
+          'Permite informar e alterar, com justificativa, a data prevista para a disponibilidade ou a entrega dos materiais de um pedido. Exige também a permissão de gerenciar o Almoxarifado.',
+        note: SLM_ONLY,
+      },
     ],
   },
   {
     key: 'users',
-    label: 'Usuários',
+    label: 'Usuários e permissões',
     permissions: [
-      { key: 'users:read', label: 'Consultar usuários' },
-      { key: 'users:approve', label: 'Aprovar e rejeitar cadastros' },
-      { key: 'users:manage', label: 'Editar dados e ativar ou desativar contas' },
+      {
+        key: 'users:read',
+        label: 'Consultar usuários',
+        kind: 'read',
+        description: 'Permite ver a lista de usuários, seus perfis, permissões e histórico de acesso.',
+      },
+      {
+        key: 'users:approve',
+        label: 'Aprovar usuários',
+        kind: 'manage',
+        description: 'Permite aprovar ou rejeitar cadastros de acesso ao sistema.',
+        note: 'Sem o perfil Administrador, só aprova cadastros como Solicitante.',
+      },
+      {
+        key: 'users:manage',
+        label: 'Gerenciar usuários',
+        kind: 'manage',
+        description: 'Permite editar dados cadastrais, ativar e desativar contas e encerrar sessões.',
+        note:
+          'Alterar perfil, equipe SLM e permissões de outras pessoas exige também o perfil Administrador. Ninguém altera o próprio acesso.',
+      },
     ],
   },
   {
     key: 'reports',
     label: 'Relatórios, agenda e auditoria',
     permissions: [
-      { key: 'reports:read', label: 'Consultar relatórios' },
-      { key: 'calendar:read', label: 'Consultar a agenda' },
-      { key: 'calendar:manage', label: 'Administrar a agenda' },
-      { key: 'audit:read', label: 'Consultar registros de auditoria' },
+      {
+        key: 'reports:read',
+        label: 'Consultar relatórios',
+        kind: 'read',
+        description: 'Permite ver os painéis e relatórios operacionais e de desempenho.',
+      },
+      {
+        key: 'calendar:read',
+        label: 'Consultar a agenda',
+        kind: 'read',
+        description: 'Permite ver a agenda dos serviços agendados.',
+      },
+      {
+        key: 'calendar:manage',
+        label: 'Administrar a agenda',
+        kind: 'manage',
+        description: 'Prevista para a administração da agenda.',
+        note: UNUSED,
+      },
+      {
+        key: 'audit:read',
+        label: 'Consultar a auditoria',
+        kind: 'read',
+        description: 'Permite ver os registros de auditoria do sistema: quem fez o quê, quando e com qual resultado.',
+      },
     ],
   },
   {
     key: 'integrations',
-    label: 'Integrações e comunicações',
+    label: 'Integrações',
     permissions: [
-      { key: 'integrations:read', label: 'Consultar envios de e-mail e sincronização de agenda' },
-      { key: 'integrations:manage', label: 'Reprocessar envios e sincronizações com falha' },
+      {
+        key: 'integrations:read',
+        label: 'Consultar envios e sincronizações',
+        kind: 'read',
+        description: 'Permite acompanhar a fila de e-mails automáticos e a sincronização da agenda.',
+      },
+      {
+        key: 'integrations:manage',
+        label: 'Reprocessar envios e sincronizações',
+        kind: 'manage',
+        description: 'Permite repetir os envios de e-mail e as sincronizações de agenda que falharam.',
+      },
     ],
   },
   {
     key: 'slm_central',
     label: 'Central de Operações da SLM',
     permissions: [
-      { key: 'slm_central:read', label: 'Acessar a Central de Operações (exige equipe SLM)' },
-      { key: 'slm_central:manage', label: 'Atribuir responsáveis, prioridades e prazos pela Central (exige equipe SLM)' },
+      {
+        key: 'slm_central:read',
+        label: 'Acessar a Central de Operações',
+        kind: 'read',
+        description: 'Permite acompanhar, em uma só tela, as solicitações de todos os módulos atendidos pela SLM.',
+        note: 'Exige a equipe SLM e concessão individual, inclusive para o Administrador.',
+      },
+      {
+        key: 'slm_central:manage',
+        label: 'Distribuir o atendimento pela Central',
+        kind: 'update',
+        description: 'Permite atribuir responsáveis, prioridades e prazos às solicitações pela Central de Operações.',
+        note: 'Exige a equipe SLM e concessão individual, inclusive para o Administrador.',
+      },
     ],
   },
   {
     key: 'monitoring',
     label: 'Monitoramento',
     permissions: [
-      { key: 'monitoring:read', label: 'Consultar a saúde dos serviços e os registros técnicos' },
+      {
+        key: 'monitoring:read',
+        label: 'Consultar o monitoramento',
+        kind: 'read',
+        description: 'Permite ver a saúde dos serviços e os registros técnicos do sistema.',
+      },
     ],
   },
   {
     key: 'demands',
     label: 'Controle de Demandas',
     permissions: [
-      { key: 'demands:directorate', label: 'Diretor: vê, cadastra e edita as demandas de todos os setores, e configura setores, integrantes e categorias' },
-      { key: 'demands:configure', label: 'Configurar setores, integrantes e categorias do módulo' },
+      {
+        key: 'demands:directorate',
+        label: 'Acesso da Diretoria às demandas',
+        kind: 'manage',
+        description:
+          'Permite ver, cadastrar e editar as demandas de todos os setores e configurar setores, integrantes e categorias do módulo.',
+        note:
+          'Destinada à Diretoria Administrativa. Nenhum perfil a concede, nem o de Administrador. A chefia de setor vem dos vínculos institucionais, e não desta lista.',
+      },
+      {
+        key: 'demands:configure',
+        label: 'Configurar o Controle de Demandas',
+        kind: 'manage',
+        description: 'Permite configurar setores, integrantes e categorias do módulo, sem dar acesso ao conteúdo das demandas.',
+      },
     ],
   },
-] as const
+] as const satisfies readonly {
+  key: string
+  label: string
+  permissions: readonly {
+    key: string
+    label: string
+    kind: PermissionKind
+    description: string
+    note?: string
+  }[]
+}[]
 
 export type Permission =
   (typeof permissionGroups)[number]['permissions'][number]['key']
@@ -172,12 +506,13 @@ export function isPermission(value: unknown): value is Permission {
 /**
  * Permissões especiais: só valem para quem é elegível, seja qual for a origem. Nenhum
  * perfil concede abertura em nome de outro setor, CPF nem a Central da SLM. Agendar e
- * informar ou alterar a previsão de entrega são atribuições da SLM: o perfil Administrador
- * só as concede a quem integra a equipe SLM (auditoria de 05/11/2026, P-08). A administração
- * do Almoxarifado (warehouse:manage: materiais, estoque, inventário, situação, entrega) é do
- * Administrador, dentro ou fora da SLM, e do Operador SLM com concessão individual; Solicitante
- * e Motorista nunca a recebem, porque ela revela o saldo do estoque. Para os demais elegíveis,
- * tudo depende de concessão individual.
+ * informar ou alterar a previsão de entrega são atribuições da SLM: os perfis Administrador
+ * e Operador SLM só as concedem a quem integra a equipe SLM (auditoria de 05/11/2026, P-08).
+ * A administração do Almoxarifado (warehouse:manage: materiais, estoque, inventário, situação,
+ * entrega) é do Administrador, dentro ou fora da SLM, e do Operador SLM na equipe; Solicitante
+ * e Motorista nunca a recebem, porque ela revela o saldo do estoque. Desde 08/11/2026, o perfil
+ * Operador SLM inclui agendamento, gestão do Almoxarifado e previsão de entrega, e a equipe SLM
+ * continua sendo condição: sem ela, as três não valem. O restante depende de concessão individual.
  */
 export const restrictedPermissions = [
   'requests:schedule',
@@ -265,8 +600,11 @@ const profilePermissions: Record<AuthRole, readonly Permission[]> = {
       // Configurar o Controle de Demandas não dá acesso ao conteúdo das demandas.
       permission !== 'demands:directorate',
   ),
-  // maintenance:schedule e fleet:schedule só delimitam os módulos: sem a concessão
-  // individual de requests:schedule, não permitem agendar.
+  // Conjunto operacional da SLM. Agendar, gerir o Almoxarifado e registrar a previsão de
+  // entrega vêm do perfil, mas só valem com a equipe SLM (isEligibleForRestrictedPermission):
+  // um operador fora da equipe, como as contas anteriores à migração 003, não as recebe.
+  // maintenance:schedule e fleet:schedule delimitam os módulos do agendamento. Abrir em nome
+  // de outro setor, CPF completo e a Central continuam por concessão individual.
   slm_operator: [
     'requests:create',
     'requests:read_own',
@@ -281,10 +619,13 @@ const profilePermissions: Record<AuthRole, readonly Permission[]> = {
     'fleet:create',
     'fleet:update',
     'fleet:schedule',
+    'requests:schedule',
     'flights:read',
     'flights:create',
     'flights:update',
     'warehouse:read',
+    'warehouse:manage',
+    'warehouse:forecast',
     'reports:read',
     'calendar:read',
     'communications:read',

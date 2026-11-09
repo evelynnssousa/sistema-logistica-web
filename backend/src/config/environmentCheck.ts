@@ -1,6 +1,9 @@
 import { accessSync, constants, statSync } from 'node:fs'
 import { graphStorageSettings } from '../attachments/graphDriveStorage.js'
 import { proxySecretProblem } from '../security/trustedProxy.js'
+import { passwordResetPepperProblem } from '../auth/passwordRecovery.js'
+import { quotaSettings, quotaSettingsProblems } from '../integrations/emailQuota.js'
+import { restrictionProblems, restrictionSummary } from '../integrations/recipientAllowlist.js'
 import { attachmentDirectoryProblem, projectRoot, storageDriver } from '../attachments/storage.js'
 
 /**
@@ -156,13 +159,49 @@ export function checkEnvironment(
     add('RESEND_API_KEY / RESEND_FROM', 'ok', 'Presentes. O envio real só é comprovado pelo roteiro de homologação.')
   }
 
-  const pepper = value(environment, 'PASSWORD_RESET_PEPPER')
-  if (!pepper) add('PASSWORD_RESET_PEPPER', 'aviso', 'Ausente: a recuperação de senha fica desligada.')
-  else if (pepper.length < 32) add('PASSWORD_RESET_PEPPER', 'erro', 'Curta demais: use ao menos 32 caracteres aleatórios.')
-  else add('PASSWORD_RESET_PEPPER', 'ok', 'Presente.')
+  // A mesma regra da API (auth/passwordRecovery.ts), sobre o valor sem espaços nas extremidades.
+  const pepper = passwordResetPepperProblem(environment.PASSWORD_RESET_PEPPER)
+  if (pepper === 'ausente') add('PASSWORD_RESET_PEPPER', 'aviso', 'Ausente: a recuperação de senha fica desligada.')
+  else if (pepper) {
+    add(
+      'PASSWORD_RESET_PEPPER',
+      'erro',
+      production
+        ? 'Curta demais: use ao menos 32 caracteres aleatórios. Em produção, a API não inicia.'
+        : 'Curta demais: use ao menos 32 caracteres aleatórios. Em produção, a API não iniciaria.',
+    )
+  } else add('PASSWORD_RESET_PEPPER', 'ok', 'Presente.')
 
   if (value(environment, 'NOTIFICATION_EMAILS_ENABLED') === 'true' && (!resendKey || !resendFrom)) {
     add('NOTIFICATION_EMAILS_ENABLED', 'erro', 'Ligada sem RESEND_API_KEY e RESEND_FROM: as mensagens ficam "não configuradas".')
+  }
+
+  // Lista de destinatários de teste: só o modo e as contagens, nunca os endereços.
+  for (const problem of restrictionProblems(environment)) add('EMAIL_RECIPIENT_ALLOWLIST', 'erro', problem)
+  const restriction = restrictionSummary(environment)
+  if (restriction.mode === 'off') {
+    add('EMAIL_RECIPIENT_RESTRICTION', 'aviso', 'Desligada: os e-mails reais saem para qualquer destinatário. Só depois da homologação, com autorização.')
+  } else if (restriction.allowedRecipients === 0) {
+    add('EMAIL_RECIPIENT_ALLOWLIST', 'aviso', 'Modo de testes restritos sem lista: nenhum e-mail real sai, nem a recuperação de senha.')
+  } else {
+    add('EMAIL_RECIPIENT_ALLOWLIST', 'ok', `Modo de testes restritos: ${restriction.allowedRecipients} destinatário(s) autorizado(s).`)
+  }
+
+  // Cota diária: sem limite, a fila de um provedor real não envia; a recuperação segue sem contagem.
+  for (const problem of quotaSettingsProblems(environment)) add('EMAIL_DAILY_LIMIT', 'erro', problem)
+  const quota = quotaSettings(environment)
+  if (quota.dailyLimit === null) {
+    add(
+      'EMAIL_DAILY_LIMIT',
+      value(environment, 'NOTIFICATION_EMAILS_ENABLED') === 'true' ? 'erro' : 'aviso',
+      'Ausente: as notificações não saem pelo provedor real, e a recuperação de senha não tem reserva diária.',
+    )
+  } else {
+    add(
+      'EMAIL_DAILY_LIMIT',
+      'ok',
+      `Limite de ${quota.dailyLimit} por dia (UTC), com ${quota.recoveryReserve} reservados à recuperação de senha. Confira no painel do Resend.`,
+    )
   }
 
   if (value(environment, 'GOOGLE_CALENDAR_ENABLED') === 'true') {

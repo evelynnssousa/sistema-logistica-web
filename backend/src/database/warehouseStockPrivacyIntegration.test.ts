@@ -91,9 +91,9 @@ async function createUser(email: string, role = 'requester'): Promise<Session> {
   return signIn(email)
 }
 
-async function staff(email: string, grants: Permission[]): Promise<Session> {
+async function staff(email: string, grants: Permission[], denied: Permission[] = []): Promise<Session> {
   const user = await createUser(email, 'slm_operator')
-  const result = await put(`/admin/users/${user.id}/access`, admin, { role: 'slm_operator', slmMember: true, grantedPermissions: grants, deniedPermissions: [] })
+  const result = await put(`/admin/users/${user.id}/access`, admin, { role: 'slm_operator', slmMember: true, grantedPermissions: grants, deniedPermissions: denied })
   assert.equal(result.status, 200, result.text)
   return user
 }
@@ -433,12 +433,15 @@ test('administrador fora da SLM e Operador SLM autorizado continuam no estoque; 
   assert.equal((await get('/warehouse/control-records', admin)).status, 200)
   assert.ok((await get('/reports/operational', admin)).body.stockFlow.length >= 1)
 
-  // Operador SLM: com a concessão, administra o estoque; sem ela, não.
+  // Operador SLM da equipe: administra o estoque pelo perfil, e também com concessão redundante;
+  // com a retirada individual, não.
+  const plainOperator = await staff('sigilo-operador-perfil@example.gov.br', [])
+  assert.equal((await get('/warehouse/stock', plainOperator)).status, 200)
   const operator = await staff('sigilo-operador@example.gov.br', ['warehouse:manage'])
   assert.equal((await get('/warehouse/stock', operator)).status, 200)
-  const plainOperator = await staff('sigilo-operador-sem@example.gov.br', [])
-  assert.equal((await get('/warehouse/stock', plainOperator)).status, 403)
-  assert.equal((await permissionsOf(plainOperator)).includes('warehouse:manage'), false)
+  const deniedOperator = await staff('sigilo-operador-sem@example.gov.br', [], ['warehouse:manage'])
+  assert.equal((await get('/warehouse/stock', deniedOperator)).status, 403)
+  assert.equal((await permissionsOf(deniedOperator)).includes('warehouse:manage'), false)
 
   // Ao deixar a equipe SLM (ou o perfil), o servidor retira a concessão.
   const demoted = await put(`/admin/users/${operator.id}/access`, admin, {
@@ -459,9 +462,10 @@ test('administrador fora da SLM e Operador SLM autorizado continuam no estoque; 
     [admin.id, created.body.id],
   )
   assert.equal(audit.rows.length, 1)
-  const onlyManage = await staff('sigilo-operador-gestao@example.gov.br', ['warehouse:manage'])
+  const onlyManage = await staff('sigilo-operador-gestao@example.gov.br', [], ['warehouse:forecast'])
   assert.equal((await put(forecastPath, onlyManage, { date: '2031-05-10' })).status, 403)
-  const forecaster = await staff('sigilo-operador-previsao@example.gov.br', ['warehouse:manage', 'warehouse:forecast'])
+  // O perfil Operador SLM na equipe já traz as duas.
+  const forecaster = await staff('sigilo-operador-previsao@example.gov.br', [])
   const allowed = await put(forecastPath, forecaster, { date: '2031-05-10' })
   assert.equal(allowed.status, 200, allowed.text)
 

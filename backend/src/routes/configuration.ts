@@ -4,7 +4,7 @@ import type { AuthenticatedIdentity } from '../auth/roles.js'
 import { requireAuth } from '../auth/sessionRuntime.js'
 import { insertAuthAuditEvent } from '../database/authAuditRepository.js'
 import { ConfigRepository, readPublishedConfig } from '../database/configRepository.js'
-import { conflict, notFound, sendModuleError } from '../database/moduleErrors.js'
+import { conflict, ModuleError, notFound, sendModuleError } from '../database/moduleErrors.js'
 import { getDatabasePool } from '../database/pool.js'
 import { UserRepository } from '../database/userRepository.js'
 import {
@@ -25,7 +25,14 @@ import {
   templateTextProblem,
   templateVariables,
 } from '../integrations/templateVariables.js'
-import { resolveEmailTransport } from '../integrations/transports.js'
+import { IntegrationError, resolveEmailTransport } from '../integrations/transports.js'
+import { quotaEnforcedFor, reserveEmailQuota } from '../integrations/emailQuota.js'
+import {
+  RECIPIENT_OUTSIDE_TEST_LIST,
+  recipientDomains,
+  recipientsOutsideList,
+  restrictionEnforcedFor,
+} from '../integrations/recipientAllowlist.js'
 import { requireCsrf } from '../middleware/requireCsrf.js'
 import { requirePermission } from '../middleware/requirePermission.js'
 import {
@@ -270,14 +277,65 @@ router.post(
     if (!transport) throw conflict('O serviço de e-mail não está ativo neste ambiente. Use a visualização prévia.')
 
     const message = renderEmail(content.event, sampleContext(content.event), null, overrideOf(content))
-    await transport.send({
-      idempotencyKey: `slm-teste-${identity.userId}-${Date.now()}`,
-      to: account.email,
-      cc: [],
-      subject: `[TESTE] ${message.subject}`,
-      text: `MENSAGEM DE TESTE, COM DADOS DE EXEMPLO.\n\n${message.text}`,
-      html: `<p style="font-family:Arial,sans-serif;font-weight:bold">MENSAGEM DE TESTE, COM DADOS DE EXEMPLO.</p>${message.html}`,
+    // Lista de testes antes da cota: o endereço da própria conta também precisa estar autorizado.
+    if (restrictionEnforcedFor(transport.provider) && recipientsOutsideList([account.email]).length > 0) {
+      await insertAuthAuditEvent(getDatabasePool(), {
+        actorUserId: identity.userId,
+        actorKind: 'user',
+        subjectUserId: null,
+        sessionId: null,
+        eventType: 'email_recipient_blocked',
+        result: 'denied',
+        details: { channel: 'teste_modelo', template: content.event, domains: recipientDomains([account.email]) },
+      }).catch(() => undefined)
+      throw new ModuleError(
+        'O e-mail da sua conta não está na lista de destinatários autorizados para testes. Nada foi enviado.',
+        422,
+        RECIPIENT_OUTSIDE_TEST_LIST,
+      )
+    }
+    // O teste também consome a cota diária das notificações, nunca a reserva da recuperação de senha.
+    const quota = await reserveEmailQuota(getDatabasePool(), 'notification', 1, {
+      enforced: quotaEnforcedFor(transport.provider),
     })
+    if (!quota.allowed) {
+      throw new ModuleError(
+        quota.code === 'DAILY_LIMIT_REACHED'
+          ? 'O limite diário de e-mails das notificações foi atingido. Nada foi enviado.'
+          : 'O limite diário de e-mails não está configurado ou não pôde ser conferido. Nada foi enviado.',
+        429,
+        'EMAIL_QUOTA_UNAVAILABLE',
+      )
+    }
+    try {
+      await transport.send({
+        idempotencyKey: `slm-teste-${identity.userId}-${Date.now()}`,
+        to: account.email,
+        cc: [],
+        subject: `[TESTE] ${message.subject}`,
+        text: `MENSAGEM DE TESTE, COM DADOS DE EXEMPLO.\n\n${message.text}`,
+        html: `<p style="font-family:Arial,sans-serif;font-weight:bold">MENSAGEM DE TESTE, COM DADOS DE EXEMPLO.</p>${message.html}`,
+      })
+    } catch (error) {
+      // Só o código do erro: a resposta do provedor pode repetir endereço ou conteúdo.
+      const code = error instanceof IntegrationError ? error.code : 'UNEXPECTED'
+      await insertAuthAuditEvent(getDatabasePool(), {
+        actorUserId: identity.userId,
+        actorKind: 'user',
+        subjectUserId: null,
+        sessionId: null,
+        eventType: 'email_template_test_failed',
+        result: 'failure',
+        details: { event: content.event, code },
+      }).catch(() => undefined)
+      throw new ModuleError(
+        code === 'RESERVED_ADDRESS'
+          ? 'O endereço da sua conta é reservado a testes: nada foi enviado.'
+          : `O serviço de e-mail não aceitou o envio de teste (código ${code}). Nada foi enviado.`,
+        502,
+        'EMAIL_TEST_FAILED',
+      )
+    }
     await insertAuthAuditEvent(getDatabasePool(), {
       actorUserId: identity.userId,
       actorKind: 'user',

@@ -429,10 +429,10 @@ test('operador SLM com concessões abre em nome de outros setores, agenda e vê 
   assert.equal(me.body.user.role, 'slm_operator')
   assert.equal(me.body.user.slmMember, true)
 
-  // O perfil não concede as permissões especiais.
+  // O perfil não concede abrir em nome de outro setor; agendar vem do perfil, na equipe SLM.
   const body = { module: 'maintenance', ownSector: 'CPC', targetSector: 'RH' }
   assert.equal((await policyRoute('/criar', body, operator.cookie)).status, 403)
-  assert.equal((await policyRoute('/agendar', { module: 'fleet' }, operator.cookie)).status, 403)
+  assert.equal((await policyRoute('/agendar', { module: 'fleet' }, operator.cookie)).status, 200)
 
   await setAccess(admin, operator.id, {
     role: 'slm_operator',
@@ -1421,7 +1421,7 @@ async function currentAccess(userId: string) {
   return rows[0]
 }
 
-test('agendar: administrador sem SLM não pode; da SLM pode; operador só com concessão; solicitante nunca', async () => {
+test('agendar: administrador sem SLM não pode; da SLM pode; operador da SLM pelo perfil; solicitante nunca', async () => {
   const schedule = (session: Session, module: string) =>
     policyRoute('/agendar', { module }, session.cookie).then((response) => response.status)
 
@@ -1439,23 +1439,26 @@ test('agendar: administrador sem SLM não pode; da SLM pode; operador só com co
   assert.equal(await schedule(second, 'maintenance'), 200)
   assert.equal(await schedule(second, 'fleet'), 200)
 
+  // Operador SLM aprovado na equipe agenda pelo perfil, sem concessão manual.
   const operator = await createUser('operador-agenda@example.gov.br', 'slm_operator')
-  assert.equal(await schedule(operator, 'maintenance'), 403, 'sem concessão')
-  assert.equal(await schedule(operator, 'fleet'), 403, 'sem concessão')
+  assert.equal((await call('/auth/me', { session: operator })).body.user.slmMember, true)
+  assert.equal(await schedule(operator, 'maintenance'), 200, 'pelo perfil')
+  assert.equal(await schedule(operator, 'fleet'), 200, 'pelo perfil')
+  assert.deepEqual((await currentAccess(operator.id)).granted_permissions, [], 'sem concessão gravada')
 
+  // A retirada individual prevalece sobre o padrão do perfil.
   await setAccess(admin, operator.id, {
     role: 'slm_operator',
     slmMember: true,
-    grantedPermissions: ['requests:schedule'],
+    deniedPermissions: ['requests:schedule'],
   })
-  assert.equal(await schedule(operator, 'maintenance'), 200)
-  assert.equal(await schedule(operator, 'fleet'), 200)
+  assert.equal(await schedule(operator, 'maintenance'), 403, 'retirada individual')
+  assert.equal(await schedule(operator, 'fleet'), 403, 'retirada individual')
 
   // Cada módulo exige sua própria permissão.
   await setAccess(admin, operator.id, {
     role: 'slm_operator',
     slmMember: true,
-    grantedPermissions: ['requests:schedule'],
     deniedPermissions: ['fleet:schedule'],
   })
   assert.equal(await schedule(operator, 'fleet'), 403)
@@ -1463,11 +1466,15 @@ test('agendar: administrador sem SLM não pode; da SLM pode; operador só com co
   await setAccess(admin, operator.id, {
     role: 'slm_operator',
     slmMember: true,
-    grantedPermissions: ['requests:schedule'],
     deniedPermissions: ['maintenance:schedule'],
   })
   assert.equal(await schedule(operator, 'maintenance'), 403)
   assert.equal(await schedule(operator, 'fleet'), 200)
+
+  // Fora da equipe, o mesmo operador passa a Solicitante e não agenda mais.
+  await setAccess(admin, operator.id, { role: 'requester', slmMember: false })
+  assert.equal(await schedule(operator, 'maintenance'), 403, 'fora da equipe')
+  assert.equal(await schedule(operator, 'fleet'), 403, 'fora da equipe')
 
   const requester = await createUser('solicitante-agenda@example.gov.br')
   const refused = await setAccess(admin, requester.id, {
@@ -1477,6 +1484,113 @@ test('agendar: administrador sem SLM não pode; da SLM pode; operador só com co
   assert.equal(await schedule(requester, 'maintenance'), 403)
 
   await setAccess(admin, second.id, { role: 'requester' })
+})
+
+test('conjunto operacional da SLM: aprovação, setor, equipe, perfil, API direta e auditoria', async () => {
+  const operational: Permission[] = ['requests:schedule', 'warehouse:manage', 'warehouse:forecast']
+  const schedule = (session: Session, module: string) =>
+    policyRoute('/agendar', { module }, session.cookie).then((response) => response.status)
+  const warehouseStatus = async (session: Session) => [
+    (await call('/warehouse/stock', { session })).status,
+    (await call('/warehouse/inventory-checks', { session })).status,
+  ]
+
+  // 1. Aprovado como Operador SLM, recebe o conjunto sem concessão, mesmo lotado fora da SLM.
+  const operator = await createUser('op-conjunto@example.gov.br', 'slm_operator', 'Gabinete')
+  const granted = await myPermissions(operator)
+  for (const permission of operational) assert.ok(granted.includes(permission), permission)
+  for (const permission of [
+    'flights:cpf:read', 'requests:create_on_behalf', 'slm_central:read', 'users:read', 'users:manage',
+    'users:approve', 'settings:manage', 'audit:read',
+  ]) {
+    assert.equal(granted.includes(permission), false, permission)
+  }
+  assert.deepEqual((await currentAccess(operator.id)).granted_permissions, [], 'nada gravado como concessão')
+  assert.equal(await schedule(operator, 'maintenance'), 200)
+  assert.equal(await schedule(operator, 'fleet'), 200)
+  assert.deepEqual(await warehouseStatus(operator), [200, 200])
+  // Sem administração: não gerencia usuários nem o próprio acesso.
+  assert.equal((await call('/admin/users', { session: operator })).status, 403)
+  assert.equal((await setAccess(operator, operator.id, { role: 'administrator', slmMember: true })).status, 403)
+
+  const approval = await pool.query(
+    `SELECT details FROM public.auth_audit_events
+      WHERE target_user_id = $1 AND action = 'registration.approve'`,
+    [operator.id],
+  )
+  assert.equal(approval.rows[0].details.slmMember, 'true')
+  for (const permission of operational) {
+    assert.ok(approval.rows[0].details.effectivePermissions.includes(permission), `auditoria: ${permission}`)
+  }
+
+  // 2. Lotado no setor "SLM", mas Solicitante: o setor nunca conta, nem com valor forçado no banco.
+  const sectorOnly = await createUser('setor-slm@example.gov.br', 'requester', 'SLM')
+  await pool.query(
+    `UPDATE public.auth_user_access SET granted_permissions = $2 WHERE user_id = $1`,
+    [sectorOnly.id, operational],
+  )
+  const sectorPermissions = await myPermissions(sectorOnly)
+  for (const permission of operational) assert.equal(sectorPermissions.includes(permission), false, permission)
+  assert.equal(await schedule(sectorOnly, 'maintenance'), 403)
+  assert.equal(await schedule(sectorOnly, 'fleet'), 403)
+  assert.deepEqual(await warehouseStatus(sectorOnly), [403, 403])
+
+  // 3. Mesmo perfil sem a equipe SLM (conta anterior à migração 003, lida pelas colunas antigas).
+  const legacy = await createUser('op-sem-equipe@example.gov.br', 'slm_operator', 'CPC')
+  await pool.query(`DELETE FROM public.auth_user_access WHERE user_id = $1`, [legacy.id])
+  const legacyMe = (await call('/auth/me', { session: legacy })).body.user
+  assert.equal(legacyMe.role, 'slm_operator')
+  assert.equal(legacyMe.slmMember, false)
+  for (const permission of operational) assert.equal(legacyMe.permissions.includes(permission), false, permission)
+  assert.ok(legacyMe.permissions.includes('requests:update'), 'o restante do atendimento continua')
+  assert.equal(await schedule(legacy, 'maintenance'), 403)
+  assert.equal(await schedule(legacy, 'fleet'), 403)
+  assert.deepEqual(await warehouseStatus(legacy), [403, 403])
+
+  // 4. Retirada da equipe: o perfil passa a Solicitante, nada sobra, e a auditoria registra o que saiu.
+  const removed = await setAccess(admin, operator.id, { role: 'requester', slmMember: false })
+  assert.equal(removed.status, 200, removed.text)
+  const afterRemoval = await myPermissions(operator)
+  for (const permission of [...operational, 'requests:read_all', 'requests:update']) {
+    assert.equal(afterRemoval.includes(permission), false, permission)
+  }
+  assert.equal(await schedule(operator, 'maintenance'), 403)
+  assert.deepEqual(await warehouseStatus(operator), [403, 403])
+  const lost = await pool.query(
+    `SELECT details FROM public.auth_audit_events
+      WHERE target_user_id = $1 AND action = 'user.role_changed' ORDER BY id DESC LIMIT 1`,
+    [operator.id],
+  )
+  for (const permission of operational) {
+    assert.ok(lost.rows[0].details.effectiveRemoved.includes(permission), `perdida: ${permission}`)
+  }
+  assert.ok(
+    (await pool.query(`SELECT 1 FROM public.auth_audit_events WHERE target_user_id = $1 AND action = 'user.slm_removed'`, [operator.id])).rowCount,
+  )
+
+  // 5. Reinclusão: o conjunto volta pelo perfil, com a auditoria do que foi ganho.
+  await setAccess(admin, operator.id, { role: 'slm_operator', slmMember: true })
+  const back = await myPermissions(operator)
+  for (const permission of operational) assert.ok(back.includes(permission), permission)
+  const gained = await pool.query(
+    `SELECT details FROM public.auth_audit_events
+      WHERE target_user_id = $1 AND action = 'user.role_changed' ORDER BY id DESC LIMIT 1`,
+    [operator.id],
+  )
+  for (const permission of operational) {
+    assert.ok(gained.rows[0].details.effectiveAdded.includes(permission), `ganha: ${permission}`)
+  }
+
+  // 6. Administrador fora da SLM: administra, mas não agenda nem registra previsão.
+  const outsider = await createUser('admin-conjunto@example.gov.br', 'administrator')
+  const outsiderPermissions = await myPermissions(outsider)
+  assert.equal(outsiderPermissions.includes('requests:schedule'), false)
+  assert.equal(outsiderPermissions.includes('warehouse:forecast'), false)
+  assert.ok(outsiderPermissions.includes('users:manage'))
+  assert.equal(await schedule(outsider, 'maintenance'), 403)
+
+  await setAccess(admin, outsider.id, { role: 'requester' })
+  await setAccess(admin, operator.id, { role: 'requester' })
 })
 
 test('em nome de outro setor: dentro e fora da SLM, com e sem concessão, inclusive administrador', async () => {
@@ -1602,12 +1716,15 @@ test('sair da SLM revoga no servidor, mesmo com reenvio, e voltar não devolve',
   assert.equal(changed.details.reason, 'slm_removed')
   assert.deepEqual([...changed.details.automaticallyRevoked].sort(), [...special].sort())
 
-  // Voltar à equipe não devolve nada.
+  // Voltar à equipe não devolve as concessões individuais; o agendamento volta só por ser
+  // padrão do perfil Operador SLM na equipe, e não fica gravado como concessão.
   await setAccess(admin, operator.id, { role: 'slm_operator', slmMember: true, grantedPermissions: ['reports:read'] })
   const back = await myPermissions(operator)
-  for (const permission of special) {
+  for (const permission of ['flights:cpf:read', 'requests:create_on_behalf'] as const) {
     assert.equal(back.includes(permission), false, permission)
   }
+  assert.ok(back.includes('requests:schedule'), 'padrão do perfil')
+  assert.deepEqual((await currentAccess(operator.id)).granted_permissions, ['reports:read'])
 })
 
 test('rebaixar um administrador revoga o CPF, e ele não volta ao ser promovido de novo', async () => {
@@ -1747,7 +1864,9 @@ test('desativar revoga as permissões especiais, com auditoria, e reativar não 
   const session = await signIn(email)
   const permissions = await myPermissions(session)
   assert.equal(permissions.includes('flights:cpf:read'), false)
-  assert.equal(permissions.includes('requests:schedule'), false)
+  // O agendamento volta só como padrão do perfil Operador SLM na equipe, não como concessão.
+  assert.ok(permissions.includes('requests:schedule'), 'padrão do perfil')
+  assert.deepEqual((await currentAccess(operator.id)).granted_permissions, ['reports:read'])
   assert.ok(permissions.includes('reports:read'), 'as demais concessões permanecem')
 })
 
