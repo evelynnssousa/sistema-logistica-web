@@ -60,9 +60,11 @@ function Block({
       {error && <Alert tone="error">{error}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}
       {canManage && (
-        <button type="submit" className="maintenance-secondary-button" disabled={busy}>
-          Salvar
-        </button>
+        <div className="ui-card-actions">
+          <button type="submit" className="maintenance-primary-button" disabled={busy}>
+            Salvar
+          </button>
+        </div>
       )}
     </form>
   )
@@ -156,14 +158,14 @@ function NotificationsBlock({
           onChange={(event) => setReminderDays(event.target.value)}
         />
       </label>
-      <fieldset className="maintenance-form-field">
+      <fieldset className="driver-settings-fieldset parameter-check-list">
         <legend>E-mails de segurança</legend>
         <p>
           Avisos à pessoa dona da conta e aos administradores. Nunca levam senha, código ou endereço de
           acesso. Só saem com o serviço de e-mail ativado pela instituição.
         </p>
         {securityOptions.map((option) => (
-          <label key={option.key}>
+          <label key={option.key} className="parameter-check">
             <input
               type="checkbox"
               disabled={!canManage}

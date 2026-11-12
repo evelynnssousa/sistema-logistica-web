@@ -2739,3 +2739,57 @@ a {
 .ui-card > :is(h2, h3):first-child {
   margin-top: 0;
 }
+
+/* Configurações e demais formulários em cartão: título, descrição e campos com respiro. */
+.ui-card > h3:first-child {
+  margin: 0 0 4px;
+}
+
+.ui-card > .management-hint {
+  margin: 0 0 16px;
+}
+
+.page-content .settings-group {
+  margin-top: 28px;
+}
+
+.page-content .settings-group > header {
+  margin-bottom: 16px;
+}
+
+.page-content .settings-grid {
+  gap: 16px;
+}
+
+.page-content .driver-settings-fieldset {
+  margin: 16px 0 0;
+  padding: 12px 16px 16px;
+  border-radius: var(--radius-small);
+}
+
+/* Lista de caixas de marcar: uma por linha, com o texto ao lado da caixa. */
+.parameter-check-list {
+  display: grid;
+  gap: 8px;
+}
+
+.parameter-check-list > p {
+  margin: 0 0 4px;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+/* Listas editáveis (motivos padronizados): o campo de texto ocupa a linha. */
+.parameter-fields .action-row {
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.parameter-fields .action-row > .maintenance-form-field {
+  flex: 1 1 360px;
+}
+
+/* A planilha não encosta no conteúdo que vem depois. */
+.spreadsheet-download {
+  margin-bottom: 16px;
+}

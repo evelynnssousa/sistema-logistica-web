@@ -88,7 +88,7 @@ function PortalBlock({
       {error && <Alert tone="error">{error}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}
       {canManage && (
-        <div className="driver-settings-actions">
+        <div className="driver-settings-actions ui-card-actions">
           <button type="submit" className="maintenance-primary-button" disabled={busy}>Salvar</button>
           <button type="button" className="maintenance-secondary-button" disabled={busy} onClick={onCancel}>Cancelar</button>
         </div>
