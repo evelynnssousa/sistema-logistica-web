@@ -36,7 +36,7 @@ Referência central dos supercomandos. Os requisitos ficam em `REQUISITOS_FUNCIO
 | Notificações internas | Concluída | Depende da migração 006 |
 | Fila, modelos e histórico de e-mails | Concluída | Depende da migração 006. Testada com provedor simulado |
 | Envio real de e-mails | **Não ativo** | Conector pronto, nunca usado com o Resend real |
-| Google Calendar | **Não ativo** | Conector pronto, nunca usado com o Google real |
+| Google Calendar | **Removido (11/11/2026)** | A pedido da responsável. A agenda interna inclui Manutenção, Frota e Passagens |
 | Avisos de privacidade | **Parcial** | Prontos. Falta validação institucional do texto |
 | Início, Dashboard e relatórios | Concluída | |
 | Auditoria | Concluída | Recusas por permissão nas rotas dos módulos não são auditadas; só as de CPF |
@@ -61,7 +61,7 @@ Referência central dos supercomandos. Os requisitos ficam em `REQUISITOS_FUNCIO
 Dependem de decisão da instituição. O sistema segue o comportamento indicado até lá.
 
 1. **Administrador pode agendar sem ser da SLM?** O requisito diz que só integrantes autorizados da SLM agendam. A implementação corrigida da D4, preservada aqui, permite ao Administrador agendar pelo perfil, mesmo fora da equipe. Não há registro escrito da D4 no repositório para confirmar.
-2. **Solicitante pode cancelar a própria solicitação?** Hoje não: o perfil não tem `requests:cancel`.
+2. **Solicitante pode cancelar a própria solicitação?** Pelo perfil, não. Desde 11/11/2026 existe a permissão individual `requests:cancel_own` ("Cancelar as próprias solicitações antes do atendimento"): com ela, o solicitante cancela, com motivo, só a que ele abriu e só enquanto aguarda agendamento (Manutenção e Frota) ou está em cotação (Passagens). Não vem em nenhum perfil. Se a instituição decidir que todos os solicitantes podem, basta incluí-la no perfil Solicitante.
 3. **Quem controla o estoque oficial?** A entrega não altera `estoque_atual`. Se o JUCESP tiver de controlar saldo, será preciso ativar `stock_movements` e definir o saldo inicial.
 4. **Cancelar um atendimento em andamento é permitido?** Hoje é, com motivo obrigatório, para o atendimento não ficar sem desfecho.
 5. **Fluxos do sistema antigo:** falta acesso às planilhas para conferir campos, sobretudo cadastro de veículos e de motoristas, criados sem essa conferência.
@@ -87,7 +87,7 @@ Dependem de decisão da instituição. O sistema segue o comportamento indicado 
 | Revisão de segurança institucional e LGPD | Área responsável | Não realizada. Lista em `PRIVACIDADE_E_TRATAMENTO_DE_DADOS.md` |
 | Migração 006 no banco real | Autorização e backup | Solicitações funcionam, sem comunicações |
 | Worker, Resend e autorização de envio | Ver `INTEGRACOES_E_AUTOMACOES.md` | Comunicações ficam registradas, sem envio |
-| Conta de serviço e calendários do Google | Ver `INTEGRACOES_E_AUTOMACOES.md` | Sem sincronização. Agenda interna funciona |
+| ~~Conta de serviço e calendários do Google~~ | Não é mais necessária: integração removida em 11/11/2026 | Agenda interna funciona |
 | Acesso ao sistema antigo | Planilhas e Apps Script | Paridade dos fluxos não verificada |
 | Migrações 007 a 010 no banco real | Autorização e backup | Funções novas respondem 503; protocolo segue o número antigo |
 | Armazenamento de anexos (`ATTACHMENTS_DIR` ou serviço aprovado) e antivírus | Decisão da TI | Anexos indisponíveis |
@@ -270,6 +270,6 @@ Conferência dos critérios contra o código, feita em 04/11/2026 a pedido da re
 
 ## Próximos blocos
 
-- **Aplicação das migrações 002 a 018 no banco real**, com autorização e backup, seguindo `BACKUP_E_MIGRACOES_SUPABASE.md`.
+- **Aplicação das migrações 002 a 019 no banco real**, com autorização e backup, seguindo `BACKUP_E_MIGRACOES_SUPABASE.md`.
 - **Validação das integrações:** homologação com credenciais institucionais, conforme `INTEGRACOES_E_AUTOMACOES.md`.
 - **Fora dos supercomandos, sem data:** resolver as questões em aberto.

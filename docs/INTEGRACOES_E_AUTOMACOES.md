@@ -2,14 +2,16 @@
 
 Situação ao fim do Supercomando 03 (04/11/2026).
 
-**Nenhuma integração externa está ativa.** Nenhum e-mail real foi enviado e nenhum evento foi criado em um Google Calendar real. Os dois conectores existem e foram testados só contra provedores simulados. A migração 006 não foi aplicada no banco real.
+**Nenhuma integração externa está ativa.** Nenhum e-mail real foi enviado. O conector do Resend existe e foi testado só contra provedor simulado. A migração 006 não foi aplicada no banco real.
+
+**Google Calendar removido em 11/11/2026**, a pedido da responsável: a agenda é só interna e passou a incluir Passagens aéreas. A tabela `calendar_sync_items` (migração 006) continua no banco apenas como histórico; nada novo é gravado nela, e não há tela, rota, variável ou processo que a use.
 
 | Item | Situação |
 |---|---|
 | Notificações internas | Prontas, dependem da migração 006 |
 | Fila, modelos e histórico de e-mails | Prontos, dependem da migração 006 |
 | Envio pelo Resend | Conector pronto, **nunca usado com o provedor real**. Falta configuração e validação |
-| Sincronização com Google Calendar | Conector pronto, **nunca usado com o provedor real**. Falta autorização, configuração e validação |
+| Sincronização com Google Calendar | **Removida em 11/11/2026.** A agenda é só interna |
 | Agenda interna, conflitos, filtros e detalhes | Prontos. Filtros e detalhes não dependem da 006 |
 | Relatórios operacionais | Prontos |
 | Sistema antigo | Não alterado, e sem sincronização com as planilhas |
@@ -37,8 +39,7 @@ Conferidas nos cabeçalhos de cada arquivo em `backend/database/schema/`. Apliqu
 Ação na solicitação ── mesma transação ──> evento, fila de e-mails, notificações, agenda
                                                     │
                        worker, fora da requisição <─┘
-                          ├─ Resend (ou simulado)
-                          └─ Google Calendar (ou simulado)
+                          └─ Resend (ou simulado)
 ```
 
 - **Registro garantido:** o evento é gravado na mesma transação da mudança. Se a mudança for desfeita, nada é comunicado.
@@ -85,7 +86,7 @@ A recuperação de senha e a fila de notificações usam a mesma conta do Resend
 - **Quem consome:** a fila de notificações, as mensagens manuais da Central de comunicação e o envio de teste de modelo usam a parte das notificações (limite menos a reserva). A recuperação de senha usa a reserva e o que as notificações deixaram livre, até o total.
 - **Contagem:** cada destinatário conta como uma mensagem (destinatário, outros destinatários e cópias). Uma mensagem reservada conta mesmo que o envio falhe depois, porque o provedor pode tê-la registrado.
 - **Persistência e concorrência:** o consumo fica em `public.email_daily_usage` (migração 019), uma linha por dia em UTC. A data é calculada uma única vez por reserva e enviada às duas instruções, para que a virada da meia-noite não recuse uma reserva por engano. Cada reserva é um `UPDATE` condicional sobre a linha do dia: o PostgreSQL trava a linha e reavalia o limite, então reinícios do Render e workers simultâneos não zeram nem ultrapassam a contagem.
-- **Cota esgotada:** a mensagem volta à fila como "Na fila", com o código `DAILY_LIMIT_REACHED`, **sem gastar tentativa**, e espera o início do dia seguinte (UTC). As demais reservadas no mesmo ciclo voltam junto. Se ela passar da validade enquanto espera, expira. Na recuperação, o código não é enviado, é invalidado, e a falha fica na auditoria (`auth.password_recovery_email_failed`, código `DAILY_LIMIT_REACHED`). O teste de modelo responde 429.
+- **Cota esgotada:** a mensagem volta à fila como "Na fila", com o código `DAILY_LIMIT_REACHED`, **sem gastar tentativa**, e espera o início do dia seguinte (UTC). As demais reservadas no mesmo ciclo voltam junto, exceto as que têm algum endereço fora da lista de destinatários permitidos: essas recebem o bloqueio definitivo, como receberiam se a cota não tivesse acabado (o resultado não depende da ordem do lote nem de quantos workers rodam ao mesmo tempo). Se ela passar da validade enquanto espera, expira. Na recuperação, o código não é enviado, é invalidado, e a falha fica na auditoria (`auth.password_recovery_email_failed`, código `DAILY_LIMIT_REACHED`). O teste de modelo responde 429.
 - **Cota indeterminada:** com o provedor real e sem `EMAIL_DAILY_LIMIT`, a fila não envia (`QUOTA_NOT_CONFIGURED`). Com limite, mas sem a migração 019 ou sem leitura do contador, a fila também não envia (`QUOTA_UNAVAILABLE`), e tenta de novo em uma hora. A recuperação de senha envia nesses dois casos, sem contagem: com a fila parada, nada disputa a cota com ela, e ela é a função que esta regra protege.
 - **Provedores falsos** (testes, modo simulado) não consomem cota, a menos que `EMAIL_DAILY_LIMIT` esteja definido.
 - **Agrupamento:** "Novo cadastro aguardando análise" e "Alerta de bloqueio de acesso" (avisos à administração, que não identificam ninguém) somam na mensagem ainda não enviada da mesma pessoa, dentro da janela. Se a anterior acabou de sair, a próxima espera o fim da janela e reúne o que vier até lá. O texto passa a dizer quantos foram ("Foram recebidos 3 novos pedidos de cadastro..."). Uma trava consultiva (`pg_advisory_xact_lock`) impede que dois acontecimentos simultâneos criem duas mensagens. O aviso no sino continua um por acontecimento.
@@ -277,7 +278,7 @@ Solicitações e cadastros pendentes continuam nas telas próprias.
 
 ## Agenda interna
 
-A agenda é uma consulta sobre `service_requests`. Não existe segunda fonte de agendamentos: `calendar_sync_items` só controla o que falta refletir no calendário externo.
+A agenda é uma consulta sobre `service_requests`. Não existe segunda fonte de agendamentos nem calendário externo. Manutenção e Frota entram pelo agendamento da SLM. **Passagens aéreas** (desde 11/11/2026) entram pela viagem pedida: um compromisso na ida e outro na volta, na data e no horário do formulário (horário de Brasília), sem dados de passageiros. O filtro de situação usa os status de Manutenção e Frota; em Passagens, só "Cancelado" tem equivalente. Uma data impossível gravada por engano não aparece e não impede a agenda de carregar.
 
 Visualização por dia, semana e mês; filtros por módulo, período, situação e responsável; detalhes do compromisso, histórico, link para a solicitação, reagendamento e cancelamento na própria janela, usando as mesmas rotas e permissões dos módulos. Compromissos de vários dias aparecem em cada dia. Antes, um compromisso iniciado antes do período exibido não aparecia.
 
@@ -296,43 +297,6 @@ Os requisitos não trazem regras de disponibilidade. Por isso, **o sistema avisa
 | Tela desatualizada | `versao` em `POST .../schedule` responde 409 se o registro mudou |
 
 **Limites:** editar o veículo depois de agendar não repete a conferência. Não há verificação de disponibilidade da equipe como um todo. Saber se o conflito deve bloquear é uma decisão institucional.
-
-## Google Calendar
-
-Implementado sem bibliotecas novas (`backend/src/integrations/transports.ts`): conta de serviço, OAuth 2.0 para servidores, escopo `calendar.events`.
-
-- **Reagendar:** atualiza o mesmo evento. **Cancelar:** remove o evento.
-- **Início, conclusão e edição:** atualizam o evento, se já acompanhado.
-- **Conteúdo:** módulo, protocolo, título, situação, setor e, com `APP_PUBLIC_URL`, o link. Sem solicitante, responsável, descrição ou passageiros.
-- **Sem término previsto:** o Google exige um fim. É enviada 1 hora, com `endTimeUnspecified`, só para exibição. **Validar no ambiente real.**
-- **Indisponibilidade:** a agenda interna não depende do Google em nenhum ponto.
-- **Conteúdo externo:** o título vem de texto livre (por exemplo, o local do serviço). Ver `PRIVACIDADE_E_TRATAMENTO_DE_DADOS.md`.
-
-Passagens e Almoxarifado não entram na agenda.
-
-## Histórico e rastreabilidade
-
-`request_history` e `material_request_history` têm o mesmo formato: quem, quando, ação, status anterior e novo, comentário e detalhes. As duas telas exibem o histórico no mesmo formato. Nenhuma tem rota de alteração, e os gatilhos da migração 005 recusam `UPDATE` e `DELETE`. `integration_events` e `integration_attempts` são igualmente imutáveis.
-
-CPF válido digitado em comentário, motivo ou ocorrência é mascarado antes de gravar. Telefones são mantidos.
-
-**Observação:** o gatilho da 005 recusa alterações em `request_history` e `material_request_history`, mas com a mensagem técnica "record new has no field action", e não com a mensagem prevista. A proteção funciona. Como a 005 não foi aplicada, vale corrigir o texto antes de aplicá-la. Não alterei a 005.
-
-**Limite:** a conferência de inventário tem auditoria, mas não uma tabela de histórico própria.
-
-## Relatórios
-
-`GET /reports/operational` e a seção "Agendamentos e execução" em Relatórios, com exportação CSV.
-
-| Indicador | Fonte | Limitação informada |
-|---|---|---|
-| Agendamentos, reagendamentos e cancelamentos | Histórico | Conta ações, não solicitações |
-| Tempo de atendimento | Início e término reais | Mostra quantos registros entraram e quantos ficaram de fora |
-| Execução de frota, ocorrências e atrasos | Registros da frota | |
-| Pedidos por origem e parciais | Pedidos de material | |
-| Conferência e divergências | Conferências, só com `warehouse:manage` | |
-
-O período considera a data de abertura. Sem `requests:read_all`, cada pessoa vê só o próprio alcance. Não há estimativas nem valores fictícios. PDF não foi implementado.
 
 ## O que a TI precisa fornecer
 
@@ -354,16 +318,9 @@ O período considera a data de abertura. Sem `requests:read_all`, cada pessoa v�
 | Cópias, se autorizadas | `EMAIL_CC_MAINTENANCE`, `_FLEET`, `_FLIGHTS`, `_WAREHOUSE` | Sem cópias |
 | Prazo de lembrete, se desejado | Parâmetros, na tela, ou `NOTIFICATION_PENDING_DAYS` | Sem lembretes |
 
-**Google Calendar:**
+**Validação antes de declarar ativo:** em ambiente de homologação, com caixas de e-mail de teste, criar, reagendar e cancelar uma solicitação; conferir a entrega; forçar uma falha e reprocessar.
 
-1. Projeto no Google Cloud institucional, com a Google Calendar API ativada.
-2. Conta de serviço própria do sistema, nunca uma conta pessoal, e sua chave: `GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_CALENDAR_PRIVATE_KEY`.
-3. Calendários institucionais compartilhados com a conta de serviço, com permissão "Fazer alterações nos eventos": `GOOGLE_CALENDAR_ID_MAINTENANCE`, `GOOGLE_CALENDAR_ID_FLEET`.
-4. `GOOGLE_CALENDAR_ENABLED=true`.
-
-**Validação antes de declarar ativo:** em ambiente de homologação, com calendário e caixas de e-mail de teste, criar, reagendar e cancelar uma solicitação; conferir a entrega, o evento e o tempo de renovação do token; forçar uma falha e reprocessar.
-
-O transporte simulado (`EMAIL_TRANSPORT=simulated`, `GOOGLE_CALENDAR_TRANSPORT=simulated`) é recusado em produção. A tela de Integrações mostra "Não configurado", "Simulado" ou "Configurado", e esta última só significa que os valores existem.
+O transporte simulado (`EMAIL_TRANSPORT=simulated`) é recusado em produção. Variáveis `GOOGLE_CALENDAR_*` que sobrarem no painel são ignoradas, e o `npm run config:check` avisa que podem ser apagadas. A tela de Integrações mostra "Não configurado", "Simulado" ou "Configurado", e esta última só significa que os valores existem.
 
 ## Compatibilidade com o sistema antigo
 
@@ -373,17 +330,17 @@ O transporte simulado (`EMAIL_TRANSPORT=simulated`, `GOOGLE_CALENDAR_TRANSPORT=s
 |---|---|---|
 | Confirmação, agendamento, reagendamento, cancelamento | Modernizada: fila, tentativas e histórico | Textos, remetentes e destinatários |
 | Histórico | Modernizado: imutável | Campos que o antigo registrava |
-| Calendários | Conector pronto, sem validação | Quantos calendários existem e quem os usa |
+| Calendários | Só agenda interna (Google Calendar removido em 11/11/2026) | Se o antigo usa calendários do Google, eles deixam de receber os agendamentos do novo |
 | Dashboard | Dados reais do novo sistema | Indicadores do antigo |
 | Execução de frota | Com ocorrências e atrasos | Campos, sobretudo veículos e motoristas |
 
-O sistema antigo não foi alterado. Enquanto os dois funcionarem, uma solicitação registrada em um não aparece no outro. Se o antigo também criar eventos nos mesmos calendários, **haverá compromissos paralelos**, sem conflito técnico, mas sem deduplicação. Use calendários distintos ou decida antes qual dos dois escreve.
+O sistema antigo não foi alterado. Enquanto os dois funcionarem, uma solicitação registrada em um não aparece no outro.
 
 ## Testes
 
 | Comando | Cobre |
 |---|---|
-| `npm run test:backend` | Redação, modelos, modos de configuração, Resend e Google com clientes falsos |
+| `npm run test:backend` | Redação, modelos, modos de configuração e Resend com cliente falso |
 | `npm run test:integration` | Fila, duplicidade, concorrência, falhas, reprocessamento, conflitos, notificações, relatórios, migração e reversão, em PostgreSQL descartável |
 | `npm run test:e2e` | Avisos, conflitos, agenda, notificações e administração no navegador, com transportes simulados e bloqueio de rede |
 

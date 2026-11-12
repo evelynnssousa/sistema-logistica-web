@@ -126,7 +126,7 @@ Os casos marcados com 🔒 dependem de configuração externa ainda não feita (
 | H3 | Modelos de e-mail | Edição e prévia | Quem tem a permissão | Editar um modelo e ver a prévia | Prévia correta; publicação com versão | | | | |
 | H4 | E-mails automáticos 🔒 | Comunicação ao solicitante | Operador | Agendar uma solicitação de teste | E-mail chega ao solicitante de teste com protocolo, pedido, agendado e motivo | | | | |
 | H5 | Agenda interna | Calendário da SLM | Operador | Agenda: filtrar, abrir detalhes, reagendar | Mostra os agendamentos de Manutenção e Frota | | | | |
-| H6 | Google Calendar 🔒 | Evento no calendário institucional | Operador | Agendar e depois cancelar | Evento criado e removido no calendário configurado | | | | |
+| H6 | ~~Google Calendar~~ | **Caso retirado em 11/11/2026:** a integração foi removida a pedido da responsável. Em seu lugar, conferir em Calendário que uma Passagem aparece na ida e na volta | Operador | Abrir uma Passagem e ver o Calendário | Dois compromissos, na data e no horário pedidos, sem dados de passageiros | | | | |
 | H7 | Central SLM | Filas e prazos | Operador com Central SLM | Abrir a Central | Filas, atrasos e alertas; sem a concessão, a Central não aparece | | | | |
 | H8 | Auditoria | Registros de segurança | Administrador | Auditoria: filtrar por ação | Logins, aprovações, acessos negados, CPF e mudanças aparecem com usuário, data e hora | | | | |
 | H9 | Relatórios e monitoramento | Indicadores | Quem tem a permissão | Abrir Relatórios e Monitoramento | Dados reais da homologação; nada inventado | | | | |

@@ -79,7 +79,7 @@ MONITORING_ENABLED=true
 # Comentários só em linha própria: o systemd não aceita comentário no fim da linha.
 INSTITUTIONAL_EMAIL_DOMAINS=jucesp.sp.gov.br
 # E-mail: deixar sem RESEND_* até a homologação própria do e-mail.
-# Não definir EMAIL_TRANSPORT nem GOOGLE_CALENDAR_TRANSPORT.
+# Não definir EMAIL_TRANSPORT. Não há variáveis do Google: a integração foi removida.
 ```
 
 A chave `PASSENGER_DATA_KEY` de homologação **não** deve ser reaproveitada em produção.

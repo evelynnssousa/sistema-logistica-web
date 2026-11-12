@@ -26,7 +26,7 @@ Trechos dos textos originais, sem interpretação adicional:
 |---|---|---|
 | Rotinas de e-mail | Fila de e-mails com modelos versionados, por evento e módulo (`INTEGRACOES_E_AUTOMACOES.md`) | **Não verificada:** textos, destinatários, cópias e momentos de envio do antigo são desconhecidos. Envio real ainda não homologado (P-05) |
 | Histórico | Histórico imutável por solicitação, com autor, data, motivo, anterior e novo | **Não verificada:** não se sabe quais informações o antigo registrava |
-| Calendários | Agenda interna e integração com Google Calendar preparada, desligada | **Não verificada:** não se sabe quais calendários o antigo usa nem o formato dos eventos. Risco de eventos duplicados se os dois escreverem nos mesmos calendários |
+| Calendários | Agenda interna (Manutenção, Frota e Passagens). Integração com Google Calendar removida em 11/11/2026 | **Não verificada:** não se sabe quais calendários o antigo usa nem o formato dos eventos. Risco de eventos duplicados se os dois escreverem nos mesmos calendários |
 | Atualização de solicitações | Status, agendamento, reagendamento, cancelamento, execução, por módulo | **Não verificada** quanto a campos e status do antigo |
 
 ## 3. Comparação com a versão web anterior (banco real)

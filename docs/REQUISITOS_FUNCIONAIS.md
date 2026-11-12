@@ -108,7 +108,7 @@ Setores, andares, tipos de serviço e outras opções compartilhadas: inclusão,
 
 ### Agenda
 
-Agenda interna de Manutenção e Frota, usando os mesmos registros de agendamento dos módulos. A agenda interna não depende do Google Calendar. Situação da integração em `INTEGRACOES_E_AUTOMACOES.md`.
+Agenda interna de Manutenção, Frota e Passagens aéreas, usando os próprios registros dos módulos: o agendamento da SLM em Manutenção e Frota, e a data e o horário da ida e da volta em Passagens. A integração com o Google Calendar foi removida em 11/11/2026, a pedido da responsável. Detalhes em `INTEGRACOES_E_AUTOMACOES.md`.
 
 ### Auditoria
 

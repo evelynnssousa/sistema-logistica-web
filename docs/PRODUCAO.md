@@ -9,7 +9,7 @@ Navegador ──HTTPS──> Proxy reverso (nginx ou equivalente da TI)
                          ├── /        → arquivos estáticos de frontend/dist (build do Vite)
                          └── /api/*   → API Node.js (backend/dist/server.js), porta interna
 API ──TLS verificado──> PostgreSQL (Supabase, session pooler, porta 5432)
-API ──HTTPS──> Resend (e-mail) e Google Calendar, só quando autorizados
+API ──HTTPS──> Resend (e-mail), só quando autorizado
 API ──disco──> ATTACHMENTS_DIR (anexos), fora do código e com backup próprio
 ```
 
@@ -23,7 +23,7 @@ A API não serve a tela. O mesmo domínio atende a tela e a API, o que mantém o
 | Processo | 1 instância da API, gerenciada (systemd, PM2 ou contêiner) com reinício automático | **Uma instância só**: o limite de tentativas de login fica em memória (P-22). Mais de uma exige limite compartilhado |
 | Memória e CPU | 1 vCPU e 1 GB de RAM para a API | Argon2id usa memória a cada login; não reduzir abaixo disso |
 | Disco | Espaço para `ATTACHMENTS_DIR` conforme o limite total definido em Configurações, mais as cópias locais temporárias | Disco persistente, não efêmero |
-| Rede de saída | `*.supabase.com:5432`, `api.resend.com:443`, `oauth2.googleapis.com:443`, `www.googleapis.com:443` | As duas últimas só se o Google Calendar for autorizado |
+| Rede de saída | `*.supabase.com:5432`, `api.resend.com:443` | O Resend só quando o e-mail for autorizado. Não há mais calendário externo (removido em 11/11/2026) |
 | Horário | Fuso `America/Sao_Paulo` não é obrigatório no servidor (as datas são gravadas em UTC), mas o relógio precisa estar sincronizado (NTP) | Sessões, códigos de recuperação e tokens do Google dependem do relógio |
 
 ## 3. Banco de dados
@@ -32,7 +32,7 @@ A API não serve a tela. O mesmo domínio atende a tela e a API, o que mantém o
 |---|---|
 | Servidor | PostgreSQL 17 (Supabase atual). Conexão pelo session pooler, porta 5432; **não usar** o transaction pooler (6543) |
 | TLS | Sempre verificado, com `backend/certificates/prod-ca-2021.crt` ou `DATABASE_SSL_CA_PATH` |
-| Migrações | 002 a 018 aplicadas com `scripts/apply-migrations.cjs`, em duas etapas, só com autorização expressa. A 018 fecha a API pública do Supabase (P-02) |
+| Migrações | 002 a 019 aplicadas com `scripts/apply-migrations.cjs`, em duas etapas, só com autorização expressa. A 018 fecha a API pública do Supabase (P-02); a 019 cria a cota diária de e-mails e sela a fila anterior |
 | Papel da API | Dono das tabelas (`postgres` no Supabase). A API não usa PostgREST, Auth nem Storage do Supabase |
 | Data API do Supabase | Recomendado desligar ou restringir os schemas expostos no painel (Settings → API). Depois da 018, nada em `public` fica acessível a `anon`, `authenticated` ou `service_role` |
 | Backups do provedor | Conferir no painel (Database → Backups) o plano e a retenção. Não substituem as cópias próprias (seção 7) |
@@ -72,12 +72,11 @@ Confira com `npm run config:check` (com `NODE_ENV=production`), que mostra só n
 | `EMAIL_RECIPIENT_RESTRICTION` | **`off` para enviar a qualquer destinatário.** Ausente: restrição de testes ligada, e sem `EMAIL_RECIPIENT_ALLOWLIST` nenhum e-mail real sai, nem a recuperação de senha | Só depois da homologação, com autorização |
 | `EMAIL_RECIPIENT_ALLOWLIST` | Só na homologação: endereços exatos das contas de teste | Lista das caixas de teste |
 | `EMAIL_INTERNAL_TO_*`, `EMAIL_CC_*` | Conforme a área | Lista oficial de destinatários |
-| `GOOGLE_CALENDAR_*` | Só se autorizado | Conta de serviço e calendários institucionais |
 | `INSTITUTIONAL_EMAIL_DOMAINS` | Recomendada | Lista oficial de domínios (P-09) |
 | `MONITORING_ENABLED` | `true` | — |
 | `BACKUP_LOG_PATH` | Recomendada | Arquivo de registro das cópias, lido pela tela de Monitoramento |
 | `INTEGRATIONS_WORKER_ENABLED`, `DEMANDS_WORKER_ENABLED`, `SESSION_CLEANUP_ENABLED` | Sem valor (ligam sozinhos em produção) | Use `false` só para desligar |
-| `EMAIL_TRANSPORT`, `GOOGLE_CALENDAR_TRANSPORT` | **Não definir** | Valores de teste; ignorados em produção |
+| `EMAIL_TRANSPORT` | **Não definir** | Valores de teste; ignorados em produção |
 
 Os segredos ficam no gerenciador de segredos da TI ou em arquivo `600` do usuário da API, **nunca no repositório**. `backend/.env.example` lista todas, sem valores.
 
@@ -160,7 +159,7 @@ Detalhes em `BACKUP_E_MIGRACOES_SUPABASE.md`, seção "Cópia externa e recupera
 | 7 | Conta Resend com domínio verificado | TI | Pendente |
 | 8 | `npm run config:check` sem erros, com `NODE_ENV=production` | Desenvolvimento | Pendente |
 | 9 | Backup verificado do banco real, com cópia externa | Responsável | Pendente |
-| 10 | Migrações 002 a 018 aplicadas com autorização | Responsável | Pendente |
+| 10 | Migrações 002 a 019 aplicadas com autorização | Responsável | Pendente |
 | 11 | `npm run verify` e `npm run test:all` no commit a implantar | Desenvolvimento | Pronto para executar |
 | 12 | Homologação do e-mail (roteiro em `INTEGRACOES_E_AUTOMACOES.md`) | Responsável e TI | Pendente |
 | 13 | Agendamento dos backups e do monitor externo | TI | Pendente |

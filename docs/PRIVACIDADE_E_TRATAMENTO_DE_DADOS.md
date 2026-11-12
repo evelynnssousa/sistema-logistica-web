@@ -62,10 +62,10 @@ Campos adicionais criados no editor de formulários são texto livre e não entr
 |---|---|---|
 | E-mail | Módulo, protocolo, situação, datas de agendamento, motivo de cancelamento ou reagendamento; assunto da solicitação, exceto em Passagens | CPF, passageiros, descrição, trechos |
 | Notificação | Módulo, protocolo, situação, data | Motivo, assunto, nomes, CPF |
-| Calendário externo | Módulo, protocolo, título, situação, setor | Solicitante, responsável, descrição, passageiros |
+| Agenda interna | Módulo, protocolo, título, situação, setor, responsável; em Passagens, data e horário da ida e da volta | Solicitante, descrição, passageiros e CPF. Não sai do sistema: o calendário externo foi removido em 11/11/2026 |
 | Logs | Tipo de evento e código do erro | Endereços, conteúdo, motivos |
 
-**Dados saem da instituição quando as integrações forem ligadas.** O Resend e o Google passam a receber o que está acima. Nenhum dos dois foi ativado. A área responsável precisa avaliar:
+**Dados saem da instituição quando o e-mail for ligado.** O Resend passa a receber o que está acima. Ainda não foi ativado. (O Google Calendar foi removido em 11/11/2026 e não recebe mais nada.) A área responsável precisa avaliar:
 
 - a contratação e a localização do tratamento nos dois provedores;
 - **o título no calendário externo**, que vem de texto livre, como o local do serviço ou origem e destino;
@@ -92,7 +92,7 @@ Pontos para a política:
 | Definir a base legal de cada tratamento e a eventual necessidade de consentimento | Área institucional competente |
 | Identificar controlador e encarregado, e o canal do titular | Instituição |
 | Aprovar prazos de guarda e descarte | Instituição |
-| Avaliar o compartilhamento com Resend e Google | Área institucional competente e TI |
+| Avaliar o compartilhamento com o Resend | Área institucional competente e TI |
 | Revisão de segurança | Área responsável |
 
 ## Anexos, pesquisa e registros técnicos (Supercomando 04)

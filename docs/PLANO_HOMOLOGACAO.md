@@ -10,12 +10,12 @@ Preparado em 06/11/2026. Complementa `docs/auditoria/PRE_MIGRACAO_2026-11-06.md`
 
 | | Projeto separado (recomendado) | Migrar o banco real agora |
 |---|---|---|
-| Banco que poderá ser o de produção | Intocado | Recebe as 17 migrações e todos os dados de teste |
+| Banco que poderá ser o de produção | Intocado | Recebe as 18 migrações (002 a 019) e todos os dados de teste |
 | Dados pessoais na homologação | Só das contas criadas para homologar | As 7 contas atuais, inclusive as fictícias |
 | Depois da homologação | O projeto de homologação pode ser mantido para testes futuros ou apagado | Limpar os dados de teste exige exclusões, com sua autorização |
 | Backup externo | Não é pré-requisito para começar (o banco real não muda) | **Obrigatório antes** de aplicar |
 | Reversão | Desnecessária: recria-se o projeto | Reversões ou restauração do backup |
-| O que muda no banco real | Nada, até a produção. Lá, aplicam-se as mesmas 17 migrações, já homologadas | Já fica migrado |
+| O que muda no banco real | Nada, até a produção. Lá, aplicam-se as mesmas 18 migrações (002 a 019), já homologadas | Já fica migrado |
 | Tempo para começar | Criar o projeto (minutos) e preparar o acesso | Cópia externa + aplicação + acesso |
 
 O procedimento do projeto separado foi ensaiado nesta etapa num PostgreSQL 17 descartável que reproduz um projeto Supabase novo (`postgres` sem superusuário): o esquema base (001) e as 17 migrações aplicaram com saída 0 e conferência final sem problemas (64 tabelas, todas com RLS, nada aberto à API pública).
@@ -74,22 +74,20 @@ Efeito das migrações sobre elas, se aplicadas no banco real (ensaiado sobre a 
 2. **Cada operador** abre o endereço de homologação, clica em **Criar conta** e se cadastra com o e-mail institucional. No banco real, os cadastros que já existem podem ser usados, se forem dos operadores.
 3. **Administradora → Administração → Cadastros pendentes →** em cada operador:
    - **Perfil ao aprovar:** `Operador SLM`. A equipe SLM fica marcada automaticamente, porque o perfil exige.
-   - **Permissões adicionais:** marque o que esse operador fará na homologação:
+   - **Já incluído no perfil** (desde 08/11/2026, sem marcar nada): **Realizar agendamentos**, **Almoxarifado → Administrar o módulo** e **Almoxarifado → Informar e alterar a previsão de entrega**. Valem só enquanto o operador estiver na equipe SLM.
+   - **Permissões adicionais:** marque só o que não vem do perfil e que esse operador fará na homologação:
 
 | Permissão (como aparece na tela) | Para quê | Sugestão para os testes |
 |---|---|---|
-| Realizar agendamentos | Agendar e reagendar Manutenção e Frota, atribuir motorista | Pelo menos 2 operadores |
-| Almoxarifado → Administrar o módulo (só Administrador e Operador SLM) | Materiais, estoque, inventário, pedidos e entrega. A tela bloqueia e o servidor recusa para Solicitante e Motorista | Pelo menos 1 |
-| Almoxarifado → Informar e alterar a previsão de entrega | Previsão de entrega (exige também "Administrar o módulo") | Pelo menos 1 |
 | Acessar a Central de Operações / Atribuir responsáveis, prioridades e prazos pela Central | Central SLM | Pelo menos 1 |
 | Consultar o CPF completo dos passageiros (auditado) | Passagens | 1, só se for necessário testar |
 | Abrir solicitações em nome de outros setores | Abertura para outro setor | 1 |
 
-   - Deixe **pelo menos um operador sem "Realizar agendamentos"**, para os testes negativos C6 e A6 do roteiro.
    - Clique em **Aprovar**.
+   - **Para os testes negativos C6 e A6 do roteiro**, um operador precisa ficar sem agendar. Como agendar vem do perfil, não basta deixar de marcar: depois de aprovar, abra **Administração → Usuários →** esse operador, em **Permissões** escolha **Retirar** em "Realizar agendamentos" e clique em **Salvar acesso**. A tela passa a mostrar "Sem acesso · retirada individualmente".
 4. **Conferência:**
    - cada operador abre **Minha conta** e confere as permissões;
-   - a administradora preenche a tabela "Concessões por operador" no início do roteiro;
+   - a administradora preenche a tabela "Concessões por operador" no início do roteiro (Agendar e Almoxarifado vêm do perfil: marque "sim", ou "retirada" no operador dos testes negativos);
    - em **Usuários**, o histórico de cada conta mostra quem aprovou e quando.
 5. **Contas extras para o roteiro:**
    - uma de **Solicitante** de outro setor, nomeada "Homologação – Solicitante";
@@ -129,7 +127,7 @@ npm run homolog -- -- node scripts/apply-migrations.cjs --aplicar --confirmar=AP
 #   saída 5: backup do banco de homologação em backups/homologacao/, testado
 
 npm run homolog -- -- node scripts/apply-migrations.cjs --aplicar --confirmar=APLICAR-MIGRACOES --backup=backups/homologacao/<arquivo>.dump
-#   saída 0: 17 migrações
+#   saída 0: as migrações pendentes (hoje 002 a 019; a homologação já tem todas)
 
 npm run homolog -- -- npm run migrations:check
 #   "Nenhuma migração pendente."
@@ -159,7 +157,7 @@ npm run homolog -- -- npm run dev:frontend    # terminal 2: tela da homologaçã
 | 3 | Pasta institucional restrita para o backup, e senha no cofre | **TI** | Só se migrar o banco real |
 | 4 | Cifrar e gravar a cópia na pasta (seção A) | **Você** | Só se migrar o banco real |
 | 5 | Criar o projeto Supabase de homologação | **TI** ou **você** | Sim (opção recomendada) |
-| 6 | Aplicar 001 e as 17 migrações no projeto de homologação (seção E) | **Você**, ou eu, se liberar a ferramenta | Sim |
+| 6 | Aplicar 001 e as migrações 002 a 019 no projeto de homologação (seção E) — **feito** (019 em 09/11/2026) | **Você**, ou eu, se liberar a ferramenta | Sim |
 | 7 | Servidor de homologação com HTTPS na rede interna | **TI** | Sim, para os operadores acessarem sozinhos |
 | 8 | Gerar `PASSENGER_DATA_KEY` e definir `ATTACHMENTS_DIR` no servidor de homologação | **TI** | Não (Passagens e anexos ficam pendentes no roteiro) |
 | 9 | Criar a administradora e aprovar os 4 operadores (seção C) | **Você** | Sim |

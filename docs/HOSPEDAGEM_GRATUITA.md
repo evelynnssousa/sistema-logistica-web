@@ -25,7 +25,7 @@ serviços, endereços, variáveis e credenciais; nada é compartilhado entre ele
 | | Homologação | Produção |
 |---|---|---|
 | Situação | Proposta para a primeira publicação | **Não autorizada** |
-| Supabase | Projeto existente `rrqulhpnghoetgrdswqr` (`jucesp-logistica-homologacao`), com as migrações 002 a 018 aplicadas | Banco real. **Tem 17 migrações pendentes (002 a 018) e não pode ser usado na primeira publicação** |
+| Supabase | Projeto existente `rrqulhpnghoetgrdswqr` (`jucesp-logistica-homologacao`), com as migrações 002 a 019 aplicadas | Banco real. **Tem 18 migrações pendentes (002 a 019) e não pode ser usado na primeira publicação** |
 | Cloudflare Pages | Projeto próprio de homologação | Projeto próprio de produção |
 | Render | Serviço próprio de homologação | Serviço próprio de produção |
 | Endereços | `*.pages.dev` e `*.onrender.com` próprios | Próprios, sem reaproveitar os da homologação |
@@ -173,6 +173,9 @@ Limitações no plano Free:
 
 - O worker roda dentro da API. Com o serviço adormecido por inatividade, a fila espera a próxima
   requisição acordar a API. Lembretes e prazos vencidos rodam a cada hora, contada do início.
+  O agendamento `.github/workflows/manter-api-acordada.yml` acessa `/api/health` a cada 10 minutos,
+  de segunda a sexta, das 7h às 19h de Brasília (cerca de 290 horas por mês). Ele só funciona
+  depois do merge na `main` e com a variável de repositório `SLM_API_HEALTH_URL`; sem ela, não faz nada.
 - O disco não é persistente: anexos de mensagens manuais e o bilhete de passagem só funcionam
   com armazenamento persistente autorizado. Sem ele, a mensagem com anexo falha
   (`ATTACHMENT_STORAGE_MISSING`). O SharePoint não deve ser presumido autorizado nem configurado.
@@ -246,7 +249,7 @@ antes e autorização expressa:
    delas.
 
 O procedimento completo está em `scripts/apply-migrations.cjs` e em
-`docs/BACKUP_E_MIGRACOES_SUPABASE.md`. A homologação já tem 002 a 018. O banco real não tem
+`docs/BACKUP_E_MIGRACOES_SUPABASE.md`. A homologação já tem 002 a 019. O banco real não tem
 nenhuma delas, e aplicá-las depende de autorização própria.
 
 ### Backup e restauração
@@ -262,8 +265,9 @@ npm run backup:verify -- backups/<pasta>/<arquivo>.dump           # restaura em 
 ```
 
 - Exige Docker. O `pg_dump` roda em transação somente leitura pelo Session pooler.
-- Na homologação, informe sempre `--out backups/homologacao`: sem isso, a cópia cai em
-  `backups/`, junto das cópias do banco real.
+- Na homologação, a cópia vai para `backups/homologacao` mesmo sem `--out`, porque o
+  `npm run homolog` define `SLM_BACKUP_DIR` (desde 11/11/2026). Manter o `--out` no comando não
+  faz mal e protege quem usar uma versão anterior do script.
 - O arquivo tem dados pessoais e hashes de senha. Cifre com `gpg --symmetric --cipher-algo
   AES256`, gere o `.sha256` do arquivo cifrado e guarde os dois fora do Codespace e fora do
   Supabase, no destino institucional definido com a TI (`docs/PLANO_HOMOLOGACAO.md`). A senha
@@ -386,10 +390,9 @@ Ressalvas da verificação de 2026-11-07, para ajuste separado, que não foi fei
 
 ## O que ainda impede a primeira publicação
 
-1. **Os arquivos da publicação não estão no Git.** `frontend/functions/api/[[path]].ts`,
-   `frontend/public/_headers`, `frontend/tsconfig.functions.json`, `render.yaml` e
-   `backend/src/security/trustedProxy.ts` estão sem commit, como as demais alterações. O Pages
-   e o Render publicam a partir do repositório; sem commit e envio, eles ficariam de fora.
+1. ~~Os arquivos da publicação não estão no Git.~~ Resolvido em 07/11/2026: o proxy, o
+   `_headers`, o `render.yaml` e o `trustedProxy.ts` estão na branch
+   `integracao/cadastro-e-permissoes`, enviada ao GitHub.
 2. Autorizar e criar as contas e os projetos de homologação (Cloudflare, Render), e definir
    as variáveis de cada um, com segredos gerados só para a homologação.
 3. Decidir o destino institucional das cópias do banco de homologação (ver

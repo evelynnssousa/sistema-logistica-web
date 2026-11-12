@@ -44,6 +44,7 @@ Funções em `backend/src/auth/requestPolicy.ts`, usadas pelas rotas:
 | Atualizar | `canUpdateRequest` | `requests:update` e `<módulo>:update` |
 | Agendar | `canScheduleRequest` | Administrador ou Operador SLM, na equipe SLM, pelo perfil (desde 08/11/2026); sempre com a permissão do módulo. Retirada individual prevalece. Solicitante nunca |
 | Cancelar | `canCancelRequest` | `requests:cancel` e acesso à solicitação |
+| Cancelar a própria | `canCancelOwnRequest` | `requests:cancel_own` (só concessão individual), ser quem abriu e a solicitação ainda aguardar agendamento ou estar em cotação; conferido de novo na transação |
 | Consultar CPF completo | `canReadFullCpf` | Administrador ou Operador SLM, na equipe SLM, com concessão individual de `flights:cpf:read`, `flights:read` e acesso à solicitação. Nenhum perfil concede |
 
 Permissões especiais: `requests:schedule`, `requests:create_on_behalf` e `flights:cpf:read`. A regra de elegibilidade está em `backend/src/auth/permissions.ts`. O servidor retira as concedidas individualmente ao sair da equipe, ao passar para Solicitante e ao desativar a conta, e elas não voltam sozinhas. `requests:schedule`, `warehouse:manage` e `warehouse:forecast` também fazem parte do perfil Operador SLM e só valem enquanto a pessoa integrar a equipe: voltam com a equipe, porque vêm do perfil, e não de concessão.
