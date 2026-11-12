@@ -751,6 +751,8 @@ export type CalendarEvent = {
   sector: string | null
   responsibleId: string | null
   responsible: string | null
+  /** Só em Passagens: o compromisso é o trecho de ida ou o de volta. */
+  leg?: 'ida' | 'volta' | null
 }
 
 export const getCalendarEvents = (

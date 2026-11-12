@@ -12,6 +12,7 @@ import app from '../app.js'
 import { hashPassword } from '../auth/password.js'
 import type { Permission } from '../auth/permissions.js'
 import { defaultDriverSettings, defaultOccurrenceTypes } from '../requests/driverPortalRules.js'
+import { allSheetsText, readXlsx, sheetNamesOf } from '../reports/xlsxReader.testSupport.js'
 import { authRateLimits } from '../security/authRateLimits.js'
 import { resetAccessSchemaCacheForTests } from './accessSchema.js'
 import { requireDisposableDatabaseUrl } from './databaseSafety.js'
@@ -433,6 +434,57 @@ test('informações obrigatórias: valem ao iniciar e ao finalizar, e a equipe c
   const withVehicle = await scheduledTrip(driverId, { veiculo: 'Van institucional' })
   assert.equal((await get(`/driver/trips/${withVehicle}`, driver)).body.trip.startNeedsVehicle, false)
   assert.equal((await post(`/driver/trips/${withVehicle}/start`, driver, { hodometro: 5, observacao: 'Ok' })).status, 200)
+})
+
+/** Baixa um arquivo binário (o `call` lê como texto, o que estragaria o .xlsx). */
+async function download(path: string, session: Session) {
+  const response = await fetch(`${baseUrl}/api${path}`, { headers: { cookie: session.cookie } })
+  return { status: response.status, type: response.headers.get('content-type') ?? '', file: Buffer.from(await response.arrayBuffer()) }
+}
+
+test('planilha da Frota: viagens com quilometragem e carga horária estimada, conforme a permissão', async () => {
+  await save('driverExecution', { startFields: ['vehicle', 'odometer'], finishFields: ['odometer'] })
+  await save('driverJourney', { ...wholeDay })
+  const trip = await scheduledTrip()
+  assert.equal((await post(`/driver/trips/${trip}/start`, driver, { hodometro: 2000, veiculo: 'Van Planilha' })).status, 200)
+  assert.equal((await post(`/driver/trips/${trip}/finish`, driver, { hodometro: 2085 })).status, 200)
+  // Horários fixos para o cálculo: quarta-feira, 2/6/2032, das 7h às 18h30 de Brasília.
+  await pool.query(
+    `UPDATE public.service_requests SET execucao_inicio = '2032-06-02T10:00:00Z', execucao_fim = '2032-06-02T21:30:00Z' WHERE id = $1`,
+    [trip],
+  )
+  // Jornada de referência: segunda a sexta, 8h às 17h, 1 h de intervalo (8 h previstas).
+  await save('driverJourney', { start: '08:00', end: '17:00', weekdays: [1, 2, 3, 4, 5], breakMinutes: 60, expectedMinutes: null })
+
+  const range = `from=${encodeURIComponent('2032-06-01T03:00:00.000Z')}&to=${encodeURIComponent('2032-06-03T03:00:00.000Z')}`
+  const full = await download(`/reports/fleet/spreadsheet?${range}`, admin)
+  assert.equal(full.status, 200)
+  assert.match(full.type, /spreadsheetml/)
+  const files = readXlsx(full.file)
+  assert.deepEqual(sheetNamesOf(files), ['Sobre', 'Viagens', 'Veículos', 'Carga horária', 'Carga horária por dia'])
+  const text = allSheetsText(files)
+  for (const expected of ['Van Planilha', 'Motorista Config', '>2000<', '>2085<', '>85<', '11:30', 'ESTIMATIVA']) {
+    assert.ok(text.includes(expected), `faltou ${expected}`)
+  }
+  // 11h30 em viagem; jornada estimada 11h30 (não menos que o tempo em viagem); prevista 8h; extra 3h30;
+  // fora do horário: 7h–8h e 17h–18h30 = 2h30.
+  const workload = files.get('xl/worksheets/sheet4.xml') ?? ''
+  for (const expected of ['Motorista Config', '11:30', '8:00', '3:30', '2:30', '0:00']) {
+    assert.ok(workload.includes(`>${expected}<`), `carga horária sem ${expected}`)
+  }
+  // Nada dos passageiros nem do solicitante.
+  assert.doesNotMatch(text, /Passageira Teste|portal-config-solicitante/)
+
+  // Quem consulta relatórios e Frota, mas não administra motoristas, recebe a planilha sem as horas.
+  const partial = readXlsx((await download(`/reports/fleet/spreadsheet?${range}`, scheduler)).file)
+  assert.equal(sheetNamesOf(partial).includes('Carga horária'), false)
+  assert.ok(allSheetsText(partial).includes('>85<'))
+
+  // Sem permissão de relatórios, recusa; sem período, explica.
+  assert.equal((await download(`/reports/fleet/spreadsheet?${range}`, requester)).status, 403)
+  assert.equal((await download('/reports/fleet/spreadsheet', admin)).status, 400)
+  const audit = await pool.query(`SELECT count(*)::int AS total FROM public.auth_audit_events WHERE action = 'fleet.spreadsheet_exported'`)
+  assert.equal(audit.rows[0].total, 2)
 })
 
 test('situações exibidas: a oculta some do portal, e a viagem em andamento nunca some', async () => {

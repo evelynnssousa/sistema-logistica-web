@@ -75,6 +75,13 @@ export const permissionGroups = [
         description: 'Permite cancelar as solicitações que o usuário pode consultar.',
       },
       {
+        key: 'requests:cancel_own',
+        label: 'Cancelar as próprias solicitações antes do atendimento',
+        kind: 'update',
+        description:
+          'Permite cancelar, com motivo, uma solicitação aberta pelo próprio usuário enquanto ela ainda aguarda agendamento (Manutenção e Frota) ou está em cotação (Passagens aéreas). Depois disso, só quem pode cancelar solicitações cancela. Não vem em nenhum perfil: é concedida individualmente.',
+      },
+      {
         key: 'requests:manage',
         label: 'Administrar solicitações',
         kind: 'manage',

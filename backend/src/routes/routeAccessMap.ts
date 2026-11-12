@@ -33,6 +33,8 @@ function requestRoutes(module: OperationalModule): RouteAccess[] {
     { method: 'POST', path: base, access: 'permission', requires: [...scope, 'requests:create', `${module}:create` as Permission] },
     { method: 'GET', path: `${base}/:requestId`, access: 'permission', requires: [read] },
     { method: 'PATCH', path: `${base}/:requestId`, access: 'permission', requires: update },
+    // Também aceita requests:cancel_own no lugar de requests:cancel, só para a própria solicitação
+    // antes do atendimento (canCancelOwnRequest); o mapa registra o caminho geral.
     { method: 'POST', path: `${base}/:requestId/cancel`, access: 'permission', requires: ['requests:cancel', read] },
     { method: 'POST', path: `${base}/duplicates`, access: 'permission', requires: [...scope, 'requests:create', `${module}:create` as Permission] },
     { method: 'POST', path: `${base}/:requestId/return`, access: 'permission', requires: update },
@@ -147,6 +149,8 @@ export const routeAccessMap: readonly RouteAccess[] = [
   { method: 'GET', path: '/reports/summary', access: 'permission', requires: ['reports:read'] },
   { method: 'GET', path: '/reports/operational', access: 'permission', requires: ['reports:read'] },
   { method: 'GET', path: '/calendar/events', access: 'permission', requires: ['calendar:read'] },
+  { method: 'GET', path: '/reports/warehouse/spreadsheet', access: 'permission', requires: ['warehouse:manage'] },
+  { method: 'GET', path: '/reports/fleet/spreadsheet', access: 'permission', requires: ['reports:read', 'fleet:read'] },
 
   { method: 'GET', path: '/notifications', access: 'session' },
   { method: 'GET', path: '/notifications/unread-count', access: 'session' },
@@ -158,9 +162,6 @@ export const routeAccessMap: readonly RouteAccess[] = [
   { method: 'GET', path: '/integrations/emails', access: 'permission', requires: ['integrations:read'] },
   { method: 'GET', path: '/integrations/emails/:itemId/attempts', access: 'permission', requires: ['integrations:read'] },
   { method: 'POST', path: '/integrations/emails/:itemId/retry', access: 'permission', requires: ['integrations:manage'] },
-  { method: 'GET', path: '/integrations/calendar', access: 'permission', requires: ['integrations:read'] },
-  { method: 'GET', path: '/integrations/calendar/:itemId/attempts', access: 'permission', requires: ['integrations:read'] },
-  { method: 'POST', path: '/integrations/calendar/:itemId/retry', access: 'permission', requires: ['integrations:manage'] },
 
   { method: 'GET', path: '/settings/parameters', access: 'permission', requires: ['settings:read'] },
   { method: 'PUT', path: '/settings/parameters/:section', access: 'permission', requires: ['settings:manage'] },

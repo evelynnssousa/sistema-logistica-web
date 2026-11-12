@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
@@ -678,7 +678,9 @@ function InventoryPage() {
         ))}
       </nav>
 
-      <Outlet />
+      <Suspense fallback={<Loading label="Carregando..." />}>
+        <Outlet />
+      </Suspense>
     </div>
   )
 }

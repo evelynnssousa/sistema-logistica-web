@@ -12,6 +12,7 @@ import { hashPassword } from '../auth/password.js'
 import type { Permission } from '../auth/permissions.js'
 import { processEmailQueue } from '../integrations/worker.js'
 import type { EmailTransport, OutgoingEmail } from '../integrations/transports.js'
+import { allSheetsText, readXlsx, sheetNamesOf } from '../reports/xlsxReader.testSupport.js'
 import { authRateLimits } from '../security/authRateLimits.js'
 import { resetAccessSchemaCacheForTests } from './accessSchema.js'
 import { requireDisposableDatabaseUrl } from './databaseSafety.js'
@@ -545,4 +546,53 @@ test('a migração 011 só é desfeita sem registros, e sem afetar os pedidos', 
   assert.equal((await call('/warehouse/requests', { session: manager })).status, 200)
 
   await pool.query(schema('011_delivery_forecast.sql'))
+})
+
+test('consumo médio mensal e planilha do Almoxarifado: entregas reais, só para quem gere o estoque', async () => {
+  const manager = await staff('planilha-gestora@example.gov.br')
+  const requester = await createUser('planilha-pede@example.gov.br')
+  const material = await post('/warehouse/materials', admin, { name: 'Toner Planilha', unitId })
+  assert.equal(material.status, 201, material.text)
+  const tonerId = material.body.id as string
+
+  // Sem nenhuma entrega, não há média.
+  const before = await call('/warehouse/stock', { session: manager })
+  assert.equal(before.status, 200, before.text)
+  const fresh = before.body.items.find((item: { id: string }) => item.id === tonerId)
+  assert.deepEqual(fresh.monthlyConsumption, { average: null, total: 0, months: null })
+
+  // Uma entrega de 6 unidades há 15 dias: base de 1 mês, média 6.
+  const created = await post('/warehouse/requests', requester, { items: [{ materialId: tonerId, requested: 6 }] })
+  assert.equal(created.status, 201, created.text)
+  const path = `/warehouse/requests/${created.body.id}`
+  assert.equal((await put(`${path}/items`, manager, { items: [{ materialId: tonerId, requested: 6, fulfilled: 6 }] })).status, 200)
+  assert.equal((await post(`${path}/status`, manager, { status: 'atendido' })).status, 200)
+  const deliveredDate = new Date(Date.now() - 15 * 86_400_000).toISOString().slice(0, 10)
+  const delivered = await post(`${path}/deliver`, manager, { receivedBy: 'Pessoa Recebedora', deliveredDate })
+  assert.equal(delivered.status, 200, delivered.text)
+
+  const after = (await call('/warehouse/stock', { session: manager })).body.items.find((item: { id: string }) => item.id === tonerId)
+  assert.deepEqual(after.monthlyConsumption, { average: 6, total: 6, months: 1 })
+
+  // Planilha do período: estoque com o consumo, pedido e item entregue.
+  const from = new Date(Date.now() - 30 * 86_400_000).toISOString()
+  const to = new Date(Date.now() + 86_400_000).toISOString()
+  const query = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+  const response = await fetch(`${baseUrl}/api/reports/warehouse/spreadsheet?${query}`, { headers: { cookie: manager.cookie } })
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get('content-disposition') ?? '', /almoxarifado-.*\.xlsx/)
+  const files = readXlsx(Buffer.from(await response.arrayBuffer()))
+  assert.deepEqual(sheetNamesOf(files), ['Sobre', 'Estoque', 'Pedidos', 'Itens entregues', 'Movimentações'])
+  const stockSheet = files.get('xl/worksheets/sheet2.xml') ?? ''
+  assert.ok(stockSheet.includes('>Toner Planilha<'))
+  assert.ok(stockSheet.includes('Consumo médio por mês'))
+  const deliveredSheet = files.get('xl/worksheets/sheet4.xml') ?? ''
+  assert.ok(deliveredSheet.includes('>Toner Planilha<') && deliveredSheet.includes('<v>6</v>'))
+  assert.ok(allSheetsText(files).includes('>Entregue<'))
+
+  // Solicitante não baixa o estoque por esta rota.
+  const denied = await fetch(`${baseUrl}/api/reports/warehouse/spreadsheet?${query}`, { headers: { cookie: requester.cookie } })
+  assert.equal(denied.status, 403)
+  const audit = await pool.query(`SELECT actor_user_id::text AS actor FROM public.auth_audit_events WHERE action = 'warehouse.spreadsheet_exported'`)
+  assert.deepEqual(audit.rows.map((row) => row.actor), [manager.id])
 })

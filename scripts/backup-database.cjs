@@ -6,7 +6,10 @@
  *
  *   node scripts/backup-database.cjs                 estrutura e dados
  *   node scripts/backup-database.cjs --schema-only   apenas estrutura
- *   node scripts/backup-database.cjs --out <pasta>   destino (padrão: backups/)
+ *   node scripts/backup-database.cjs --out <pasta>   destino (padrão: SLM_BACKUP_DIR, se definida; senão backups/)
+ *
+ * SLM_BACKUP_DIR é definida por `npm run homolog`, para a cópia da homologação nunca cair em backups/
+ * junto das cópias do banco real. --out tem prioridade sobre ela.
  *
  * O arquivo com dados contém dados pessoais e hashes de senha: guarde-o com cuidado.
  */
@@ -49,7 +52,7 @@ const schemaOnly = args.includes('--schema-only')
 const outIndex = args.indexOf('--out')
 const outDirectory = resolve(
   projectRoot,
-  outIndex >= 0 ? args[outIndex + 1] ?? '' : 'backups',
+  outIndex >= 0 ? args[outIndex + 1] ?? '' : process.env.SLM_BACKUP_DIR || 'backups',
 )
 
 let url

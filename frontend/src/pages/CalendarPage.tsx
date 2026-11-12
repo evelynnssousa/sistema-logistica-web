@@ -26,7 +26,10 @@ const views = ['Mês', 'Semana', 'Dia'] as const
 type View = (typeof views)[number]
 
 const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-const modules = ['maintenance', 'fleet'] as const
+const modules = ['maintenance', 'fleet', 'flights'] as const
+const legLabels = { ida: 'Ida', volta: 'Volta' } as const
+const eventKey = (event: CalendarEvent) => `${event.id}-${event.leg ?? 'agenda'}`
+const isCancelled = (status: string) => status === 'cancelado' || status === 'cancelada'
 const statusOptions = ['agendado', 'reagendado', 'em_andamento', 'concluido', 'cancelado'].map((value) => ({ value, label: statusLabels[value] }))
 
 function startOfDay(date: Date) {
@@ -80,10 +83,10 @@ function EventButton({
   return (
     <button
       type="button"
-      className={`calendar-event ${event.module}${event.status === 'cancelado' ? ' is-cancelled' : ''}`}
+      className={`calendar-event ${event.module}${isCancelled(event.status) ? ' is-cancelled' : ''}`}
       onClick={() => onOpen(event)}
     >
-      {time} · {protocolLabel(event.protocol)} {event.title}
+      {time} · {event.leg ? `${legLabels[event.leg]} · ` : ''}{protocolLabel(event.protocol)} {event.title}
       {withDetails && (
         <>
           {' '}
@@ -146,8 +149,14 @@ function EventDetails({
           <StatusBadge status={detail.request.status} label={statusLabels[detail.request.status]} />
           <p>{detail.request.title}</p>
           <dl className="detail-grid">
-            <div className="detail-info"><dt>Início</dt><dd>{formatDateTime(detail.request.scheduledAt)}</dd></div>
-            <div className="detail-info"><dt>Término previsto</dt><dd>{formatDateTime(detail.request.scheduledEnd)}</dd></div>
+            {event.leg ? (
+              <div className="detail-info"><dt>{legLabels[event.leg]}</dt><dd>{formatDateTime(event.start)}</dd></div>
+            ) : (
+              <>
+                <div className="detail-info"><dt>Início</dt><dd>{formatDateTime(detail.request.scheduledAt)}</dd></div>
+                <div className="detail-info"><dt>Término previsto</dt><dd>{formatDateTime(detail.request.scheduledEnd)}</dd></div>
+              </>
+            )}
             <div className="detail-info"><dt>Responsável</dt><dd>{detail.request.responsible ?? '—'}</dd></div>
             <div className="detail-info"><dt>Setor</dt><dd>{detail.request.sector ?? '—'}</dd></div>
           </dl>
@@ -258,7 +267,7 @@ function CalendarPage() {
     <div className="admin-module-page calendar-page">
       <PageHeader
         title="Calendário"
-        description="Agendamentos de Manutenção e Frota, a partir dos próprios registros dos módulos."
+        description="Agendamentos de Manutenção e Frota e viagens de Passagens aéreas (ida e volta), a partir dos próprios registros dos módulos."
       />
 
       <section className="ui-card" aria-label="Calendário de serviços">
@@ -343,7 +352,7 @@ function CalendarPage() {
               >
                 <div className="calendar-day-number">{day.getDate()}</div>
                 {(eventsByDay.get(day.toDateString()) ?? []).map((event) => (
-                  <EventButton key={event.id} event={event} onOpen={setOpened} />
+                  <EventButton key={eventKey(event)} event={event} onOpen={setOpened} />
                 ))}
               </div>
             ))}
@@ -354,7 +363,7 @@ function CalendarPage() {
               <div key={day.toISOString()}>
                 <strong>{day.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' })}</strong>
                 {(eventsByDay.get(day.toDateString()) ?? []).map((event) => (
-                  <EventButton key={event.id} event={event} withDetails onOpen={setOpened} />
+                  <EventButton key={eventKey(event)} event={event} withDetails onOpen={setOpened} />
                 ))}
                 {!eventsByDay.has(day.toDateString()) && <p>Nenhum agendamento.</p>}
               </div>
@@ -364,7 +373,7 @@ function CalendarPage() {
 
         {events && visibleEvents.length === 0 && !error && (
           <EmptyState icon="calendar" title="Nenhum agendamento neste período">
-            Os agendamentos de Manutenção e Frota aparecem aqui assim que forem realizados.
+            Os agendamentos de Manutenção e Frota e as viagens de Passagens aéreas aparecem aqui assim que forem registrados.
           </EmptyState>
         )}
       </section>

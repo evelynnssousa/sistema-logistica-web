@@ -406,6 +406,44 @@ test('manutenção: edição registra os campos alterados, e cancelar exige moti
   assert.equal(cancelled.body.request.cancelReason, 'Resolvido')
 })
 
+test('solicitante com a concessão cancela a própria só antes do agendamento', async () => {
+  const requester = await createUser('mnt-cancela-propria@example.gov.br')
+  const other = await createUser('mnt-cancela-outra@example.gov.br')
+  const operator = await staff('mnt-cancela-propria-op@example.gov.br')
+  const grant = await setAccess(requester.id, { role: 'requester', grantedPermissions: ['requests:cancel_own'] })
+  assert.equal(grant.status, 200, grant.text)
+
+  // Aguardando agendamento: a tela oferece, e o cancelamento entra com o motivo descrito.
+  const first = await post('/maintenance/requests', requester, maintenanceBody())
+  const firstPath = `/maintenance/requests/${first.body.id}`
+  assert.equal((await call(firstPath, { session: requester })).body.actions.cancel, true)
+  assert.equal((await post(`${firstPath}/cancel`, requester, {})).status, 400, 'motivo continua obrigatório')
+  const done = await post(`${firstPath}/cancel`, requester, { motivo: 'Resolvido pelo próprio setor' })
+  assert.equal(done.status, 200, done.text)
+  assert.equal(done.body.status, 'cancelado')
+  assert.deepEqual(
+    (await auditActions(first.body.id)).filter((row) => row.action === 'request.cancelled').map((row) => row.actor),
+    [requester.id],
+  )
+
+  // Depois de agendada, não: a resposta explica, e nada muda.
+  const second = await post('/maintenance/requests', requester, maintenanceBody())
+  const secondPath = `/maintenance/requests/${second.body.id}`
+  const scheduled = await post(`${secondPath}/schedule`, operator, {
+    dataAgendada: '2027-04-01T13:00:00.000Z',
+    dataFim: '2027-04-01T15:00:00.000Z',
+  })
+  assert.equal(scheduled.body.status, 'agendado')
+  assert.equal((await call(secondPath, { session: requester })).body.actions.cancel, false)
+  assert.equal((await post(`${secondPath}/cancel`, requester, { motivo: 'Tarde' })).status, 409)
+  assert.equal((await call(secondPath, { session: requester })).body.request.status, 'agendado')
+
+  // A de outra pessoa continua invisível, e quem não tem a concessão continua sem cancelar.
+  const foreign = await post('/maintenance/requests', other, maintenanceBody())
+  assert.equal((await post(`/maintenance/requests/${foreign.body.id}/cancel`, requester, { motivo: 'Não é minha' })).status, 404)
+  assert.equal((await post(`/maintenance/requests/${foreign.body.id}/cancel`, other, { motivo: 'Sem concessão' })).status, 403)
+})
+
 test('solicitante vê só o que é dele; identidade e setor nunca vêm do corpo', async () => {
   const first = await createUser('dono@example.gov.br', 'requester', 'Protocolo')
   const second = await createUser('outro@example.gov.br', 'requester', 'Protocolo')
@@ -575,13 +613,19 @@ test('frota: solicitação, execução real, ocorrências, atrasos e conclusão'
   )
 })
 
-test('agenda: usa os agendamentos dos módulos, sem Passagens e conforme a permissão', async () => {
+test('agenda: usa os agendamentos dos módulos, as viagens de Passagens e a permissão', async () => {
   const operator = await staff('agenda-op@example.gov.br', ['requests:schedule'])
   const requester = await createUser('agenda-solicitante@example.gov.br')
 
   const maintenance = await post('/maintenance/requests', requester, maintenanceBody())
   const fleet = await post('/fleet/requests', requester, fleetBody())
   const unscheduled = await post('/fleet/requests', requester, fleetBody())
+  // Passagens entram pela viagem pedida: ida e volta, no horário de Brasília (UTC−3).
+  const flight = await post('/flights/requests', requester, flightBody({
+    ida: { origem: 'GRU', destino: 'BSB', data: '2031-06-12', horario: '08:00' },
+    volta: { origem: 'BSB', destino: 'GRU', data: '2031-06-14', horario: '18:00' },
+  }))
+  assert.equal(flight.status, 201, flight.text)
   await post(`/maintenance/requests/${maintenance.body.id}/schedule`, operator, {
     dataAgendada: '2031-06-10T13:00:00.000Z',
   })
@@ -593,13 +637,28 @@ test('agenda: usa os agendamentos dos módulos, sem Passagens e conforme a permi
   const range = 'from=2031-06-01T00:00:00.000Z&to=2031-07-01T00:00:00.000Z'
   const events = await call(`/calendar/events?${range}`, { session: operator })
   assert.deepEqual(
-    events.body.events.map((event: { id: string }) => event.id),
-    [maintenance.body.id, fleet.body.id],
+    events.body.events.map((event: { id: string; leg: string | null }) => [event.id, event.leg]),
+    [[maintenance.body.id, null], [fleet.body.id, null], [flight.body.id, 'ida'], [flight.body.id, 'volta']],
+  )
+  assert.deepEqual(
+    events.body.events.filter((event: { module: string }) => event.module === 'flights').map((event: { start: string }) => event.start),
+    ['2031-06-12T11:00:00.000Z', '2031-06-14T21:00:00.000Z'],
   )
   assert.equal(events.body.events.some((event: { id: string }) => event.id === unscheduled.body.id), false)
+  // Nada dos passageiros chega à agenda.
+  assert.doesNotMatch(JSON.stringify(events.body), /Passageira Fictícia|\d{3}\.\d{3}\.\d{3}-\d{2}/)
 
   const onlyFleet = await call(`/calendar/events?${range}&modules=fleet`, { session: operator })
   assert.deepEqual(onlyFleet.body.events.map((event: { module: string }) => event.module), ['fleet'])
+  const onlyFlights = await call(`/calendar/events?${range}&modules=flights`, { session: operator })
+  assert.deepEqual(onlyFlights.body.events.map((event: { leg: string }) => event.leg), ['ida', 'volta'])
+  // Filtro de situação de Manutenção e Frota: Passagens não têm "agendado".
+  const scheduledOnly = await call(`/calendar/events?${range}&statuses=agendado`, { session: operator })
+  assert.equal(scheduledOnly.body.events.some((event: { module: string }) => event.module === 'flights'), false)
+  // Só a volta no período: a ida fica de fora.
+  const lateRange = 'from=2031-06-13T00:00:00.000Z&to=2031-07-01T00:00:00.000Z'
+  const late = await call(`/calendar/events?${lateRange}&modules=flights`, { session: operator })
+  assert.deepEqual(late.body.events.map((event: { leg: string }) => event.leg), ['volta'])
 
   assert.equal((await call(`/calendar/events?${range}`, { session: requester })).status, 403)
   assert.equal((await call('/calendar/events', { session: operator })).status, 400)
@@ -610,7 +669,7 @@ test('agenda: usa os agendamentos dos módulos, sem Passagens e conforme a permi
     dataAgendada: '2031-08-01T13:00:00.000Z',
     comentario: 'Adiado',
   })
-  const moved = await call(`/calendar/events?${range}`, { session: operator })
+  const moved = await call(`/calendar/events?${range}&modules=maintenance,fleet`, { session: operator })
   assert.equal(moved.body.events.length, 1)
 })
 

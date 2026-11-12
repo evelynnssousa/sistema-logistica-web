@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { generateKeyPairSync } from 'node:crypto'
 import { test } from 'node:test'
 import { retryDelayMinutes } from '../database/integrationRepository.js'
 import {
@@ -15,7 +14,6 @@ import {
 } from './catalog.js'
 import type { EventType } from './catalog.js'
 import {
-  calendarMode,
   carbonCopies,
   emailMode,
   integrationStatus,
@@ -26,12 +24,8 @@ import {
 } from './config.js'
 import { maskEmail, redactForOutbound, redactValidCpf } from './redaction.js'
 import {
-  buildServiceAccountAssertion,
-  createGoogleCalendarTransport,
   createResendTransport,
-  externalEventId,
   IntegrationError,
-  resolveCalendarTransport,
   resolveEmailTransport,
 } from './transports.js'
 
@@ -174,32 +168,13 @@ test('em ambiente de teste, o provedor real nunca é escolhido', () => {
     RESEND_API_KEY: 'chave',
     RESEND_FROM: 'remetente@example.gov.br',
     NOTIFICATION_EMAILS_ENABLED: 'true',
-    GOOGLE_CALENDAR_ENABLED: 'true',
-    GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL: 'conta@example.gov.br',
-    GOOGLE_CALENDAR_PRIVATE_KEY: 'chave',
-    GOOGLE_CALENDAR_ID_MAINTENANCE: 'calendario',
   }
   assert.equal(emailMode(env(real)), 'none')
-  assert.equal(calendarMode('maintenance', env(real)), 'none')
-  assert.equal(resolveCalendarTransport(env(real)), null)
 })
 
 test('o transporte simulado nunca vale em produção', () => {
-  const production = { NODE_ENV: 'production', EMAIL_TRANSPORT: 'simulated', GOOGLE_CALENDAR_TRANSPORT: 'simulated' }
+  const production = { NODE_ENV: 'production', EMAIL_TRANSPORT: 'simulated' }
   assert.equal(emailMode(env(production)), 'none')
-  assert.equal(calendarMode(undefined, env(production)), 'none')
-})
-
-test('o calendário só vale para o módulo com calendário definido', () => {
-  const base = {
-    GOOGLE_CALENDAR_ENABLED: 'true',
-    GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL: 'conta@example.gov.br',
-    GOOGLE_CALENDAR_PRIVATE_KEY: 'chave',
-    GOOGLE_CALENDAR_ID_FLEET: 'frota',
-  }
-  assert.equal(calendarMode('fleet', env(base)), 'provider')
-  assert.equal(calendarMode('maintenance', env(base)), 'none')
-  assert.equal(calendarMode(undefined, env({ ...base, GOOGLE_CALENDAR_ENABLED: 'false' })), 'none')
 })
 
 test('o worker não roda sozinho fora de produção', () => {
@@ -232,15 +207,13 @@ test('a situação das integrações nunca devolve os valores configurados', () 
     env({
       RESEND_API_KEY: secret,
       RESEND_FROM: `${secret}@example.gov.br`,
-      GOOGLE_CALENDAR_PRIVATE_KEY: secret,
-      GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL: `${secret}@example.gov.br`,
-      GOOGLE_CALENDAR_ID_FLEET: secret,
       EMAIL_INTERNAL_TO_FLEET: `${secret}@example.gov.br`,
     }),
   )
   assert.ok(!JSON.stringify(status).includes(secret))
   assert.equal(status.email.internalRecipients.fleet, 1)
-  assert.equal(status.calendar.fleetCalendarPresent, true)
+  // A integração com o Google Calendar foi removida: a situação não fala mais em calendário externo.
+  assert.equal('calendar' in status, false)
 })
 
 test('as esperas entre tentativas crescem e têm limite', () => {
@@ -335,141 +308,6 @@ test('Resend: falha de rede é repetida', async () => {
   await assert.rejects(transport.send(outgoing), (error: IntegrationError) => {
     assert.equal(error.code, 'NETWORK')
     assert.equal(error.retryable, true)
-    return true
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Google Calendar: chave gerada na hora e servidor falso, sem rede.
-// ---------------------------------------------------------------------------
-const { privateKey } = generateKeyPairSync('rsa', {
-  modulusLength: 2048,
-  publicKeyEncoding: { type: 'spki', format: 'pem' },
-  privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-})
-const credentials = { serviceAccountEmail: 'conta@example.gov.br', privateKey }
-
-function fakeGoogle(handler: (url: string, init: RequestInit) => { status: number; body?: unknown }) {
-  const calls: { url: string; init: RequestInit }[] = []
-  const fetcher = (async (url: string, init: RequestInit) => {
-    if (url.includes('oauth2.googleapis.com')) {
-      return new Response(JSON.stringify({ access_token: 'token-falso', expires_in: 3600 }), { status: 200 })
-    }
-    calls.push({ url, init })
-    const reply = handler(url, init)
-    return new Response(reply.body ? JSON.stringify(reply.body) : null, { status: reply.status })
-  }) as typeof fetch
-  return { calls, fetcher }
-}
-
-const calendarEvent = {
-  eventId: externalEventId('6f1d3c1e-0000-4000-8000-000000000000'),
-  module: 'fleet' as const,
-  summary: 'Frota #1: Sede → Fórum',
-  description: 'Protocolo: 1',
-  start: new Date('2030-01-15T13:00:00.000Z'),
-  end: null,
-}
-
-test('o identificador do evento é estável e válido para o Google', () => {
-  const id = externalEventId('6F1D3C1E-0000-4000-8000-000000000000')
-  assert.equal(id, externalEventId('6f1d3c1e-0000-4000-8000-000000000000'))
-  assert.match(id, /^[a-v0-9]{5,1024}$/)
-})
-
-test('a asserção da conta de serviço pede só o escopo de eventos', () => {
-  const [, payload] = buildServiceAccountAssertion(credentials, 1_000).split('.')
-  const claims = JSON.parse(Buffer.from(payload, 'base64url').toString())
-  assert.equal(claims.scope, 'https://www.googleapis.com/auth/calendar.events')
-  assert.equal(claims.iss, credentials.serviceAccountEmail)
-  assert.equal(claims.exp - claims.iat, 3600)
-})
-
-test('Google: atualiza o evento, sem duplicar, e cria apenas se não existir', async () => {
-  const existing = fakeGoogle(() => ({ status: 200 }))
-  await createGoogleCalendarTransport(credentials, () => 'frota@agenda', existing.fetcher).upsert(calendarEvent)
-  assert.equal(existing.calls.length, 1)
-  assert.equal(existing.calls[0].init.method, 'PUT')
-  assert.ok(existing.calls[0].url.includes(calendarEvent.eventId))
-
-  const missing = fakeGoogle((_url, init) => ({ status: init.method === 'PUT' ? 404 : 200 }))
-  await createGoogleCalendarTransport(credentials, () => 'frota@agenda', missing.fetcher).upsert(calendarEvent)
-  assert.deepEqual(missing.calls.map((call) => call.init.method), ['PUT', 'POST'])
-
-  const body = JSON.parse(String(missing.calls[1].init.body))
-  assert.equal(body.id, calendarEvent.eventId)
-  // Sem término previsto: o evento informa que o fim não foi definido.
-  assert.equal(body.endTimeUnspecified, true)
-  assert.equal(body.start.timeZone, 'America/Sao_Paulo')
-})
-
-test('Google: duas tentativas simultâneas de criar voltam para a fila', async () => {
-  const fake = fakeGoogle((_url, init) => ({ status: init.method === 'PUT' ? 404 : 409 }))
-  const transport = createGoogleCalendarTransport(credentials, () => 'frota@agenda', fake.fetcher)
-  await assert.rejects(transport.upsert(calendarEvent), (error: IntegrationError) => {
-    assert.equal(error.code, 'GOOGLE_409')
-    assert.equal(error.retryable, true)
-    return true
-  })
-})
-
-test('Google: remover evento já removido é sucesso', async () => {
-  for (const status of [200, 204, 404, 410]) {
-    const fake = fakeGoogle(() => ({ status: status === 204 ? 204 : status }))
-    await createGoogleCalendarTransport(credentials, () => 'frota@agenda', fake.fetcher).remove('fleet', 'id')
-    assert.equal(fake.calls[0].init.method, 'DELETE')
-  }
-})
-
-test('Google: classifica falhas e não tenta sem calendário definido', async () => {
-  for (const [status, retryable] of [[500, true], [429, true], [403, true], [401, false], [400, false]] as const) {
-    const fake = fakeGoogle(() => ({ status }))
-    const transport = createGoogleCalendarTransport(credentials, () => 'frota@agenda', fake.fetcher)
-    await assert.rejects(transport.remove('fleet', 'id'), (error: IntegrationError) => {
-      assert.equal(error.code, `GOOGLE_${status}`)
-      assert.equal(error.retryable, retryable)
-      return true
-    })
-  }
-
-  const fake = fakeGoogle(() => ({ status: 200 }))
-  await assert.rejects(
-    createGoogleCalendarTransport(credentials, () => null, fake.fetcher).remove('fleet', 'id'),
-    (error: IntegrationError) => error.code === 'CALENDAR_ID_MISSING',
-  )
-  assert.equal(fake.calls.length, 0)
-})
-
-test('Google: reaproveita o token e aceita falha de rede como temporária', async () => {
-  let tokens = 0
-  const fetcher = (async (url: string) => {
-    if (url.includes('oauth2')) {
-      tokens += 1
-      return new Response(JSON.stringify({ access_token: 't', expires_in: 3600 }), { status: 200 })
-    }
-    return new Response(null, { status: 200 })
-  }) as typeof fetch
-  const transport = createGoogleCalendarTransport(credentials, () => 'frota@agenda', fetcher)
-  await transport.upsert(calendarEvent)
-  await transport.upsert(calendarEvent)
-  assert.equal(tokens, 1)
-
-  const offline = createGoogleCalendarTransport(credentials, () => 'frota@agenda', (async () => {
-    throw new Error('sem rede')
-  }) as typeof fetch)
-  await assert.rejects(offline.upsert(calendarEvent), (error: IntegrationError) => error.code === 'NETWORK')
-})
-
-test('Google: chave inválida é falha definitiva, sem expor a chave', async () => {
-  const transport = createGoogleCalendarTransport(
-    { serviceAccountEmail: 'conta@example.gov.br', privateKey: 'nao-e-uma-chave' },
-    () => 'frota@agenda',
-    fakeGoogle(() => ({ status: 200 })).fetcher,
-  )
-  await assert.rejects(transport.upsert(calendarEvent), (error: IntegrationError) => {
-    assert.equal(error.code, 'GOOGLE_INVALID_KEY')
-    assert.equal(error.retryable, false)
-    assert.ok(!error.message.includes('nao-e-uma-chave'))
     return true
   })
 })

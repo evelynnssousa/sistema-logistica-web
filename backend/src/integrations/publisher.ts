@@ -16,7 +16,7 @@ import {
   teamPermissions,
 } from './catalog.js'
 import type { EventContext, EventType, IntegrationModule } from './catalog.js'
-import { calendarMode, carbonCopies, emailMode, internalRecipients } from './config.js'
+import { carbonCopies, emailMode, internalRecipients } from './config.js'
 import { quotaSettings } from './emailQuota.js'
 import { redactForOutbound } from './redaction.js'
 
@@ -94,39 +94,6 @@ export async function publishTripDriverEvent(
     if (!driver.rows[0]) return
     const { rules, ...event } = input
     await applyDriverRules(client, rules, { ...event, module: 'fleet', driverUserId: driver.rows[0].user_id })
-  })
-}
-
-/** Atualiza o estado desejado do agendamento no calendário externo, com o mesmo isolamento. */
-export async function requestCalendarSync(
-  client: Client,
-  requestId: string,
-  module: 'maintenance' | 'fleet',
-  action: 'upsert' | 'delete',
-  { onlyIfTracked = false }: { onlyIfTracked?: boolean } = {},
-) {
-  await runIsolated(client, 'calendar_sync', 'calendar_sync_request_failed', action, async () => {
-    const status = calendarMode(module) === 'none' ? 'not_configured' : 'pending'
-    if (onlyIfTracked) {
-      await client.query(
-        `UPDATE public.calendar_sync_items
-            SET desired_action = $2, revision = revision + 1, status = $3,
-                attempts = 0, next_attempt_at = now(), locked_until = NULL, last_error_code = NULL
-          WHERE request_id = $1`,
-        [requestId, action, status],
-      )
-      return
-    }
-    await client.query(
-      `INSERT INTO public.calendar_sync_items (request_id, module, desired_action, status)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (request_id) DO UPDATE
-         SET desired_action = EXCLUDED.desired_action,
-             revision = public.calendar_sync_items.revision + 1,
-             status = EXCLUDED.status,
-             attempts = 0, next_attempt_at = now(), locked_until = NULL, last_error_code = NULL`,
-      [requestId, module, action, status],
-    )
   })
 }
 

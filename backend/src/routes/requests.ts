@@ -1,12 +1,15 @@
 import { Router } from 'express'
 import type { Request, Response } from 'express'
+import { holdsPermission } from '../auth/permissions.js'
 import type { Permission } from '../auth/permissions.js'
 import {
+  canCancelOwnRequest,
   canCancelRequest,
   canReadRequest,
   canScheduleRequest,
   canUpdateRequest,
   canActOnBehalfOfOtherSectors,
+  ownCancellableStatuses,
 } from '../auth/requestPolicy.js'
 import type { RequestModule } from '../auth/requestPolicy.js'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
@@ -40,7 +43,7 @@ import type { TripType } from '../requests/validation.js'
 import type { FormKey } from '../requests/settingsRules.js'
 import { requireCsrf } from '../middleware/requireCsrf.js'
 import { requireAuditedPermission } from '../middleware/requireAuditedPermission.js'
-import { requirePermission } from '../middleware/requirePermission.js'
+import { requireAnyPermission, requirePermission } from '../middleware/requirePermission.js'
 import {
   asBody,
   isUuid,
@@ -197,7 +200,9 @@ function allowedActions(identity: AuthenticatedIdentity, current: ServiceRequest
     schedule: module !== 'flights' && !current.waitingSince && canScheduleRequest(identity, module) && Boolean(nextStatus(module, status, 'schedule')),
     start: update && !current.waitingSince && Boolean(nextStatus(module, status, 'start')),
     complete: update && Boolean(nextStatus(module, status, 'complete')),
-    cancel: canCancelRequest(identity, scope) && Boolean(nextStatus(module, status, 'cancel')),
+    cancel:
+      (canCancelRequest(identity, scope) || canCancelOwnRequest(identity, { ...scope, status })) &&
+      Boolean(nextStatus(module, status, 'cancel')),
     advanceTo: update && !current.waitingSince ? nextStatus(module, status, 'advance') : null,
     occurrence: module === 'fleet' && update && ['agendado', 'reagendado', 'em_andamento', 'concluido'].includes(status),
     editPassengers: module === 'flights' && update && open,
@@ -488,19 +493,29 @@ export function registerRequestRoutes(router: Router, module: RequestModule) {
 
   router.post(
     `${prefix}/:requestId/cancel`,
-    requirePermission('requests:cancel'),
+    // Cancelar qualquer uma que a pessoa consulta, ou só a própria antes do atendimento.
+    requireAnyPermission('requests:cancel', 'requests:cancel_own'),
     requirePermission(`${module}:read` as Permission),
     guarded(async (request, response) => {
       const identity = identityOf(response)
       const current = await loadReadable(response, module, requestIdOf(request))
-      if (!canCancelRequest(identity, { module, requesterId: current.requester.id })) {
+      const scope = { module, requesterId: current.requester.id }
+      const general = canCancelRequest(identity, scope)
+      if (!general && !canCancelOwnRequest(identity, { ...scope, status: current.status })) {
+        // A própria, mas já em atendimento: a pessoa enxerga o pedido, então a resposta explica.
+        if (holdsPermission(identity, 'requests:cancel_own') && current.requester.id === identity.userId) {
+          throw conflict('A solicitação já está em atendimento e não pode mais ser cancelada por quem a abriu. Fale com a SLM.')
+        }
         throw notFound()
       }
       const body = asBody(request.body)
-      const status = await requests.cancel(identity, module, current.id, {
-        code: body.motivoCodigo,
-        text: body.motivo,
-      })
+      const status = await requests.cancel(
+        identity,
+        module,
+        current.id,
+        { code: body.motivoCodigo, text: body.motivo },
+        general ? undefined : ownCancellableStatuses[module],
+      )
       response.json({ success: true, status })
     }),
   )

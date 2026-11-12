@@ -11,13 +11,12 @@ import app from '../app.js'
 import { hashPassword } from '../auth/password.js'
 import type { Permission } from '../auth/permissions.js'
 import {
-  processCalendarQueue,
   processEmailQueue,
   publishPendingReminders,
   refreshDeliveryStatuses,
 } from '../integrations/worker.js'
 import { IntegrationError } from '../integrations/transports.js'
-import type { CalendarEventInput, CalendarTransport, EmailTransport, OutgoingEmail } from '../integrations/transports.js'
+import type { EmailTransport, OutgoingEmail } from '../integrations/transports.js'
 import { authRateLimits } from '../security/authRateLimits.js'
 import { resetAccessSchemaCacheForTests } from './accessSchema.js'
 import { requireDisposableDatabaseUrl } from './databaseSafety.js'
@@ -182,33 +181,12 @@ function fakeEmail(failures: (IntegrationError | null)[] = []) {
   return { sent, transport }
 }
 
-function fakeCalendar(failures: (IntegrationError | null)[] = []) {
-  const operations: { kind: 'upsert' | 'remove'; event?: CalendarEventInput; eventId: string }[] = []
-  const transport: CalendarTransport = {
-    provider: 'falso',
-    simulated: true,
-    async upsert(event) {
-      const failure = failures.shift()
-      if (failure) throw failure
-      operations.push({ kind: 'upsert', event, eventId: event.eventId })
-    },
-    async remove(_module, eventId) {
-      const failure = failures.shift()
-      if (failure) throw failure
-      operations.push({ kind: 'remove', eventId })
-    },
-  }
-  return { operations, transport }
-}
-
 async function drain() {
   await pool.query(`UPDATE public.email_deliveries SET status = 'sent' WHERE status IN ('pending', 'sending')`)
-  await pool.query(`UPDATE public.calendar_sync_items SET status = 'synced' WHERE status IN ('pending', 'syncing')`)
 }
 
 async function dueNow() {
   await pool.query(`UPDATE public.email_deliveries SET next_attempt_at = now() WHERE status = 'pending'`)
-  await pool.query(`UPDATE public.calendar_sync_items SET next_attempt_at = now() WHERE status = 'pending'`)
 }
 
 async function deliveriesOf(resourceId: string) {
@@ -274,7 +252,7 @@ before(async () => {
 })
 
 after(async () => {
-  for (const name of ['PASSENGER_DATA_KEY', 'PASSWORD_RESET_PEPPER', 'EMAIL_TRANSPORT', 'GOOGLE_CALENDAR_TRANSPORT']) {
+  for (const name of ['PASSENGER_DATA_KEY', 'PASSWORD_RESET_PEPPER', 'EMAIL_TRANSPORT']) {
     delete process.env[name]
   }
   if (server) await new Promise((done) => server.close(done))
@@ -283,7 +261,6 @@ after(async () => {
 
 beforeEach(() => {
   process.env.EMAIL_TRANSPORT = 'simulated'
-  process.env.GOOGLE_CALENDAR_TRANSPORT = 'simulated'
 })
 
 // Este teste precisa ser o primeiro: roda antes de a migração 006 ser aplicada.
@@ -733,147 +710,33 @@ test('almoxarifado: fluxo interno avisa; pedido externo não tem a quem avisar',
   await drain()
 })
 
-test('google simulado: cria, reagenda e cancela sem duplicar; a agenda segue sem o provedor', async () => {
+test('sem calendário externo: agendar, reagendar e cancelar não geram fila, e a agenda interna segue', async () => {
   const requester = await createUser('agenda@example.gov.br')
   const operator = await staff('agenda-op@example.gov.br')
   const created = await post('/fleet/requests', requester, fleetBody())
   const id = created.body.id
   const base = `/fleet/requests/${id}`
-
-  const offline = fakeCalendar([new IntegrationError('GOOGLE_500', true)])
-  assert.equal((await post(`${base}/schedule`, operator, { dataAgendada: '2031-05-10T13:00:00.000Z', motivoCodigo: 'conflito_agenda' })).status, 200)
-
-  // O provedor fora do ar não atrapalha a agenda interna.
-  assert.deepEqual(await processCalendarQueue(offline.transport), { synced: 0, failed: 1 })
-  const events = await call(
-    '/calendar/events?from=2031-05-01T00:00:00.000Z&to=2031-06-01T00:00:00.000Z',
-    { session: operator },
-  )
-  assert.ok(events.body.events.some((event: { id: string }) => event.id === id))
-
-  const item = async () =>
-    (await pool.query(
-      `SELECT id::text AS id, status, attempts, revision, synced_revision, last_error_code, external_event_id
-         FROM public.calendar_sync_items WHERE request_id = $1`,
+  const range = '/calendar/events?from=2031-05-01T00:00:00.000Z&to=2031-06-01T00:00:00.000Z'
+  const queued = async () =>
+    (await pool.query<{ total: number }>(
+      `SELECT count(*)::int AS total FROM public.calendar_sync_items WHERE request_id = $1`,
       [id],
-    )).rows[0]
-  assert.equal((await item()).status, 'pending')
-  assert.equal((await item()).last_error_code, 'GOOGLE_500')
+    )).rows[0].total
 
-  await dueNow()
-  const calendar = fakeCalendar()
-  assert.deepEqual(await processCalendarQueue(calendar.transport), { synced: 1, failed: 0 })
-  const expectedId = `slm${id.replace(/-/g, '')}`
-  assert.equal(calendar.operations[0].eventId, expectedId)
-  assert.equal((await item()).status, 'synced')
-  assert.equal((await item()).external_event_id, expectedId)
-
-  // Sem nada novo, nada é enviado.
-  assert.deepEqual(await processCalendarQueue(calendar.transport), { synced: 0, failed: 0 })
-
-  // O evento só leva o necessário.
-  const sentEvent = calendar.operations[0].event!
-  const eventText = JSON.stringify(sentEvent)
-  for (const secret of ['agenda@example.gov.br', 'Pessoa agenda', 'Pessoa Passageira', 'Entrega de documentos']) {
-    assert.ok(!eventText.includes(secret), `evento expôs ${secret}`)
-  }
-
-  assert.equal((await post(`${base}/schedule`, operator, {
-    dataAgendada: '2031-05-12T13:00:00.000Z',
-    comentario: 'Mudança',
-  })).status, 200)
-  assert.equal((await item()).revision, 2)
-  await processCalendarQueue(calendar.transport)
-  assert.equal(calendar.operations[1].kind, 'upsert')
-  assert.equal(calendar.operations[1].eventId, expectedId)
-  assert.equal(calendar.operations[1].event!.start.toISOString(), '2031-05-12T13:00:00.000Z')
-
+  assert.equal((await post(`${base}/schedule`, operator, { dataAgendada: '2031-05-10T13:00:00.000Z', motivoCodigo: 'conflito_agenda' })).status, 200)
+  assert.ok((await call(range, { session: operator })).body.events.some((event: { id: string }) => event.id === id))
+  assert.equal((await post(`${base}/schedule`, operator, { dataAgendada: '2031-05-12T13:00:00.000Z', comentario: 'Mudança' })).status, 200)
+  const moved = (await call(range, { session: operator })).body.events.find((event: { id: string }) => event.id === id)
+  assert.equal(moved.start, '2031-05-12T13:00:00.000Z')
   assert.equal((await post(`${base}/cancel`, operator, { motivo: 'Desmarcado' })).status, 200)
-  await processCalendarQueue(calendar.transport)
-  assert.deepEqual(
-    calendar.operations.slice(2).map((operation) => [operation.kind, operation.eventId]),
-    [['remove', expectedId]],
-  )
-  assert.equal((await item()).status, 'synced')
-  await drain()
-})
+  // A tabela antiga continua no banco só como histórico: nada novo entra nela.
+  assert.equal(await queued(), 0)
 
-test('mudança durante a sincronização não se perde', async () => {
-  const requester = await createUser('corrida@example.gov.br')
-  const operator = await staff('corrida-op@example.gov.br')
-  const created = await post('/fleet/requests', requester, fleetBody())
-  const id = created.body.id
-  await post(`/fleet/requests/${id}/schedule`, operator, { motivoCodigo: 'conflito_agenda', dataAgendada: '2031-06-10T13:00:00.000Z' })
-
-  // Durante o envio, chega um reagendamento.
-  const transport: CalendarTransport = {
-    provider: 'falso',
-    simulated: true,
-    upsert: async () => {
-      await post(`/fleet/requests/${id}/schedule`, operator, {
-        motivoCodigo: 'conflito_agenda',
-        dataAgendada: '2031-06-11T13:00:00.000Z',
-        comentario: 'Mudou durante o envio',
-      })
-    },
-    remove: async () => {},
-  }
-  await processCalendarQueue(transport)
-
-  const { rows } = await pool.query(
-    `SELECT status, revision, synced_revision FROM public.calendar_sync_items WHERE request_id = $1`,
-    [id],
-  )
-  assert.deepEqual(rows[0], { status: 'pending', revision: 2, synced_revision: 1 })
-
-  const calendar = fakeCalendar()
-  await processCalendarQueue(calendar.transport)
-  assert.equal(calendar.operations[0].event!.start.toISOString(), '2031-06-11T13:00:00.000Z')
-  await drain()
-})
-
-test('calendário: falha definitiva vai para reprocessamento autorizado', async () => {
-  const requester = await createUser('cal-falha@example.gov.br')
-  const operator = await staff('cal-falha-op@example.gov.br')
-  const created = await post('/maintenance/requests', requester, maintenanceBody())
-  await post(`/maintenance/requests/${created.body.id}/schedule`, operator, { dataAgendada: '2031-07-10T13:00:00.000Z' })
-
-  await processCalendarQueue(fakeCalendar([new IntegrationError('GOOGLE_401', false)]).transport)
-  const list = await call('/integrations/calendar?status=failed', { session: admin })
-  const failed = list.body.items.find((item: { requestId: string }) => item.requestId === created.body.id)
-  assert.equal(failed.errorCode, 'GOOGLE_401')
-  assert.equal(failed.protocol, created.body.protocol)
-
-  assert.equal((await post(`/integrations/calendar/${failed.id}/retry`, operator)).status, 403)
-  assert.equal((await post(`/integrations/calendar/${failed.id}/retry`, admin)).status, 200)
-  const calendar = fakeCalendar()
-  await processCalendarQueue(calendar.transport)
-  assert.equal(calendar.operations.length, 1)
-
-  const attempts = await call(`/integrations/calendar/${failed.id}/attempts`, { session: admin })
-  assert.deepEqual(attempts.body.attempts.map((item: { outcome: string }) => item.outcome), ['failure', 'success'])
-  await drain()
-})
-
-test('calendário sem configuração: fica registrado e nunca é enviado', async () => {
-  delete process.env.GOOGLE_CALENDAR_TRANSPORT
-  const requester = await createUser('cal-sem@example.gov.br')
-  const operator = await staff('cal-sem-op@example.gov.br')
-  const created = await post('/maintenance/requests', requester, maintenanceBody())
-  const scheduled = await post(`/maintenance/requests/${created.body.id}/schedule`, operator, {
-    dataAgendada: '2031-07-20T13:00:00.000Z',
-  })
-  assert.equal(scheduled.status, 200)
-
-  const { rows } = await pool.query(
-    `SELECT id::text AS id, status FROM public.calendar_sync_items WHERE request_id = $1`,
-    [created.body.id],
-  )
-  assert.equal(rows[0].status, 'not_configured')
-  const calendar = fakeCalendar()
-  assert.deepEqual(await processCalendarQueue(calendar.transport), { synced: 0, failed: 0 })
-  assert.equal((await post(`/integrations/calendar/${rows[0].id}/retry`, admin)).status, 409)
-  assert.deepEqual(await processCalendarQueue(null), { synced: 0, failed: 0 })
+  // As telas e rotas do calendário externo deixaram de existir.
+  const status = await call('/integrations/status', { session: admin })
+  assert.equal(status.status, 200, status.text)
+  assert.equal('calendar' in status.body.status, false)
+  assert.equal((await call('/integrations/calendar', { session: admin })).status, 404)
   await drain()
 })
 
@@ -1078,7 +941,7 @@ test('administração: permissões, e-mails mascarados e nenhuma credencial', as
   const requester = await createUser('adm-int@example.gov.br')
   const created = await post('/maintenance/requests', requester, maintenanceBody())
 
-  for (const path of ['/integrations/status', '/integrations/templates', '/integrations/emails', '/integrations/calendar']) {
+  for (const path of ['/integrations/status', '/integrations/templates', '/integrations/emails']) {
     assert.equal((await call(path, { session: requester })).status, 403, path)
     assert.equal((await call(path)).status, 401, path)
   }

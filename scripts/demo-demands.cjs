@@ -237,7 +237,6 @@ async function main() {
         E2E_RUN_ID: runId,
         PASSENGER_DATA_KEY: randomBytes(32).toString('base64'),
         EMAIL_TRANSPORT: 'simulated',
-        GOOGLE_CALENDAR_TRANSPORT: 'simulated',
         INTEGRATIONS_WORKER_ENABLED: 'true',
         DEMANDS_WORKER_ENABLED: 'true',
         ATTACHMENTS_DIR: attachmentsDirectory,

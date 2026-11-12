@@ -90,6 +90,8 @@ const auditActions = {
   warehouse_reserve_changed: 'warehouse.reserve_changed',
   warehouse_control_recorded: 'warehouse.control_recorded',
   warehouse_report_exported: 'warehouse.report_exported',
+  warehouse_spreadsheet_exported: 'warehouse.spreadsheet_exported',
+  fleet_spreadsheet_exported: 'fleet.spreadsheet_exported',
   manual_email_queued: 'communication.email_queued',
   manual_email_resent: 'communication.email_resent',
   config_draft_saved: 'config.draft_saved',

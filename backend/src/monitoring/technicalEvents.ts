@@ -5,7 +5,8 @@ import { describeError, logSecurityEvent } from '../security/logger.js'
  * Registros técnicos de erro. Guarda só serviço, evento e código: nunca mensagens, parâmetros,
  * corpos de requisição ou identificação de pessoas, que poderiam conter dados sensíveis.
  */
-export const monitoredServices = ['api', 'database', 'email', 'calendar', 'storage', 'worker'] as const
+// 'calendar' saiu com a remoção do Google Calendar (11/11/2026); registros antigos continuam no banco.
+export const monitoredServices = ['api', 'database', 'email', 'storage', 'worker'] as const
 export type MonitoredService = (typeof monitoredServices)[number]
 
 /** Nunca lança nem atrasa a resposta: sem a migração 010 ou sem banco, o evento fica só no log. */

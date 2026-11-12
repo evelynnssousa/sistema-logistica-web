@@ -2,7 +2,7 @@ import type { Pool, PoolClient } from 'pg'
 import { effectiveMinutes, exceedsJourney, isOutsideJourney, journeyOfRecord } from '../auth/driverPolicy.js'
 import type { TripGroup } from '../auth/driverPolicy.js'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
-import { publishDriverRuleEvent, publishIntegrationEvent, requestCalendarSync } from '../integrations/publisher.js'
+import { publishDriverRuleEvent, publishIntegrationEvent } from '../integrations/publisher.js'
 import { redactOptional, redactValidCpf } from '../integrations/redaction.js'
 import { journeyOf, readExecutionRecord, readJustification } from '../requests/driverPortalRules.js'
 import type { ExecutionRecord, OccurrenceType } from '../requests/driverPortalRules.js'
@@ -352,7 +352,6 @@ export class DriverRepository {
         actorId: actor.userId,
         context: { title: current.titulo },
       })
-      await requestCalendarSync(client, tripId, 'fleet', 'upsert', { onlyIfTracked: true })
       return { status: next, startedAt }
     })
   }
@@ -429,7 +428,6 @@ export class DriverRepository {
         actorId: actor.userId,
         context: { title: current.titulo },
       })
-      await requestCalendarSync(client, tripId, 'fleet', 'upsert', { onlyIfTracked: true })
       return { status: next, finishedAt, durationMinutes }
     })
   }

@@ -695,6 +695,42 @@ test('lista de testes: mensagem manual e teste de modelo bloqueados, sem cota', 
   assert.deepEqual(testAudit?.domains, ['example.gov.br'])
 })
 
+test('lista de testes: mensagem manual fora da lista depois do fim da cota é bloqueada, não adiada', async () => {
+  await settleQueue()
+  await pool.query(`UPDATE public.manual_emails SET status = 'failed' WHERE status IN ('pending', 'sending')`)
+  process.env.EMAIL_DAILY_LIMIT = '2'
+  process.env.EMAIL_RECOVERY_DAILY_RESERVE = '1'
+  process.env.EMAIL_RECIPIENT_ALLOWLIST = 'manual-cota-a@example.gov.br,manual-cota-b@example.gov.br'
+  const request = (await pool.query<{ id: string }>(`SELECT id::text AS id FROM public.service_requests LIMIT 1`)).rows[0]
+  // A fila segue a próxima tentativa: a ordem é fixada por ela, e não pela hora da gravação.
+  const insertManual = async (to: string, minutesAgo: number) =>
+    (await pool.query<{ id: string }>(
+      `INSERT INTO public.manual_emails
+        (request_id, modulo, protocolo, destinatarios, copias, assunto, corpo_texto, corpo_html, chave_idempotencia, enviado_por, status, proxima_tentativa)
+       VALUES ($1, 'maintenance', 'MAN-TESTE', $2, '{}', 'Assunto', 'Texto', '<p>Texto</p>', gen_random_uuid(), $3, 'pending',
+               now() - make_interval(mins => $4))
+       RETURNING id::text AS id`,
+      [request.id, [to], admin.id, minutesAgo],
+    )).rows[0].id
+  // A primeira gasta a única vaga; a segunda encontra a cota esgotada; a terceira está fora da lista.
+  const sentId = await insertManual('manual-cota-a@example.gov.br', 3)
+  const waitingId = await insertManual('manual-cota-b@example.gov.br', 2)
+  const outsideId = await insertManual('manual-cota-fora@example.gov.br', 1)
+  const transport = fakeTransport('resend')
+  const result = await processManualEmailQueue(transport, undefined, null)
+  assert.equal(transport.sent.length, 1)
+  assert.deepEqual(result, { sent: 1, failed: 1 })
+  const rows = await pool.query<{ id: string; status: string; codigo_erro: string | null }>(
+    `SELECT id::text AS id, status, codigo_erro FROM public.manual_emails WHERE id = ANY($1::uuid[])`,
+    [[sentId, waitingId, outsideId]],
+  )
+  const byId = new Map(rows.rows.map((row) => [row.id, row]))
+  assert.equal(byId.get(sentId)?.status, 'sent')
+  assert.deepEqual([byId.get(waitingId)?.status, byId.get(waitingId)?.codigo_erro], ['pending', 'DAILY_LIMIT_REACHED'])
+  assert.deepEqual([byId.get(outsideId)?.status, byId.get(outsideId)?.codigo_erro], ['failed', 'RECIPIENT_OUTSIDE_TEST_LIST'])
+  assert.equal((await usage()).notifications_used, 1)
+})
+
 test('lista de testes: dois workers com destinatários mistos não passam da cota nem enviam aos de fora', async () => {
   await settleQueue()
   process.env.EMAIL_ADMIN_GROUP_MINUTES = '0'
@@ -711,14 +747,19 @@ test('lista de testes: dois workers com destinatários mistos não passam da cot
   assert.equal(sent.length, 3, 'limite 4, reserva 1')
   assert.ok(sent.every((message) => allowed.includes(message.to)))
   assert.equal((await usage()).notifications_used, 3)
-  // Os de fora nunca saem: ficam bloqueados ou, se a cota acabou antes de chegar neles, adiados.
+  // Os de fora nunca saem e ficam bloqueados de vez, mesmo os que estavam depois do fim da cota:
+  // o resultado não depende da ordem em que os dois workers pegaram o lote.
   const outside = await pool.query<{ status: string; last_error_code: string }>(
     `SELECT status, last_error_code FROM public.email_deliveries WHERE recipient LIKE 'misto-fora-%'`,
   )
   assert.equal(outside.rows.length, 4)
-  assert.ok(outside.rows.every((row) => row.status !== 'sent'))
-  assert.ok(outside.rows.some((row) => row.last_error_code === 'RECIPIENT_OUTSIDE_TEST_LIST'))
-  assert.ok(outside.rows.every((row) => ['RECIPIENT_OUTSIDE_TEST_LIST', 'DAILY_LIMIT_REACHED'].includes(row.last_error_code)))
+  assert.ok(outside.rows.every((row) => row.status === 'failed' && row.last_error_code === 'RECIPIENT_OUTSIDE_TEST_LIST'))
+  // Os autorizados que não couberam na cota só esperam o dia seguinte.
+  const waiting = await pool.query<{ status: string; last_error_code: string | null }>(
+    `SELECT status, last_error_code FROM public.email_deliveries WHERE recipient LIKE 'misto-ok-%' AND status <> 'sent'`,
+  )
+  assert.equal(waiting.rows.length, 2)
+  assert.ok(waiting.rows.every((row) => row.status !== 'failed' && row.last_error_code === 'DAILY_LIMIT_REACHED'))
 })
 
 test('cota: a data é calculada uma vez por reserva, e a virada da meia-noite UTC separa os dias', async () => {

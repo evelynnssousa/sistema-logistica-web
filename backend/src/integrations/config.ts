@@ -31,47 +31,6 @@ export function emailMode(environment: Environment = process.env): ChannelMode {
     : 'none'
 }
 
-export type CalendarCredentials = {
-  serviceAccountEmail: string
-  privateKey: string
-}
-
-export function calendarCredentials(
-  environment: Environment = process.env,
-): CalendarCredentials | null {
-  const serviceAccountEmail = environment.GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL?.trim()
-  // Variáveis de ambiente costumam guardar a chave com "\n" literal.
-  const privateKey = environment.GOOGLE_CALENDAR_PRIVATE_KEY?.replace(/\\n/g, '\n').trim()
-  return serviceAccountEmail && privateKey ? { serviceAccountEmail, privateKey } : null
-}
-
-export function calendarIdFor(
-  module: 'maintenance' | 'fleet',
-  environment: Environment = process.env,
-) {
-  const value =
-    module === 'maintenance'
-      ? environment.GOOGLE_CALENDAR_ID_MAINTENANCE
-      : environment.GOOGLE_CALENDAR_ID_FLEET
-  return value?.trim() || null
-}
-
-export function calendarMode(
-  module?: 'maintenance' | 'fleet',
-  environment: Environment = process.env,
-): ChannelMode {
-  if (environment.GOOGLE_CALENDAR_TRANSPORT?.trim() === 'simulated' && !isProduction(environment)) {
-    return 'simulated'
-  }
-  if (isTest(environment)) return 'none'
-  if (environment.GOOGLE_CALENDAR_ENABLED?.trim() !== 'true') return 'none'
-  if (!calendarCredentials(environment)) return 'none'
-  if (module) return calendarIdFor(module, environment) ? 'provider' : 'none'
-  return calendarIdFor('maintenance', environment) || calendarIdFor('fleet', environment)
-    ? 'provider'
-    : 'none'
-}
-
 /** Grava no banco e envia para fora: só roda sozinho em produção, como a limpeza de sessões. */
 export function shouldRunIntegrationWorker(environment: Environment = process.env) {
   const configured = environment.INTEGRATIONS_WORKER_ENABLED?.trim()
@@ -140,14 +99,6 @@ export function integrationStatus(environment: Environment = process.env) {
       ),
       // Lista de destinatários de teste: só o modo e as contagens, nunca os endereços.
       restriction: restrictionSummary(environment),
-    },
-    calendar: {
-      mode: calendarMode(undefined, environment),
-      provider: 'Google Calendar',
-      flagEnabled: environment.GOOGLE_CALENDAR_ENABLED?.trim() === 'true',
-      credentialsPresent: Boolean(calendarCredentials(environment)),
-      maintenanceCalendarPresent: Boolean(calendarIdFor('maintenance', environment)),
-      fleetCalendarPresent: Boolean(calendarIdFor('fleet', environment)),
     },
     worker: {
       enabled: shouldRunIntegrationWorker(environment),

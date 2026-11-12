@@ -131,6 +131,29 @@ export function canCancelRequest(
   )
 }
 
+/** Situações em que o próprio solicitante ainda pode cancelar: antes de a SLM começar a tratar. */
+export const ownCancellableStatuses: Record<RequestModule, readonly string[]> = {
+  maintenance: ['aguardando_agendamento'],
+  fleet: ['aguardando_agendamento'],
+  flights: ['em_cotacao'],
+}
+
+/**
+ * O solicitante cancela a própria solicitação, só antes do agendamento (ou da cotação, em
+ * Passagens) e só com a concessão individual. A situação é conferida de novo na transação.
+ */
+export function canCancelOwnRequest(
+  identity: AuthenticatedIdentity,
+  request: RequestScope & { status: string },
+): boolean {
+  return (
+    holds(identity, 'requests:cancel_own') &&
+    holds(identity, `${request.module}:read`) &&
+    request.requesterId === identity.userId &&
+    ownCancellableStatuses[request.module].includes(request.status)
+  )
+}
+
 /** Autorização da pessoa, sem considerar qual solicitação está sendo consultada. */
 export function hasCpfAuthorization(identity: AuthenticatedIdentity): boolean {
   return (

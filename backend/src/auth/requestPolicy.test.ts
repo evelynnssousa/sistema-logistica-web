@@ -4,6 +4,7 @@ import { computeEffectivePermissions } from './permissions.js'
 import type { Permission } from './permissions.js'
 import {
   canActOnBehalfOfOtherSectors,
+  canCancelOwnRequest,
   canCancelRequest,
   canCreateRequest,
   canReadFullCpf,
@@ -188,6 +189,32 @@ test('o operador SLM vê e atende todos os setores', () => {
   assert.equal(canCancelRequest(operator, others), true)
   assert.equal(canUpdateRequest(identity('requester'), 'flights'), false)
   assert.equal(canCancelRequest(identity('requester'), own), false)
+})
+
+test('cancelar a própria: só com a concessão, só a própria e só antes do atendimento', () => {
+  const waiting = { ...own, status: 'aguardando_agendamento' }
+  // Sem a concessão, nada muda: o Solicitante continua sem cancelar.
+  assert.equal(canCancelOwnRequest(identity('requester'), waiting), false)
+
+  const allowed = identity('requester', { granted: ['requests:cancel_own'] })
+  assert.equal(canCancelOwnRequest(allowed, waiting), true)
+  assert.equal(canCancelOwnRequest(allowed, { ...others, status: 'aguardando_agendamento' }), false, 'de outra pessoa')
+  for (const status of ['agendado', 'reagendado', 'em_andamento', 'concluido', 'cancelado']) {
+    assert.equal(canCancelOwnRequest(allowed, { ...own, status }), false, status)
+  }
+  assert.equal(canCancelOwnRequest(allowed, { module: 'flights', requesterId: 'eu', status: 'em_cotacao' }), true)
+  assert.equal(canCancelOwnRequest(allowed, { module: 'flights', requesterId: 'eu', status: 'em_emissao' }), false)
+  // A concessão não amplia o cancelamento geral nem a leitura.
+  assert.equal(canCancelRequest(allowed, own), false)
+  assert.equal(canReadRequest(allowed, others), false)
+  // Sem acesso ao módulo, não vale.
+  const noFleet = identity('requester', { granted: ['requests:cancel_own'], denied: ['fleet:read'] })
+  assert.equal(canCancelOwnRequest(noFleet, { module: 'fleet', requesterId: 'eu', status: 'aguardando_agendamento' }), false)
+})
+
+test('nenhum perfil de quem solicita recebe o cancelamento da própria por padrão', () => {
+  assert.equal(identity('requester').permissions.includes('requests:cancel_own'), false)
+  assert.equal(identity('driver').permissions.includes('requests:cancel_own'), false)
 })
 
 test('leitura ampla concedida sem acesso ao módulo não libera o módulo', () => {

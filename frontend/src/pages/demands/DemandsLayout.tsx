@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import {
@@ -220,7 +220,11 @@ function DemandsLayout() {
 
       {optionsError && <Alert tone="error">{optionsError}</Alert>}
       {!options && !optionsError && <Loading label="Carregando..." />}
-      {options && <Outlet context={{ context, options } satisfies DemandsOutlet} />}
+      {options && (
+        <Suspense fallback={<Loading label="Carregando..." />}>
+          <Outlet context={{ context, options } satisfies DemandsOutlet} />
+        </Suspense>
+      )}
 
       {preferencesOpen && <PreferencesDialog onClose={() => setPreferencesOpen(false)} />}
     </div>

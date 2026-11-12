@@ -14,6 +14,7 @@ import {
 import type { InventoryCheckSummary, WarehouseRequest } from '../api/modulesApi'
 import { usePeriodFilter } from '../app/period'
 import { useHasPermission } from '../auth/UserContext'
+import SpreadsheetDownload from '../components/SpreadsheetDownload'
 import StatCard from '../components/StatCard'
 import { BarChart } from '../components/ui/Charts'
 import { Alert, EmptyState, Loading } from '../components/ui/Feedback'
@@ -156,6 +157,14 @@ export function WarehouseReportsTab() {
       <FilterBar label="Filtros do relatório" canClear={period.isActive} onClear={period.clear}>
         <PeriodFields filter={period} />
       </FilterBar>
+
+      {canManage && (
+        <SpreadsheetDownload
+          kind="warehouse"
+          title="Planilha do Almoxarifado"
+          description="Estoque com o consumo médio mensal de cada material, pedidos, itens entregues e movimentações do período."
+        />
+      )}
 
       {error && <Alert tone="error">{error}</Alert>}
       {!data && !error && <Loading label="Carregando relatório..." />}

@@ -5,6 +5,7 @@ import type { AuthAuditEventType } from './authAuditRepository.js'
 import { conflict, notFound, ModuleError } from './moduleErrors.js'
 import { getDatabasePool } from './pool.js'
 import { withTransaction } from './withTransaction.js'
+import { sortByName } from './naturalOrder.js'
 
 export const catalogCategories = [
   'sectors',
@@ -77,11 +78,14 @@ export class CatalogRepository {
     ])
 
     const catalog = emptyCatalog()
-    catalog.sectors = sectors.rows.map(toOption)
+    // Ordem alfabética do português, igual em todos os formulários (o ORDER BY do banco
+    // depende da configuração do servidor e põe nomes acentuados no fim).
+    catalog.sectors = sortByName(sectors.rows, (row) => row.nome).map(toOption)
     for (const [category, stored] of Object.entries(databaseCategory)) {
-      catalog[category as CatalogCategory] = options.rows
-        .filter((row) => row.categoria === stored)
-        .map(toOption)
+      catalog[category as CatalogCategory] = sortByName(
+        options.rows.filter((row) => row.categoria === stored),
+        (row) => row.nome,
+      ).map(toOption)
     }
     return catalog
   }

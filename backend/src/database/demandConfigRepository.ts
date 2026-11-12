@@ -7,6 +7,7 @@ import { insertAuthAuditEvent } from './authAuditRepository.js'
 import { conflict, notFound } from './moduleErrors.js'
 import { getDatabasePool } from './pool.js'
 import { withTransaction } from './withTransaction.js'
+import { sortByName } from './naturalOrder.js'
 
 type Client = Pick<PoolClient, 'query'>
 
@@ -122,7 +123,9 @@ export class DemandConfigRepository {
       loadDemandPeople(pool),
     ])
     return {
-      sectors: sectors.rows.map(presentSector),
+      // Setores em ordem alfabética (não há ordem manual para eles na tela); categorias seguem a
+      // ordem definida em Configurações.
+      sectors: sortByName(sectors.rows, (row) => String(row.nome)).map(presentSector),
       categories: categories.rows.map((row) => ({ id: row.id, name: row.nome, description: row.descricao })),
       people,
     }
@@ -152,7 +155,7 @@ export class DemandConfigRepository {
           ORDER BY u.full_name`,
       ),
     ])
-    return sectors.rows.map((row) => ({
+    return sortByName(sectors.rows, (row) => String(row.nome)).map((row) => ({
       ...presentSector(row),
       members: members.rows
         .filter((member) => member.sector_id === row.id)

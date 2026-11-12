@@ -8,6 +8,7 @@ import { ModuleError, notFound } from './moduleErrors.js'
 import { getDatabasePool } from './pool.js'
 import { optionalColumnSql, protocolSql } from './protocolSql.js'
 import { recordHistory } from './serviceRequestRepository.js'
+import { byNextAttempt } from './queueOrder.js'
 import { withTransaction } from './withTransaction.js'
 
 /**
@@ -362,7 +363,7 @@ export class CommunicationRepository {
     return withTransaction(pool, async (client) => {
       const result = await client.query<{
         id: string; destinatarios: string[]; copias: string[]; assunto: string; corpo_texto: string
-        corpo_html: string; tentativas: number
+        corpo_html: string; tentativas: number; proxima_tentativa: Date
       }>(
         `UPDATE public.manual_emails
             SET status = 'sending', travado_ate = now() + make_interval(secs => $2)
@@ -374,7 +375,7 @@ export class CommunicationRepository {
              LIMIT $1
              FOR UPDATE SKIP LOCKED
           )
-        RETURNING id::text AS id, destinatarios, copias, assunto, corpo_texto, corpo_html, tentativas`,
+        RETURNING id::text AS id, destinatarios, copias, assunto, corpo_texto, corpo_html, tentativas, proxima_tentativa`,
         [limit, leaseSeconds],
       )
       const files = await client.query<{
@@ -386,7 +387,8 @@ export class CommunicationRepository {
           WHERE e.email_id = ANY($1::uuid[])`,
         [result.rows.map((row) => row.id)],
       )
-      return result.rows.map((row) => ({
+      // O RETURNING não garante ordem: a mais antiga na fila sai primeiro, como a seleção pretende.
+      return byNextAttempt(result.rows, (row) => row.proxima_tentativa).map((row) => ({
         id: row.id,
         recipients: row.destinatarios,
         cc: row.copias,

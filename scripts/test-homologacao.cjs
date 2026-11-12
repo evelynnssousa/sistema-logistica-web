@@ -55,7 +55,11 @@ try {
   assert.equal(stateOf(legacy.map((relname) => ({ relname }))), 'estrutura-inicial')
   assert.equal(stateOf([...legacy, 'catalog_options'].map((relname) => ({ relname }))), 'outro')
   assert.equal(stateOf([{ relname: 'qualquer' }]), 'outro')
-  console.log('✔ distingue banco vazio, só com a estrutura inicial e com objetos inesperados')
+  // Depois das migrações (a partir da 002), o banco não é "inesperado".
+  assert.equal(stateOf([...legacy, 'password_recovery_codes', 'auth_user_access', 'email_daily_usage'].map((relname) => ({ relname }))), 'com-migracoes')
+  // Sem a estrutura inicial completa, continua inesperado, mesmo com tabelas das migrações.
+  assert.equal(stateOf([...legacy.slice(1), 'password_recovery_codes'].map((relname) => ({ relname }))), 'outro')
+  console.log('✔ distingue banco vazio, só com a estrutura inicial, já migrado e com objetos inesperados')
   console.log('Teste do acesso à homologação concluído.')
 } catch (error) {
   console.error(`Teste interrompido: ${error.message}`)

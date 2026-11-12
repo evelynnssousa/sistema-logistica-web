@@ -26,6 +26,22 @@ export type InsightFilters = {
   status?: string | null
 }
 
+/**
+ * Data e horário digitados no formulário de Passagens (horário de Brasília, UTC−3 desde o fim do
+ * horário de verão em 2019) como instante. Data impossível ("2027-02-31") ou fora do formato: null.
+ */
+export function brasiliaInstant(date: string | null, time: string | null): Date | null {
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null
+  const clock = time && /^\d{2}:\d{2}$/.test(time) ? time : '00:00'
+  const [hours, minutes] = clock.split(':').map(Number)
+  if (hours > 23 || minutes > 59) return null
+  const instant = new Date(`${date}T${clock}:00-03:00`)
+  if (Number.isNaN(instant.getTime())) return null
+  // O JavaScript aceita "31 de fevereiro" e passa para março: confere o dia de volta.
+  const local = new Date(instant.getTime() - 3 * 3_600_000).toISOString().slice(0, 10)
+  return local === date ? instant : null
+}
+
 function readableModules(identity: AuthenticatedIdentity, filter?: InsightFilters['module']) {
   return requestModules.filter(
     (module) =>
@@ -263,7 +279,7 @@ export class InsightsRepository {
         ORDER BY r.data_agendada, r.id`,
       parameters,
     )
-    return result.rows.map((row) => {
+    const scheduled = result.rows.map((row) => {
       const module = moduleByType[row.tipo]
       return {
         id: row.id,
@@ -276,7 +292,89 @@ export class InsightsRepository {
         sector: row.setor_nome,
         responsibleId: row.responsavel_id,
         responsible: row.responsavel,
+        leg: null as 'ida' | 'volta' | null,
       }
+    })
+    const flights =
+      period.modules.includes('flights') && identity.permissions.includes('flights:read')
+        ? await this.flightCalendarEvents(identity, period)
+        : []
+    return [...scheduled, ...flights].sort(
+      (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime() || a.id.localeCompare(b.id),
+    )
+  }
+
+  /**
+   * Passagens aéreas na agenda: um compromisso na ida e outro na volta, na data e no horário
+   * pedidos (gravados no horário de Brasília). Passagens não têm agendamento pela SLM: o que
+   * aparece é a própria viagem. Os dados dos passageiros nunca entram na agenda.
+   */
+  private async flightCalendarEvents(
+    identity: AuthenticatedIdentity,
+    period: { from: Date; to: Date; statuses?: readonly RequestStatus[]; responsibleId?: string | null },
+  ) {
+    // O filtro de situação da agenda usa os status de Manutenção e Frota. Em Passagens, só
+    // "cancelado" tem equivalente; qualquer outro filtro deixa as passagens de fora.
+    let flightStatuses: string[] | null = null
+    if (period.statuses?.length) {
+      if (!period.statuses.includes('cancelado')) return []
+      flightStatuses = storedValuesFor('flights', 'cancelada')
+    }
+    const parameters: unknown[] = [period.from, period.to]
+    const bind = (value: unknown) => {
+      parameters.push(value)
+      return `$${parameters.length}`
+    }
+    const conditions: string[] = []
+    if (!identity.permissions.includes('requests:read_all')) conditions.push(`r.solicitante_id = ${bind(identity.userId)}`)
+    if (period.responsibleId) conditions.push(`r.responsavel_id = ${bind(period.responsibleId)}`)
+    if (flightStatuses) conditions.push(`r.status = ANY(${bind(flightStatuses)}::text[])`)
+
+    // As datas ficam como texto AAAA-MM-DD: a comparação de texto já seleciona os dias do
+    // período (com um dia de folga em cada ponta, pelo fuso), e a conversão é feita aqui, sem
+    // que uma data impossível gravada por engano derrube a agenda inteira.
+    const day = (date: Date, offsetDays: number) => new Date(date.getTime() + offsetDays * 86_400_000).toISOString().slice(0, 10)
+    parameters[0] = day(period.from, -1)
+    parameters[1] = day(period.to, 1)
+    const result = await this.poolProvider().query<{
+      id: string
+      protocolo: string
+      status: string
+      titulo: string
+      trecho: 'ida' | 'volta'
+      data: string
+      horario: string | null
+      setor_nome: string | null
+      responsavel_id: string | null
+      responsavel: string | null
+    }>(
+      `SELECT r.id::text AS id, ${protocolSql('r')} AS protocolo, r.status, r.titulo, t.trecho,
+              r.dados -> t.trecho ->> 'data' AS data, r.dados -> t.trecho ->> 'horario' AS horario,
+              r.setor_nome, r.responsavel_id::text AS responsavel_id, u.full_name AS responsavel
+         FROM public.service_requests r
+        CROSS JOIN (VALUES ('ida'), ('volta')) AS t(trecho)
+         LEFT JOIN public.auth_users u ON u.id = r.responsavel_id
+        WHERE r.tipo = '${moduleTypes.flights}'
+          AND (r.dados -> t.trecho ->> 'data') BETWEEN $1 AND $2
+          ${conditions.map((condition) => `AND ${condition}`).join(' ')}`,
+      parameters,
+    )
+    return result.rows.flatMap((row) => {
+      const start = brasiliaInstant(row.data, row.horario)
+      if (!start || start < period.from || start >= period.to) return []
+      return [{
+        id: row.id,
+        protocol: row.protocolo,
+        module: 'flights' as RequestModule,
+        status: normalizeStatus('flights', row.status),
+        title: row.titulo,
+        start,
+        end: null,
+        sector: row.setor_nome,
+        responsibleId: row.responsavel_id,
+        responsible: row.responsavel,
+        leg: row.trecho,
+      }]
     })
   }
 

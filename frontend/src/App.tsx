@@ -1,44 +1,15 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
+import type { ComponentType } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import AuthGate from './auth/AuthGate'
 import { useAuthenticatedUser } from './auth/UserContext'
 import RequirePermission from './auth/RequirePermission'
 import AppLayout from './components/layout/AppLayout'
-import AirTravelPage from './pages/AirTravelPage'
-import SlmCentralPage from './pages/SlmCentralPage'
-import SearchPage from './pages/SearchPage'
-import MonitoringPage from './pages/MonitoringPage'
-import AccessReviewPage from './pages/AccessReviewPage'
-import VehiclesPage, { VehicleDetailPage } from './pages/VehiclesPage'
-import EquipmentsPage from './pages/EquipmentsPage'
-import { StockTab } from './pages/WarehouseStock'
-import { ControlTab } from './pages/WarehouseControl'
-import CalendarPage from './pages/CalendarPage'
-import DashboardPage from './pages/DashboardPage'
-import DriverPortalPage from './pages/DriverPortalPage'
-import DriversPage from './pages/DriversPage'
-import FleetPage from './pages/FleetPage'
-import FleetRequestPage from './pages/FleetRequestPage'
-import AccountPage from './pages/AccountPage'
-import InventoryCheckPage from './pages/InventoryCheckPage'
-import IntegrationsPage from './pages/IntegrationsPage'
-import NotificationsPage from './pages/NotificationsPage'
+import { Loading } from './components/ui/Feedback'
 import HomePage from './pages/HomePage'
-import InventoryPage, {
-  ChecksTab,
-  ExternalRequestTab,
-  MaterialsTab,
-  RequestsTab,
-} from './pages/InventoryPage'
-import { WarehouseOverviewTab, WarehouseReportsTab } from './pages/WarehouseInsights'
-import RequestDetailPage from './pages/RequestDetailPage'
-import WarehouseRequestPage from './pages/WarehouseRequestPage'
-import MaintenancePage from './pages/MaintenancePage'
-import MaintenanceRequestPage from './pages/MaintenanceRequestPage'
-import AirTravelRequestPage from './pages/AirTravelRequestPage'
-import ReportsPage from './pages/ReportsPage'
-import SettingsPage from './pages/SettingsPage'
-import WarehousePortalPage from './pages/WarehousePortalPage'
+// Ordem da cascata igual à de antes do carregamento sob demanda: o estilo do portal do motorista
+// vem antes dos estilos gerais, e não junto da tela (o que o colocaria depois do theme.css).
+import './styles/driver-portal.css'
 import './App.css'
 import './modules.css'
 import './styles/theme.css'
@@ -46,17 +17,60 @@ import './styles/integrations.css'
 import './styles/operations.css'
 import './styles/transparency.css'
 import './styles/demands.css'
-import DemandAgenda from './pages/demands/DemandAgenda'
-import DemandDashboard from './pages/demands/DemandDashboard'
-import DemandDetail from './pages/demands/DemandDetail'
-import DemandForm from './pages/demands/DemandForm'
-import DemandList from './pages/demands/DemandList'
-import DemandReports from './pages/demands/DemandReports'
-import DemandsLayout from './pages/demands/DemandsLayout'
-import PendingRegistrationsPage from './pages/PendingRegistrationsPage'
-import AuditPage from './pages/AuditPage'
-import UserDetailPage from './pages/UserDetailPage'
-import UsersPage from './pages/UsersPage'
+
+/*
+ * Cada tela é baixada só quando aberta: o pacote inicial fica com o login, o menu e o início.
+ * As rotas, permissões e componentes são os mesmos; o que muda é quando o código chega.
+ */
+const named = <T extends Record<string, unknown>>(load: () => Promise<T>, name: keyof T) =>
+  lazy(() => load().then((module) => ({ default: module[name] as ComponentType })))
+
+const AirTravelPage = lazy(() => import('./pages/AirTravelPage'))
+const SlmCentralPage = lazy(() => import('./pages/SlmCentralPage'))
+const SearchPage = lazy(() => import('./pages/SearchPage'))
+const MonitoringPage = lazy(() => import('./pages/MonitoringPage'))
+const AccessReviewPage = lazy(() => import('./pages/AccessReviewPage'))
+const VehiclesPage = lazy(() => import('./pages/VehiclesPage'))
+const VehicleDetailPage = named(() => import('./pages/VehiclesPage'), 'VehicleDetailPage')
+const EquipmentsPage = lazy(() => import('./pages/EquipmentsPage'))
+const StockTab = named(() => import('./pages/WarehouseStock'), 'StockTab')
+const ControlTab = named(() => import('./pages/WarehouseControl'), 'ControlTab')
+const CalendarPage = lazy(() => import('./pages/CalendarPage'))
+const DashboardPage = lazy(() => import('./pages/DashboardPage'))
+const DriverPortalPage = lazy(() => import('./pages/DriverPortalPage'))
+const DriversPage = lazy(() => import('./pages/DriversPage'))
+const FleetPage = lazy(() => import('./pages/FleetPage'))
+const FleetRequestPage = lazy(() => import('./pages/FleetRequestPage'))
+const AccountPage = lazy(() => import('./pages/AccountPage'))
+const InventoryCheckPage = lazy(() => import('./pages/InventoryCheckPage'))
+const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'))
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'))
+const InventoryPage = lazy(() => import('./pages/InventoryPage'))
+const ChecksTab = named(() => import('./pages/InventoryPage'), 'ChecksTab')
+const ExternalRequestTab = named(() => import('./pages/InventoryPage'), 'ExternalRequestTab')
+const MaterialsTab = named(() => import('./pages/InventoryPage'), 'MaterialsTab')
+const RequestsTab = named(() => import('./pages/InventoryPage'), 'RequestsTab')
+const WarehouseOverviewTab = named(() => import('./pages/WarehouseInsights'), 'WarehouseOverviewTab')
+const WarehouseReportsTab = named(() => import('./pages/WarehouseInsights'), 'WarehouseReportsTab')
+const RequestDetailPage = lazy(() => import('./pages/RequestDetailPage'))
+const WarehouseRequestPage = lazy(() => import('./pages/WarehouseRequestPage'))
+const MaintenancePage = lazy(() => import('./pages/MaintenancePage'))
+const MaintenanceRequestPage = lazy(() => import('./pages/MaintenanceRequestPage'))
+const AirTravelRequestPage = lazy(() => import('./pages/AirTravelRequestPage'))
+const ReportsPage = lazy(() => import('./pages/ReportsPage'))
+const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const WarehousePortalPage = lazy(() => import('./pages/WarehousePortalPage'))
+const DemandAgenda = lazy(() => import('./pages/demands/DemandAgenda'))
+const DemandDashboard = lazy(() => import('./pages/demands/DemandDashboard'))
+const DemandDetail = lazy(() => import('./pages/demands/DemandDetail'))
+const DemandForm = lazy(() => import('./pages/demands/DemandForm'))
+const DemandList = lazy(() => import('./pages/demands/DemandList'))
+const DemandReports = lazy(() => import('./pages/demands/DemandReports'))
+const DemandsLayout = lazy(() => import('./pages/demands/DemandsLayout'))
+const PendingRegistrationsPage = lazy(() => import('./pages/PendingRegistrationsPage'))
+const AuditPage = lazy(() => import('./pages/AuditPage'))
+const UserDetailPage = lazy(() => import('./pages/UserDetailPage'))
+const UsersPage = lazy(() => import('./pages/UsersPage'))
 
 function guarded(anyOf: string[], page: React.ReactNode) {
   return <RequirePermission anyOf={anyOf}>{page}</RequirePermission>
@@ -65,7 +79,13 @@ function guarded(anyOf: string[], page: React.ReactNode) {
 /** O motorista entra direto no próprio portal, sem o menu nem as telas da administração. */
 function AuthenticatedShell({ apiOnline }: { apiOnline: boolean | null }) {
   const user = useAuthenticatedUser()
-  if (user?.role === 'driver') return <DriverPortalPage />
+  if (user?.role === 'driver') {
+    return (
+      <Suspense fallback={<Loading label="Carregando o portal..." />}>
+        <DriverPortalPage />
+      </Suspense>
+    )
+  }
   return <AppLayout apiOnline={apiOnline} />
 }
 

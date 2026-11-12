@@ -10,6 +10,7 @@ import { conflict, notFound } from './moduleErrors.js'
 import { getDatabasePool } from './pool.js'
 import { protocolSql } from './protocolSql.js'
 import { readSystemSettings } from './settingsRepository.js'
+import { byNextAttempt } from './queueOrder.js'
 import { withTransaction } from './withTransaction.js'
 import { demandVisibleRecipients, withEmailPreference } from '../demands/demandNotifications.js'
 import { accessSql, isAccessSchemaMigrated, resolveAccess } from './accessSchema.js'
@@ -82,15 +83,6 @@ export type ClaimedEmail = {
   createdAt: Date
   /** Acontecimentos equivalentes reunidos nesta mensagem (migração 019). Sem ela, 1. */
   groupedCount: number
-}
-
-export type ClaimedCalendarItem = {
-  id: string
-  requestId: string
-  module: 'maintenance' | 'fleet'
-  action: 'upsert' | 'delete'
-  revision: number
-  attempts: number
 }
 
 type Outcome = { retryable: boolean; code: string }
@@ -222,6 +214,7 @@ export class IntegrationRepository {
         payload: EventContext
         created_at: Date
         grouped_count: number
+        next_attempt_at: Date
       }>(
         `UPDATE public.email_deliveries d
             SET status = 'sending', locked_until = now() + make_interval(secs => $2)
@@ -237,10 +230,12 @@ export class IntegrationRepository {
             )
         RETURNING d.id::text AS id, d.event_id::text AS event_id, d.template_key, d.recipient, d.cc,
                   d.attempts, e.module, e.resource_id::text AS resource_id, e.protocol, e.payload,
-                  d.created_at, COALESCE((to_jsonb(d)->>'grouped_count')::int, 1) AS grouped_count`,
+                  d.created_at, COALESCE((to_jsonb(d)->>'grouped_count')::int, 1) AS grouped_count,
+                  d.next_attempt_at`,
         [limit, leaseSeconds],
       )
-      return result.rows.map((row) => ({
+      // O RETURNING não garante ordem: a mais antiga na fila sai primeiro, como a seleção pretende.
+      return byNextAttempt(result.rows, (row) => row.next_attempt_at).map((row) => ({
         id: row.id,
         eventId: row.event_id,
         templateKey: row.template_key,
@@ -491,118 +486,6 @@ export class IntegrationRepository {
     )
   }
 
-  // -------------------------------------------------------------------------
-  // Fila do calendário
-  // -------------------------------------------------------------------------
-  async claimCalendarItems(limit: number): Promise<ClaimedCalendarItem[]> {
-    return withTransaction(this.poolProvider(), async (client) => {
-      const result = await client.query<{
-        id: string
-        request_id: string
-        module: 'maintenance' | 'fleet'
-        desired_action: 'upsert' | 'delete'
-        revision: number
-        attempts: number
-      }>(
-        `UPDATE public.calendar_sync_items
-            SET status = 'syncing', locked_until = now() + make_interval(secs => $2)
-          WHERE id IN (
-            SELECT id FROM public.calendar_sync_items
-             WHERE next_attempt_at <= now()
-               AND (status = 'pending' OR (status = 'syncing' AND locked_until < now()))
-             ORDER BY next_attempt_at
-             LIMIT $1
-             FOR UPDATE SKIP LOCKED
-          )
-        RETURNING id::text AS id, request_id::text AS request_id, module, desired_action,
-                  revision, attempts`,
-        [limit, leaseSeconds],
-      )
-      return result.rows.map((row) => ({
-        id: row.id,
-        requestId: row.request_id,
-        module: row.module,
-        action: row.desired_action,
-        revision: row.revision,
-        attempts: row.attempts,
-      }))
-    })
-  }
-
-  /** Dados enviados ao calendário, lidos no momento do envio: o registro é sempre o atual. */
-  async calendarEventData(requestId: string) {
-    const result = await this.poolProvider().query<{
-      protocolo: string
-      status: string
-      titulo: string
-      setor_nome: string | null
-      data_agendada: Date | null
-      agendamento_fim: Date | null
-    }>(
-      `SELECT ${protocolSql('service_requests')} AS protocolo, status, titulo, setor_nome, data_agendada, agendamento_fim
-         FROM public.service_requests WHERE id = $1`,
-      [requestId],
-    )
-    return result.rows[0] ?? null
-  }
-
-  /**
-   * Conclui a sincronização da revisão reservada. Se o agendamento mudou enquanto o envio
-   * acontecia, o item volta para a fila, e a alteração mais recente é a que prevalece.
-   */
-  async markCalendarSynced(
-    item: ClaimedCalendarItem,
-    result: { simulated: boolean; externalEventId: string | null },
-  ) {
-    await withTransaction(this.poolProvider(), async (client) => {
-      await client.query(
-        `UPDATE public.calendar_sync_items
-            SET status = CASE WHEN revision = $2 THEN 'synced' ELSE 'pending' END,
-                synced_revision = $2,
-                attempts = CASE WHEN revision = $2 THEN attempts + 1 ELSE 0 END,
-                locked_until = NULL, last_error_code = NULL, last_synced_at = now(),
-                simulated = $3, external_event_id = $4
-          WHERE id = $1`,
-        [item.id, item.revision, result.simulated, result.externalEventId],
-      )
-      await this.recordAttempt(client, 'calendar', item.id, item.attempts + 1, 'success', null)
-    })
-  }
-
-  async markCalendarFailed(item: ClaimedCalendarItem, outcome: Outcome) {
-    const attempts = item.attempts + 1
-    const final = !outcome.retryable || attempts >= maxAttempts
-    await withTransaction(this.poolProvider(), async (client) => {
-      await client.query(
-        `UPDATE public.calendar_sync_items
-            SET status = CASE
-                  WHEN revision <> $6 THEN 'pending'
-                  ELSE $2
-                END,
-                attempts = CASE WHEN revision <> $6 THEN 0 ELSE $3 END,
-                locked_until = NULL, last_error_code = $4,
-                next_attempt_at = now() + make_interval(mins => $5)
-          WHERE id = $1`,
-        [
-          item.id,
-          final ? 'failed' : 'pending',
-          attempts,
-          outcome.code,
-          retryDelayMinutes(attempts),
-          item.revision,
-        ],
-      )
-      await this.recordAttempt(
-        client,
-        'calendar',
-        item.id,
-        attempts,
-        final ? 'failure' : 'retry',
-        outcome.code,
-      )
-    })
-    return final
-  }
 
   // -------------------------------------------------------------------------
   // Pendências
@@ -752,68 +635,7 @@ export class IntegrationRepository {
     }
   }
 
-  async listCalendarItems(filters: { status?: string; page: number }) {
-    const parameters: unknown[] = []
-    const where = filters.status ? 'WHERE c.status = $1' : ''
-    if (filters.status) parameters.push(filters.status)
-
-    const pool = this.poolProvider()
-    const [rows, total] = await Promise.all([
-      pool.query<{
-        id: string
-        request_id: string
-        module: 'maintenance' | 'fleet'
-        desired_action: string
-        status: string
-        simulated: boolean
-        attempts: number
-        next_attempt_at: Date
-        last_error_code: string | null
-        last_synced_at: Date | null
-        external_event_id: string | null
-        protocolo: string
-        data_agendada: Date | null
-      }>(
-        `SELECT c.id::text AS id, c.request_id::text AS request_id, c.module, c.desired_action,
-                c.status, c.simulated, c.attempts, c.next_attempt_at, c.last_error_code,
-                c.last_synced_at, c.external_event_id, ${protocolSql('r')} AS protocolo, r.data_agendada
-           FROM public.calendar_sync_items c
-           JOIN public.service_requests r ON r.id = c.request_id
-           ${where}
-          ORDER BY c.updated_at DESC, c.id DESC
-          LIMIT ${pageSize} OFFSET ${(filters.page - 1) * pageSize}`,
-        parameters,
-      ),
-      pool.query<{ total: number }>(
-        `SELECT count(*)::int AS total FROM public.calendar_sync_items c ${where}`,
-        parameters,
-      ),
-    ])
-
-    return {
-      items: rows.rows.map((row) => ({
-        id: row.id,
-        requestId: row.request_id,
-        module: row.module,
-        moduleLabel: moduleNames[row.module],
-        action: row.desired_action,
-        status: row.status,
-        simulated: row.simulated,
-        attempts: row.attempts,
-        nextAttemptAt: row.next_attempt_at,
-        errorCode: row.last_error_code,
-        syncedAt: row.last_synced_at,
-        externalEventId: row.external_event_id,
-        protocol: row.protocolo,
-        scheduledAt: row.data_agendada,
-      })),
-      total: total.rows[0].total,
-      page: filters.page,
-      pageSize,
-    }
-  }
-
-  async attemptsOf(channel: 'email' | 'calendar', itemId: string) {
+  async attemptsOf(channel: 'email', itemId: string) {
     const result = await this.poolProvider().query<{
       attempt: number
       outcome: string
@@ -835,14 +657,14 @@ export class IntegrationRepository {
   }
 
   /** Reprocessamento autorizado. Reinicia as tentativas e fica registrado na auditoria. */
-  async retry(actor: AuthenticatedIdentity, channel: 'email' | 'calendar', id: string) {
-    const table = channel === 'email' ? 'public.email_deliveries' : 'public.calendar_sync_items'
+  async retry(actor: AuthenticatedIdentity, channel: 'email', id: string) {
+    // Só e-mail: a integração com o Google Calendar foi removida em 11/11/2026, e a fila antiga
+    // (calendar_sync_items) fica no banco apenas como histórico, sem novos itens.
+    const table = 'public.email_deliveries'
 
     await withTransaction(this.poolProvider(), async (client) => {
       const found = await client.query<{ status: string; last_error_code: string | null; template_key: string | null; created_at: Date }>(
-        channel === 'email'
-          ? `SELECT status, last_error_code, template_key, created_at FROM ${table} WHERE id = $1 FOR UPDATE`
-          : `SELECT status, last_error_code, NULL::text AS template_key, created_at FROM ${table} WHERE id = $1 FOR UPDATE`,
+        `SELECT status, last_error_code, template_key, created_at FROM ${table} WHERE id = $1 FOR UPDATE`,
         [id],
       )
       const current = found.rows[0]

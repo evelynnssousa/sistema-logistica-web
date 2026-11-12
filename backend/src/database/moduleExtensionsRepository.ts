@@ -8,6 +8,7 @@ import { getDatabasePool } from './pool.js'
 import { protocolSql } from './protocolSql.js'
 import { recordHistory } from './serviceRequestRepository.js'
 import { withTransaction } from './withTransaction.js'
+import { consumptionWindowMonths, monthlyConsumption } from '../requests/warehouseConsumption.js'
 
 /** Ampliações de Frota, Manutenção, Passagens e Almoxarifado. Registros históricos não mudam. */
 
@@ -519,12 +520,22 @@ export class ModuleExtensionsRepository {
       ultima_movimentacao: Date | null
       reservada: string | null
       fornecida: string | null
+      consumo_janela: string | null
+      primeira_entrega: Date | null
     }>(
       `SELECT m.id::text AS id, m.codigo, m.nome, m.unidade, m.estoque_atual, m.estoque_minimo,
               to_jsonb(m)->>'quantidade_reservada' AS reservada,
               (SELECT sum(i.quantidade_atendida) FROM public.material_request_items i
                  JOIN public.material_requests r ON r.id = i.material_request_id
                 WHERE i.material_id = m.id AND r.status = 'entregue') AS fornecida,
+              -- Consumo médio mensal (warehouseConsumption.ts): entregas dos últimos 12 meses e a primeira.
+              (SELECT sum(i.quantidade_atendida) FROM public.material_request_items i
+                 JOIN public.material_requests r ON r.id = i.material_request_id
+                WHERE i.material_id = m.id AND r.status = 'entregue'
+                  AND COALESCE(r.entregue_em, r.updated_at) >= now() - interval '${consumptionWindowMonths} months') AS consumo_janela,
+              (SELECT min(COALESCE(r.entregue_em, r.updated_at)) FROM public.material_request_items i
+                 JOIN public.material_requests r ON r.id = i.material_request_id
+                WHERE i.material_id = m.id AND r.status = 'entregue' AND i.quantidade_atendida > 0) AS primeira_entrega,
               (SELECT max(s.created_at) FROM public.stock_movements s WHERE s.material_id = m.id) AS ultima_movimentacao
          FROM public.materials m
         WHERE ${conditions.join(' AND ')}
@@ -544,6 +555,7 @@ export class ModuleExtensionsRepository {
       reserved: Number(row.reservada ?? 0),
       available: Math.max(0, Number(row.estoque_atual) - Number(row.reservada ?? 0)),
       provided: Number(row.fornecida ?? 0),
+      monthlyConsumption: monthlyConsumption(Number(row.consumo_janela ?? 0), row.primeira_entrega),
       lastMovement: row.ultima_movimentacao,
     }))
   }

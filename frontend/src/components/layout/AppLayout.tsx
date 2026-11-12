@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
+import { Loading } from '../ui/Feedback'
 
 type AppLayoutProps = {
   apiOnline: boolean | null
@@ -34,7 +35,10 @@ function AppLayout({ apiOnline }: AppLayoutProps) {
       <main className="main-content">
         <Topbar apiOnline={apiOnline} onOpenMenu={() => setMenuOpen(true)} />
         <div className="page-content" id="conteudo-principal" tabIndex={-1}>
-          <Outlet />
+          {/* As telas chegam sob demanda (App.tsx): o menu e o topo ficam visíveis enquanto isso. */}
+          <Suspense fallback={<Loading label="Carregando a tela..." />}>
+            <Outlet />
+          </Suspense>
           <footer className="page-footer">
             <span>Sistema de Serviços de Logística e Manutenção</span>
           </footer>

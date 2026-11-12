@@ -425,8 +425,8 @@ function DemandAgenda() {
         <AgendaCalendar key={calendarKey} filters={{ scope, sectorId, responsibleId }} />
       </section>
       <p className="demand-muted">
-        Complementa as agendas de Manutenção e Frota, que continuam em Calendário. A integração com o Google
-        Calendar não está ativa neste módulo: a agenda funciona só dentro do sistema.
+        Complementa a agenda de Manutenção, Frota e Passagens aéreas, que fica em Calendário. As agendas funcionam
+        só dentro do sistema, sem calendário externo.
       </p>
       {creating && <NewEventDialog onClose={() => setCreating(false)} onCreated={reload} />}
     </div>

@@ -1770,6 +1770,12 @@ a {
   color: var(--white);
 }
 
+.calendar-event.flights {
+  border-left-color: var(--white);
+  background: var(--success);
+  color: var(--white);
+}
+
 .calendar-list {
   display: flex;
   flex-direction: column;
@@ -2673,4 +2679,29 @@ a {
 
 .detail-card > button {
   margin-top: 12px;
+}
+
+/* Planilhas do Almoxarifado e da Frota (SpreadsheetDownload) */
+.spreadsheet-download h2 {
+  margin: 0;
+  color: var(--heading);
+  font-size: 1rem;
+}
+
+.spreadsheet-download-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.spreadsheet-download-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.spreadsheet-download-fields .maintenance-form-field {
+  flex: 1 1 160px;
+  max-width: 220px;
 }

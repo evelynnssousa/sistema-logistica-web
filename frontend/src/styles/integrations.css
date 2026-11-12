@@ -243,6 +243,11 @@
   background: var(--institutional);
 }
 
+.calendar-page button.calendar-event.flights {
+  border-left-color: var(--white);
+  background: var(--success);
+}
+
 .calendar-page button.calendar-event.is-cancelled {
   border-left-color: var(--danger);
   background: var(--surface-muted);

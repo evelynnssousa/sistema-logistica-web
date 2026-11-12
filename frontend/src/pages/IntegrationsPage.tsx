@@ -2,10 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   getIntegrationStatus,
-  listCalendarSync,
   listEmailDeliveries,
   listEmailTemplates,
-  retryCalendarSync,
   retryEmail,
 } from '../api/integrationsApi'
 import type {
@@ -24,7 +22,6 @@ import { useConfirm } from '../components/ui/useConfirm'
 const tabs = [
   { key: 'status', label: 'Situação' },
   { key: 'emails', label: 'E-mails' },
-  { key: 'calendar', label: 'Calendário externo' },
   { key: 'templates', label: 'Modelos' },
 ] as const
 
@@ -66,14 +63,6 @@ const emailStatusLabels: Record<string, string> = {
   sent: 'Enviado',
   failed: 'Com falha',
   not_configured: 'Não enviado: serviço não configurado',
-}
-
-const calendarStatusLabels: Record<string, string> = {
-  pending: 'Na fila',
-  syncing: 'Sincronizando',
-  synced: 'Sincronizado',
-  failed: 'Com falha',
-  not_configured: 'Não enviado: integração não configurada',
 }
 
 const yesNo = (value: boolean) => (value ? 'Sim' : 'Não')
@@ -133,17 +122,6 @@ function StatusTab() {
             <dt>Destinatários internos configurados</dt>
             <dd>{Object.values(status.email.internalRecipients).reduce((sum, total) => sum + total, 0)}</dd>
           </div>
-        </dl>
-      </section>
-      <section className="ui-card integration-status-card" aria-labelledby="status-calendar">
-        <h2 id="status-calendar">Calendário ({status.calendar.provider})</h2>
-        <p className="integration-mode">{modeLabels[status.calendar.mode].label}</p>
-        <p>{modeLabels[status.calendar.mode].detail} A agenda interna funciona em qualquer caso.</p>
-        <dl className="detail-grid">
-          <div className="detail-info"><dt>Sincronização autorizada na configuração</dt><dd>{yesNo(status.calendar.flagEnabled)}</dd></div>
-          <div className="detail-info"><dt>Conta de serviço presente</dt><dd>{yesNo(status.calendar.credentialsPresent)}</dd></div>
-          <div className="detail-info"><dt>Calendário de Manutenção</dt><dd>{yesNo(status.calendar.maintenanceCalendarPresent)}</dd></div>
-          <div className="detail-info"><dt>Calendário de Frota</dt><dd>{yesNo(status.calendar.fleetCalendarPresent)}</dd></div>
         </dl>
       </section>
       <section className="ui-card integration-status-card" aria-labelledby="status-worker">
@@ -386,135 +364,6 @@ function EmailsTab() {
   )
 }
 
-function CalendarTab() {
-  const canManage = useHasPermission('integrations:manage')
-  const [status, setStatus] = useState('')
-  const [page, setPage] = useState(1)
-  const [listing, setListing] = useState<Awaited<ReturnType<typeof listCalendarSync>> | null>(null)
-  const [error, setError] = useState('')
-
-  const load = useCallback(async () => {
-    try {
-      setListing(await listCalendarSync({ status, page }))
-      setError('')
-    } catch (err) {
-      setError(errorMessage(err, 'Não foi possível carregar a sincronização.'))
-    }
-  }, [status, page])
-
-  useEffect(() => {
-    let active = true
-    listCalendarSync({ status, page })
-      .then((data) => {
-        if (active) {
-          setListing(data)
-          setError('')
-        }
-      })
-      .catch((err: unknown) => {
-        if (active) setError(errorMessage(err, 'Não foi possível carregar a sincronização.'))
-      })
-    return () => {
-      active = false
-    }
-  }, [status, page])
-
-  const { retry, confirmDialog, message } = useRetry(load)
-
-  return (
-    <>
-      <FilterBar
-        label="Filtros de sincronização"
-        canClear={Boolean(status)}
-        onClear={() => {
-          setStatus('')
-          setPage(1)
-        }}
-      >
-        <FilterSelect
-          label="Situação"
-          value={status}
-          onChange={(value) => {
-            setStatus(value)
-            setPage(1)
-          }}
-          allLabel="Todas"
-          options={Object.entries(calendarStatusLabels).map(([value, label]) => ({ value, label }))}
-        />
-      </FilterBar>
-
-      {error && <Alert tone="error">{error}</Alert>}
-      {message && <Alert tone={message.tone}>{message.text}</Alert>}
-      {!listing && !error && <Loading label="Carregando sincronização..." />}
-
-      {listing && (
-        <section className="ui-card ui-stacked" aria-label="Sincronização com o calendário externo">
-          {listing.items.length === 0 ? (
-            <EmptyState icon="calendar" title="Nenhum agendamento para sincronizar" />
-          ) : (
-            <div className="data-table-wrapper">
-              <table className="data-table integration-table">
-                <thead>
-                  <tr>
-                    <th>Solicitação</th>
-                    <th>Agendado para</th>
-                    <th>Operação</th>
-                    <th>Situação</th>
-                    <th>Última sincronização</th>
-                    {canManage && <th>Ação</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {listing.items.map((item) => (
-                    <tr key={item.id}>
-                      <td>
-                        {item.moduleLabel}{' '}
-                        <Link to={`${modulePaths[item.module]}/${item.requestId}`}>{protocolLabel(item.protocol)}</Link>
-                      </td>
-                      <td>{formatDateTime(item.scheduledAt)}</td>
-                      <td>{item.action === 'delete' ? 'Remover evento' : 'Criar ou atualizar evento'}</td>
-                      <td>
-                        {calendarStatusLabels[item.status] ?? item.status}
-                        {item.simulated && item.status === 'synced' && ' (simulado)'}
-                        {item.errorCode && <small> · {item.errorCode}</small>}
-                      </td>
-                      <td>{formatDateTime(item.syncedAt)}</td>
-                      {canManage && (
-                        <td>
-                          {(item.status === 'failed' || item.status === 'not_configured') && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void retry(
-                                  () => retryCalendarSync(item.id),
-                                  'O agendamento volta à fila e será refletido no calendário externo. Deseja continuar?',
-                                )
-                              }
-                            >
-                              Reprocessar
-                            </button>
-                          )}
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <Pagination
-            page={listing.page}
-            summary={`${listing.total} no total`}
-            hasNext={listing.page * listing.pageSize < listing.total}
-            onChange={setPage}
-          />
-        </section>
-      )}
-      {confirmDialog}
-    </>
-  )
-}
-
 function audienceText(template: EmailTemplate) {
   const parts = [
     template.audience.requester && 'Solicitante',
@@ -569,7 +418,7 @@ function IntegrationsPage() {
     <div className="admin-module-page integrations-page">
       <PageHeader
         title="Integrações"
-        description="Situação das comunicações automáticas e da sincronização com o calendário externo."
+        description="Situação das comunicações automáticas por e-mail. A agenda é interna: Manutenção, Frota e Passagens aparecem em Calendário."
       />
       <nav className="module-tabs" aria-label="Áreas das integrações">
         {tabs.map((item) => (
@@ -586,7 +435,6 @@ function IntegrationsPage() {
       </nav>
       {tab === 'status' && <StatusTab />}
       {tab === 'emails' && <EmailsTab />}
-      {tab === 'calendar' && <CalendarTab />}
       {tab === 'templates' && <TemplatesTab />}
     </div>
   )

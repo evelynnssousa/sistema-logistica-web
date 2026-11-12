@@ -12,6 +12,11 @@ import type { RequestStatus } from '../requests/workflow.js'
 import { WarehouseRepository } from '../database/warehouseRepository.js'
 import { requireCsrf } from '../middleware/requireCsrf.js'
 import { requirePermission } from '../middleware/requirePermission.js'
+import { insertAuthAuditEvent } from '../database/authAuditRepository.js'
+import { getDatabasePool } from '../database/pool.js'
+import { fleetWorkbook, warehouseWorkbook } from '../reports/operationalSpreadsheets.js'
+import type { SpreadsheetPeriod } from '../reports/operationalSpreadsheets.js'
+import { renderWorkbook } from '../reports/xlsxDocument.js'
 import {
   asBody,
   isUuid,
@@ -128,7 +133,7 @@ router.get('/calendar/events', requirePermission('calendar:read'), async (reques
     }
 
     const requested = typeof query.modules === 'string' ? query.modules.split(',') : []
-    const modules = (['maintenance', 'fleet'] as RequestModule[]).filter(
+    const modules = (['maintenance', 'fleet', 'flights'] as RequestModule[]).filter(
       (module) => requested.length === 0 || requested.includes(module),
     )
 
@@ -151,5 +156,69 @@ router.get('/calendar/events', requirePermission('calendar:read'), async (reques
     sendModuleError(response, error)
   }
 })
+
+// ---------------------------------------------------------------------------
+// Planilhas do Almoxarifado e da Frota (.xlsx)
+// ---------------------------------------------------------------------------
+
+const maximumSpreadsheetRangeMs = 400 * 24 * 60 * 60 * 1000
+
+/** Período obrigatório, de até cerca de 13 meses, como na agenda. */
+function spreadsheetPeriod(request: Request): SpreadsheetPeriod {
+  const { from, to } = readPeriod(asBody(request.query))
+  if (!from || !to) throw new RequestValidationError('Informe o período.')
+  if (to <= from) throw new RequestValidationError('O fim do período deve ser depois do início.')
+  if (to.getTime() - from.getTime() > maximumSpreadsheetRangeMs) throw new RequestValidationError('O período é longo demais.')
+  return { from, to }
+}
+
+async function sendSpreadsheet(
+  response: Response,
+  kind: 'warehouse' | 'fleet',
+  period: SpreadsheetPeriod,
+  build: (generatedBy: string) => Promise<Parameters<typeof renderWorkbook>[0]>,
+) {
+  const identity = identityOf(response)
+  const pool = getDatabasePool()
+  const generatedBy = (await pool.query<{ full_name: string }>(`SELECT full_name FROM public.auth_users WHERE id = $1`, [identity.userId]))
+    .rows[0]?.full_name ?? ''
+  const workbook = renderWorkbook(await build(generatedBy))
+  await insertAuthAuditEvent(pool, {
+    actorUserId: identity.userId,
+    actorKind: 'user',
+    subjectUserId: null,
+    sessionId: null,
+    eventType: kind === 'warehouse' ? 'warehouse_spreadsheet_exported' : 'fleet_spreadsheet_exported',
+    details: { de: period.from.toISOString(), ate: period.to.toISOString() },
+  })
+  const day = (date: Date) => date.toISOString().slice(0, 10)
+  response.set('Content-Disposition', `attachment; filename="${kind === 'warehouse' ? 'almoxarifado' : 'frota'}-${day(period.from)}-a-${day(new Date(period.to.getTime() - 1))}.xlsx"`)
+  response.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').send(workbook)
+}
+
+router.get('/reports/warehouse/spreadsheet', requirePermission('warehouse:manage'), async (request, response) => {
+  try {
+    const period = spreadsheetPeriod(request)
+    await sendSpreadsheet(response, 'warehouse', period, (generatedBy) => warehouseWorkbook(period, generatedBy))
+  } catch (error) {
+    sendModuleError(response, error)
+  }
+})
+
+router.get(
+  '/reports/fleet/spreadsheet',
+  requirePermission('reports:read'),
+  requirePermission('fleet:read'),
+  async (request, response) => {
+    try {
+      const period = spreadsheetPeriod(request)
+      await sendSpreadsheet(response, 'fleet', period, (generatedBy) =>
+        fleetWorkbook(identityOf(response), period, generatedBy),
+      )
+    } catch (error) {
+      sendModuleError(response, error)
+    }
+  },
+)
 
 export default router

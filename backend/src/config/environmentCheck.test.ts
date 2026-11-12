@@ -40,10 +40,8 @@ test('conferência do ambiente nunca devolve valores', () => {
     RESEND_API_KEY: 're_segredo_do_resend',
     RESEND_FROM: 'SLM <slm@example.gov.br>',
     PASSWORD_RESET_PEPPER: randomBytes(32).toString('hex'),
-    GOOGLE_CALENDAR_ENABLED: 'true',
-    GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL: 'conta@projeto.iam.gserviceaccount.com',
+    // Sobras da integração removida também não aparecem.
     GOOGLE_CALENDAR_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\\nsegredo\\n-----END PRIVATE KEY-----',
-    GOOGLE_CALENDAR_ID_MAINTENANCE: 'calendario@group.calendar.google.com',
   }
   const text = JSON.stringify(checkEnvironment({ ...secrets, NODE_ENV: 'production' }))
   for (const secret of Object.values(secrets)) {
@@ -87,9 +85,11 @@ test('valores inválidos são erros que bloqueiam', () => {
     PASSWORD_RESET_PEPPER: 'curto',
     GOOGLE_CALENDAR_ENABLED: 'true',
   })
-  for (const variable of ['PASSENGER_DATA_KEY', 'ATTACHMENTS_DIR', 'RESEND_FROM', 'PASSWORD_RESET_PEPPER', 'GOOGLE_CALENDAR_ENABLED']) {
+  for (const variable of ['PASSENGER_DATA_KEY', 'ATTACHMENTS_DIR', 'RESEND_FROM', 'PASSWORD_RESET_PEPPER']) {
     assert.equal(levelOf(findings, variable), 'erro', variable)
   }
+  // A integração com o Google Calendar foi removida: a sobra só gera aviso.
+  assert.equal(levelOf(findings, 'GOOGLE_CALENDAR_*'), 'aviso')
   assert.equal(hasBlockingProblem(findings), true)
 })
 

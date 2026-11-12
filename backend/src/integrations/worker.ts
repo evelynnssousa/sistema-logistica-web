@@ -4,14 +4,14 @@ import type { AttachmentStorage } from '../attachments/storage.js'
 import { CommunicationRepository } from '../database/communicationRepository.js'
 import type { ClaimedManualEmail } from '../database/communicationRepository.js'
 import { IntegrationRepository } from '../database/integrationRepository.js'
-import type { ClaimedCalendarItem, ClaimedEmail } from '../database/integrationRepository.js'
+import type { ClaimedEmail } from '../database/integrationRepository.js'
 import { getDatabasePool } from '../database/pool.js'
 import { readSystemSettings } from '../database/settingsRepository.js'
 import { withTransaction } from '../database/withTransaction.js'
 import { recordTechnicalEvent } from '../monitoring/technicalEvents.js'
 import { describeError, logSecurityEvent } from '../security/logger.js'
 import { readPublishedConfigs } from '../database/configRepository.js'
-import { isEventType, linkPathOf, maxAgeHoursOf, missingEmailData, moduleNames, renderEmail, resourcePath } from './catalog.js'
+import { isEventType, linkPathOf, maxAgeHoursOf, missingEmailData, renderEmail } from './catalog.js'
 import type { TemplateOverride } from './catalog.js'
 import { pendingReminderDays, publicLink } from './config.js'
 import { publishIntegrationEvent } from './publisher.js'
@@ -19,14 +19,11 @@ import { nextQuotaDay, quotaEnforcedFor, reserveEmailQuota } from './emailQuota.
 import { RECIPIENT_OUTSIDE_TEST_LIST, recipientDomains, recipientsOutsideList, restrictionEnforcedFor } from './recipientAllowlist.js'
 import { recordAuthAuditEvent } from '../database/authAuditRepository.js'
 import type { QuotaReservation } from './emailQuota.js'
-import { redactForOutbound } from './redaction.js'
 import {
-  externalEventId,
   IntegrationError,
-  resolveCalendarTransport,
   resolveEmailTransport,
 } from './transports.js'
-import type { CalendarTransport, EmailTransport } from './transports.js'
+import type { EmailTransport } from './transports.js'
 
 /**
  * Processa as filas fora das requisições: uma falha no provedor nunca chega ao usuário que
@@ -62,6 +59,17 @@ function assertRecipientsAllowed(provider: string, addresses: readonly string[])
   if (!restrictionEnforcedFor(provider)) return
   const outside = recipientsOutsideList(addresses)
   if (outside.length > 0) throw new RecipientBlocked(recipientDomains(outside))
+}
+
+/** O mesmo bloqueio, sem lançar: usado ao adiar o resto de um lote por falta de cota. */
+function blockedByList(provider: string, addresses: readonly string[]) {
+  try {
+    assertRecipientsAllowed(provider, addresses)
+    return null
+  } catch (error) {
+    if (error instanceof RecipientBlocked) return error
+    throw error
+  }
 }
 
 /** Bloqueio na auditoria: canal, modelo e domínios. O endereço completo nunca é gravado. */
@@ -150,9 +158,20 @@ export async function processEmailQueue(
     } catch (error) {
       if (error instanceof QuotaDeferral) {
         // Sem capacidade: esta e as demais já reservadas voltam à fila, sem tentativa gasta.
+        // Quem está fora da lista de testes é bloqueado de vez, como seria se a cota não tivesse
+        // acabado: o resultado não depende da ordem do lote nem de quantos workers rodam juntos.
         const until = deferralTime(error.code)
-        for (const rest of claimed.slice(index)) await repository.deferEmail(rest, until, error.code)
-        deferred = claimed.length - index
+        for (const [restIndex, rest] of claimed.slice(index).entries()) {
+          const blocked = restIndex > 0 ? blockedByList(transport.provider, [rest.recipient, ...rest.cc]) : null
+          if (blocked) {
+            failed += 1
+            await repository.markEmailFailed(rest, outcomeOf(blocked))
+            await auditBlocked('fila', rest.templateKey, blocked.domains)
+            continue
+          }
+          await repository.deferEmail(rest, until, error.code)
+          deferred += 1
+        }
         logSecurityEvent('email_queue_deferred', { code: error.code, total: deferred })
         break
       }
@@ -209,8 +228,19 @@ export async function processManualEmailQueue(
     } catch (error) {
       if (error instanceof QuotaDeferral) {
         const until = deferralTime(error.code)
-        for (const rest of claimed.slice(index)) await repository.defer(rest.id, until, error.code)
-        logSecurityEvent('manual_email_deferred', { code: error.code, total: claimed.length - index })
+        let deferred = 0
+        for (const [restIndex, rest] of claimed.slice(index).entries()) {
+          const blocked = restIndex > 0 ? blockedByList(transport.provider, [...rest.recipients, ...rest.cc]) : null
+          if (blocked) {
+            failed += 1
+            await repository.markFailed(rest, outcomeOf(blocked))
+            await auditBlocked('mensagem_manual', 'manual_message', blocked.domains)
+            continue
+          }
+          await repository.defer(rest.id, until, error.code)
+          deferred += 1
+        }
+        logSecurityEvent('manual_email_deferred', { code: error.code, total: deferred })
         break
       }
       failed += 1
@@ -335,75 +365,6 @@ export async function refreshDeliveryStatuses(
   return checked
 }
 
-export async function processCalendarQueue(
-  transport: CalendarTransport | null,
-  repository = new IntegrationRepository(),
-) {
-  if (!transport) return { synced: 0, failed: 0 }
-
-  let synced = 0
-  let failed = 0
-  for (const item of await repository.claimCalendarItems(batchSize)) {
-    let protocol = ''
-    try {
-      const data = await repository.calendarEventData(item.requestId)
-      protocol = data?.protocolo ?? ''
-      await syncOne(transport, item, data)
-      await repository.markCalendarSynced(item, {
-        simulated: transport.simulated,
-        externalEventId: item.action === 'upsert' ? externalEventId(item.requestId) : null,
-      })
-      synced += 1
-    } catch (error) {
-      failed += 1
-      const final = await repository.markCalendarFailed(item, outcomeOf(error))
-      logSecurityEvent('calendar_sync_failed', { final, code: outcomeOf(error).code })
-      if (final) {
-        recordTechnicalEvent('calendar', 'calendar_sync_failed', error)
-        await reportFailure('calendar', item, protocol)
-      }
-    }
-  }
-  return { synced, failed }
-}
-
-const calendarStatusLabels: Record<string, string> = {
-  agendado: 'Agendado',
-  agendada: 'Agendado',
-  reagendado: 'Reagendado',
-  em_andamento: 'Em andamento',
-  concluido: 'Concluído',
-  concluida: 'Concluído',
-}
-
-/** O evento leva só o necessário: sem solicitante, descrição, passageiros ou responsável. */
-function syncOne(
-  transport: CalendarTransport,
-  item: ClaimedCalendarItem,
-  data: Awaited<ReturnType<IntegrationRepository['calendarEventData']>>,
-) {
-  const eventId = externalEventId(item.requestId)
-  if (item.action === 'delete') return transport.remove(item.module, eventId)
-  if (!data?.data_agendada) throw new IntegrationError('REQUEST_NOT_SCHEDULED', false)
-
-  const link = publicLink(resourcePath(item.module, item.requestId))
-  return transport.upsert({
-    eventId,
-    module: item.module,
-    summary: redactForOutbound(
-      `${moduleNames[item.module]} ${/^\d+$/.test(data.protocolo) ? '#' : ''}${data.protocolo}: ${data.titulo}`,
-    ),
-    description: [
-      `Protocolo: ${data.protocolo}`,
-      `Situação: ${calendarStatusLabels[data.status] ?? data.status}`,
-      ...(data.setor_nome ? [`Setor: ${data.setor_nome}`] : []),
-      ...(link ? [`Solicitação: ${link}`] : []),
-    ].join('\n'),
-    start: data.data_agendada,
-    end: data.agendamento_fim,
-  })
-}
-
 /** Um resumo por módulo e por dia, só para quem atende: a chave impede a repetição no dia. */
 export async function publishPendingReminders(
   days: number | null,
@@ -467,7 +428,6 @@ const reminderIntervalTicks = 120
 
 export type WorkerDependencies = {
   emailTransport?: EmailTransport | null
-  calendarTransport?: CalendarTransport | null
   repository?: IntegrationRepository
   intervalMs?: number
 }
@@ -475,10 +435,6 @@ export type WorkerDependencies = {
 export function startIntegrationWorker(dependencies: WorkerDependencies = {}) {
   const emailTransport =
     dependencies.emailTransport === undefined ? resolveEmailTransport() : dependencies.emailTransport
-  const calendarTransport =
-    dependencies.calendarTransport === undefined
-      ? resolveCalendarTransport()
-      : dependencies.calendarTransport
   const repository = dependencies.repository ?? new IntegrationRepository()
 
   let tick = 0
@@ -494,7 +450,6 @@ export function startIntegrationWorker(dependencies: WorkerDependencies = {}) {
       )
       await processEmailQueue(emailTransport, repository)
       await processManualEmailQueue(emailTransport)
-      await processCalendarQueue(calendarTransport, repository)
       if (tick % statusIntervalTicks === 0) await refreshDeliveryStatuses(emailTransport, repository)
       if (tick % reminderIntervalTicks === 0) {
         await publishPendingReminders(await configuredReminderDays(), repository)

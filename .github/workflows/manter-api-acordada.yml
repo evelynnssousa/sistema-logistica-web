@@ -1,0 +1,40 @@
+# Mantém a API do Render Free acordada no horário de expediente, para que a fila de e-mails,
+# os lembretes e as recorrências de Demandas não parem quando ninguém está usando o sistema.
+#
+# Fica inerte até:
+#   1. este arquivo estar na branch principal (o GitHub só executa agendamentos da main);
+#   2. a variável do repositório SLM_API_HEALTH_URL existir (Settings → Secrets and variables →
+#      Actions → Variables), com o endereço do Render terminado em /api/health, por exemplo
+#      https://slm-api-homologacao.onrender.com/api/health
+#
+# Só lê /api/health, que não acessa o banco nem exige login. Nenhum segredo é usado.
+# Horário: a cada 10 minutos, de segunda a sexta, das 7h às 19h de Brasília (10h às 22h UTC).
+# São cerca de 290 horas por mês, dentro das 750 horas do Render Free para um serviço por workspace.
+# O GitHub desativa agendamentos depois de 60 dias sem atividade no repositório: basta reativar
+# na aba Actions.
+name: Manter a API acordada
+
+on:
+  schedule:
+    - cron: '*/10 10-21 * * 1-5'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    if: ${{ vars.SLM_API_HEALTH_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Acessar /api/health
+        env:
+          HEALTH_URL: ${{ vars.SLM_API_HEALTH_URL }}
+        run: |
+          case "$HEALTH_URL" in
+            https://*/api/health) ;;
+            *) echo "SLM_API_HEALTH_URL precisa ser https e terminar em /api/health."; exit 1 ;;
+          esac
+          # A primeira chamada pode levar cerca de 1 minuto, se a API estava hibernada.
+          curl --fail --silent --show-error --max-time 120 --retry 2 --retry-delay 10 "$HEALTH_URL" > /dev/null
+          echo "API respondeu."

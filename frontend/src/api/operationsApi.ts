@@ -396,6 +396,8 @@ export type StockItem = {
   reserved: number
   available: number
   provided: number
+  /** Pedidos entregues nos últimos 12 meses, ou desde a primeira entrega, se for mais recente. */
+  monthlyConsumption?: { average: number | null; total: number; months: number | null }
   lastMovement: string | null
 }
 

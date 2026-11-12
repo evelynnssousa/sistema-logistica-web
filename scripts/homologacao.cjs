@@ -118,13 +118,32 @@ async function inspect(client) {
   }
 }
 
-/** Situação de public: vazio, só a 001, ou outra coisa. */
+/** Marcadoras das migrações 002 em diante, sem repetição (a 018 não cria tabela). */
+function migrationMarkers() {
+  const { migrations } = require('./migration-list.cjs')
+  return [...new Set(migrations.map((item) => item.marker))]
+}
+
+/**
+ * Situação de public: vazio, só a 001, a 001 com migrações (a partir da 002), ou outra coisa.
+ * "com-migracoes" não diz quais estão completas: isso é com `migrations:check`, que confere cada uma.
+ */
 function stateOf(tables) {
   const legacy = ['auth_audit_events', 'auth_sessions', 'auth_users', 'material_request_items', 'material_requests', 'materials', 'request_forms', 'request_history', 'service_requests', 'setores', 'stock_movements']
   const names = tables.map((t) => t.relname)
   if (names.length === 0) return 'vazio'
-  if (names.length === legacy.length && legacy.every((t) => names.includes(t))) return 'estrutura-inicial'
+  const hasLegacy = legacy.every((t) => names.includes(t))
+  if (hasLegacy && names.length === legacy.length) return 'estrutura-inicial'
+  // A 002 é a primeira: sem ela, tabelas a mais não vieram das migrações.
+  if (hasLegacy && names.includes(migrationMarkers()[0])) return 'com-migracoes'
   return 'outro'
+}
+
+/** Quantas marcadoras existem, para o resumo do `verificar`. */
+function markersPresent(tables) {
+  const names = new Set(tables.map((t) => t.relname))
+  const markers = migrationMarkers()
+  return { present: markers.filter((marker) => names.has(marker)).length, total: markers.length }
 }
 
 /** TLS da conexão do Codespace até o pooler, lido do próprio socket (o certificado já foi verificado). */
@@ -174,7 +193,14 @@ async function verify(target) {
   if (s.versao_num < 170000) problems.push(`PostgreSQL ${s.versao}: a estrutura inicial e os testes usam a versão 17, a mesma do banco real`)
   if (!s.cria_em_public) problems.push('o papel não pode criar objetos em public')
   if (state === 'outro') problems.push(`public tem objetos inesperados: ${report.tables.map((t) => t.relname).join(', ')}`)
-  console.log(`Situação: ${state === 'vazio' ? 'VAZIO, pronto para a estrutura inicial' : state === 'estrutura-inicial' ? 'só a estrutura inicial (001), pronto para as migrações' : 'COM OBJETOS INESPERADOS'}`)
+  const markers = markersPresent(report.tables)
+  const described = {
+    vazio: 'VAZIO, pronto para a estrutura inicial',
+    'estrutura-inicial': 'só a estrutura inicial (001), pronto para as migrações',
+    'com-migracoes': `estrutura inicial e migrações (${markers.present} de ${markers.total} tabelas marcadoras presentes); confira cada uma com: npm run homolog -- -- npm run migrations:check`,
+    outro: 'COM OBJETOS INESPERADOS',
+  }
+  console.log(`Situação: ${described[state]}`)
   for (const problem of problems) console.log(`PROBLEMA  ${problem}`)
   if (problems.length) process.exitCode = 1
   return { state, problems }
@@ -191,7 +217,7 @@ async function applyInitialStructure(target, args) {
   await client.connect()
   try {
     await applyStructureWith(client)
-    console.log('Estrutura inicial aplicada: 11 tabelas, sem dados. Próximo passo: as migrações 002 a 018.')
+    console.log('Estrutura inicial aplicada: 11 tabelas, sem dados. Próximo passo: as migrações 002 a 019.')
   } finally {
     await client.end().catch(() => undefined)
   }

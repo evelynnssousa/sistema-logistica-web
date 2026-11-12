@@ -3,7 +3,7 @@ import { resolveRequestOwnership } from '../auth/requestPolicy.js'
 import type { RequestModule } from '../auth/requestPolicy.js'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
 import { flightEventFor } from '../integrations/catalog.js'
-import { publishIntegrationEvent, publishTripDriverEvent, requestCalendarSync } from '../integrations/publisher.js'
+import { publishIntegrationEvent, publishTripDriverEvent } from '../integrations/publisher.js'
 import { redactOptional, redactValidCpf } from '../integrations/redaction.js'
 import { encryptCpf } from '../requests/cpfProtection.js'
 import { describeChanges, importantFields, requiresJustification } from '../requests/changeRules.js'
@@ -785,10 +785,8 @@ export class ServiceRequestRepository {
         module,
         fields: changed,
       })
-      // O título pode ter mudado: o evento externo acompanha.
-      if (module !== 'flights' && current.data_agendada) {
-        await requestCalendarSync(client, id, module, 'upsert', { onlyIfTracked: true })
-        if (module === 'fleet' && changed.length > 0) {
+      if (module === 'fleet' && current.data_agendada) {
+        if (changed.length > 0) {
           await publishTripDriverEvent(client, {
             type: 'trip_updated',
             rules: tripEditRules(changed),
@@ -1013,7 +1011,6 @@ export class ServiceRequestRepository {
           })
         }
       }
-      if (module !== 'flights') await requestCalendarSync(client, id, module, 'upsert')
       if (module === 'fleet' && kind !== 'schedule') {
         await publishTripDriverEvent(client, {
           type: rescheduling ? 'trip_rescheduled' : 'trip_updated',
@@ -1065,9 +1062,6 @@ export class ServiceRequestRepository {
         requesterId: current.solicitante_id,
         context: { title: current.titulo },
       })
-      if (module !== 'flights') {
-        await requestCalendarSync(client, id, module, 'upsert', { onlyIfTracked: true })
-      }
       return next
     })
   }
@@ -1113,9 +1107,6 @@ export class ServiceRequestRepository {
         requesterId: current.solicitante_id,
         context: { title: current.titulo },
       })
-      if (module !== 'flights') {
-        await requestCalendarSync(client, id, module, 'upsert', { onlyIfTracked: true })
-      }
       return next
     })
   }
@@ -1125,9 +1116,15 @@ export class ServiceRequestRepository {
     module: RequestModule,
     id: string,
     input: { code: unknown; text: unknown },
+    // Cancelamento pelo próprio solicitante: só vale se, já com a linha travada, ela ainda
+    // estiver numa destas situações (a SLM pode ter agendado nesse meio-tempo).
+    onlyFrom?: readonly string[],
   ) {
     return withTransaction(this.poolProvider(), async (client) => {
       const current = await this.lock(client, module, id)
+      if (onlyFrom && !onlyFrom.includes(current.status)) {
+        throw conflict('A solicitação já está em atendimento e não pode mais ser cancelada por quem a abriu. Fale com a SLM.')
+      }
       const next = this.transition(module, current.status, 'cancel')
       const settings = await readSystemSettings(client)
       const justification = resolveInTransaction(settings.reasons.cancellation, input, {
@@ -1183,9 +1180,6 @@ export class ServiceRequestRepository {
           previousScheduledEnd: iso(current.agendamento_fim),
         },
       })
-      if (module !== 'flights') {
-        await requestCalendarSync(client, id, module, 'delete', { onlyIfTracked: true })
-      }
       if (module === 'fleet') {
         await publishTripDriverEvent(client, {
           type: 'trip_cancelled',

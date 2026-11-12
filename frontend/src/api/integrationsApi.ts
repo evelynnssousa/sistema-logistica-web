@@ -68,14 +68,6 @@ export type IntegrationStatus = {
     /** Lista de destinatários de teste: só o modo e as contagens. */
     restriction?: { mode: 'test' | 'off'; allowedRecipients: number; rejectedEntries: number }
   }
-  calendar: {
-    mode: ChannelMode
-    provider: string
-    flagEnabled: boolean
-    credentialsPresent: boolean
-    maintenanceCalendarPresent: boolean
-    fleetCalendarPresent: boolean
-  }
   worker: { enabled: boolean }
   pendingReminderDays: number | null
   /** Retrato da fila de e-mails. null: sem a migração 006. */
@@ -146,28 +138,3 @@ export const listEmailDeliveries = (filters: {
 
 export const retryEmail = (id: string) =>
   apiRequest<Envelope>(`/integrations/emails/${id}/retry`, { method: 'POST', body: '{}' })
-
-export type CalendarSyncItem = {
-  id: string
-  requestId: string
-  module: 'maintenance' | 'fleet'
-  moduleLabel: string
-  action: 'upsert' | 'delete'
-  status: string
-  simulated: boolean
-  attempts: number
-  nextAttemptAt: string
-  errorCode: string | null
-  syncedAt: string | null
-  externalEventId: string | null
-  protocol: string
-  scheduledAt: string | null
-}
-
-export const listCalendarSync = (filters: { status?: string; page: number }) =>
-  apiRequest<Envelope & { items: CalendarSyncItem[]; total: number; page: number; pageSize: number }>(
-    `/integrations/calendar${queryString(filters)}`,
-  )
-
-export const retryCalendarSync = (id: string) =>
-  apiRequest<Envelope>(`/integrations/calendar/${id}/retry`, { method: 'POST', body: '{}' })

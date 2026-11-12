@@ -204,20 +204,13 @@ export function checkEnvironment(
     )
   }
 
-  if (value(environment, 'GOOGLE_CALENDAR_ENABLED') === 'true') {
-    const missing = [
-      'GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL',
-      'GOOGLE_CALENDAR_PRIVATE_KEY',
-    ].filter((name) => !value(environment, name))
-    const calendars = ['GOOGLE_CALENDAR_ID_MAINTENANCE', 'GOOGLE_CALENDAR_ID_FLEET'].filter((name) => value(environment, name))
-    if (missing.length > 0) add('GOOGLE_CALENDAR_ENABLED', 'erro', `Ligada sem ${missing.join(' e ')}.`)
-    else if (calendars.length === 0) add('GOOGLE_CALENDAR_ENABLED', 'erro', 'Ligada sem nenhum calendário definido.')
-    else if (!value(environment, 'GOOGLE_CALENDAR_PRIVATE_KEY').includes('PRIVATE KEY')) {
-      add('GOOGLE_CALENDAR_PRIVATE_KEY', 'erro', 'Não parece uma chave PEM da conta de serviço.')
-    } else add('GOOGLE_CALENDAR_ENABLED', 'ok', `Credenciais presentes; calendários: ${calendars.length}.`)
+  // A integração com o Google Calendar foi removida em 11/11/2026: sobras no painel são ignoradas.
+  const leftovers = Object.keys(environment).filter((name) => name.startsWith('GOOGLE_CALENDAR_') && value(environment, name))
+  if (leftovers.length > 0) {
+    add('GOOGLE_CALENDAR_*', 'aviso', `Integração removida: ${leftovers.length} variável(is) ignorada(s), que podem ser apagadas.`)
   }
 
-  for (const simulated of ['EMAIL_TRANSPORT', 'GOOGLE_CALENDAR_TRANSPORT']) {
+  for (const simulated of ['EMAIL_TRANSPORT']) {
     if (production && value(environment, simulated) === 'simulated') {
       add(simulated, 'erro', 'Transporte simulado em produção: é ignorado, mas não deve existir.')
     }

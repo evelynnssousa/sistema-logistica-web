@@ -255,7 +255,6 @@ async function main() {
           PASSENGER_DATA_KEY: randomBytes(32).toString('base64'),
           // Simulados: nada sai da máquina. O worker processa as filas como em produção.
           EMAIL_TRANSPORT: 'simulated',
-          GOOGLE_CALENDAR_TRANSPORT: 'simulated',
           INTEGRATIONS_WORKER_ENABLED: 'true',
           DEMANDS_WORKER_ENABLED: 'true',
           // Pasta descartável para os anexos fictícios desta execução.

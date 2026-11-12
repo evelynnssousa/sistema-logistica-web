@@ -5,6 +5,7 @@ import { insertAuthAuditEvent } from './authAuditRepository.js'
 import { ModuleError, notFound } from './moduleErrors.js'
 import { getDatabasePool } from './pool.js'
 import { withTransaction } from './withTransaction.js'
+import { sortByName } from './naturalOrder.js'
 
 type Client = Pick<PoolClient, 'query'>
 
@@ -178,8 +179,8 @@ export class InstitutionalLinkRepository {
       await pool.query(`SELECT 1 FROM public.user_directorate_links LIMIT 0`)
       return {
         available: true,
-        lotations: lotations.rows.map((row) => row.nome),
-        sectors: sectors.rows.map((row) => ({ id: row.id, name: row.nome, isSlm: row.e_slm })),
+        lotations: sortByName(lotations.rows, (row) => row.nome).map((row) => row.nome),
+        sectors: sortByName(sectors.rows, (row) => row.nome).map((row) => ({ id: row.id, name: row.nome, isSlm: row.e_slm })),
       }
     } catch (error) {
       if (!isMissingSchema(error)) throw error

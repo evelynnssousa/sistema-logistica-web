@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolveAttachmentStorage } from '../attachments/storage.js'
-import { calendarMode, emailMode } from '../integrations/config.js'
+import { emailMode } from '../integrations/config.js'
 import { getDatabasePool } from '../database/pool.js'
 import { describeError, logSecurityEvent } from '../security/logger.js'
 import { recordTechnicalEvent } from './technicalEvents.js'
@@ -48,7 +48,7 @@ async function failedInLastHour(table: string): Promise<number | null> {
 }
 
 async function checkQueue(
-  service: 'email' | 'calendar',
+  service: 'email',
   table: string,
   configured: boolean,
 ): Promise<CheckResult> {
@@ -73,18 +73,13 @@ async function checkStorage(): Promise<CheckResult> {
 }
 
 export async function runHealthChecks(): Promise<CheckResult[]> {
-  const [database, email, calendar, storage] = await Promise.all([
+  const [database, email, storage] = await Promise.all([
     checkDatabase(),
     checkQueue('email', 'email_deliveries', emailMode() !== 'none'),
-    checkQueue(
-      'calendar',
-      'calendar_sync_items',
-      calendarMode('maintenance') !== 'none' || calendarMode('fleet') !== 'none',
-    ),
     checkStorage(),
   ])
   // Quem responde esta verificação é a própria API.
-  return [{ service: 'api', status: 'up', detail: null, responseMs: 0 }, database, email, calendar, storage]
+  return [{ service: 'api', status: 'up', detail: null, responseMs: 0 }, database, email, storage]
 }
 
 /** Grava só as mudanças de estado e o último horário visto. Um intervalo sem registro é "unknown". */

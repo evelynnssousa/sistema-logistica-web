@@ -225,7 +225,8 @@ async function run({ playwright, baseUrl, runId, password }) {
       await admin.goto('/integracoes')
       await admin.locator('.integration-mode').first().waitFor()
       const modes = await admin.locator('.integration-mode').allTextContents()
-      assert.deepEqual(modes, ['Simulado', 'Simulado'])
+      // Só o e-mail: o calendário externo foi removido em 11/11/2026.
+      assert.deepEqual(modes, ['Simulado'])
       assert.ok(!(await admin.locator('.integrations-page').textContent()).toLowerCase().includes('ativa '))
 
       // O worker processa a fila de verdade, com o transporte simulado.
@@ -243,8 +244,8 @@ async function run({ playwright, baseUrl, runId, password }) {
       assert.ok(!table.includes(emails.requester))
       assert.ok(table.includes('e2***@slm-e2e.invalid'))
 
-      await admin.click('.module-tabs button:has-text("Calendário externo")')
-      await admin.locator('.integration-table tbody tr').first().waitFor()
+      // A aba do calendário externo saiu com a remoção do Google Calendar.
+      assert.equal(await admin.locator('.module-tabs button:has-text("Calendário externo")').count(), 0)
 
       await admin.click('.module-tabs button:has-text("Modelos")')
       await admin.locator('.integration-templates details', { hasText: 'Comunicação de reagendamento' }).click()

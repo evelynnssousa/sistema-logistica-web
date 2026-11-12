@@ -14,6 +14,15 @@ const movementLabels: Record<string, string> = { entrada: 'Entrada', saida: 'Sa�
  * Controle interno de saldo, à parte do sistema governamental. Registrar a entrega de um pedido
  * não movimenta este saldo: quem administra lança as entradas e saídas, com justificativa.
  */
+/** Média mensal das entregas, com a base do cálculo, para a pessoa saber o quanto confiar. */
+function consumptionText(item: StockItem) {
+  const consumption = item.monthlyConsumption
+  if (!consumption || consumption.average === null) return 'Sem entregas'
+  const average = consumption.average.toLocaleString('pt-BR', { maximumFractionDigits: 2 })
+  const months = consumption.months === 1 ? '1 mês' : `${String(consumption.months).replace('.', ',')} meses`
+  return `${average} ${item.unit} (base: ${months})`
+}
+
 export function StockTab() {
   const [items, setItems] = useState<StockItem[] | null>(null)
   const [search, setSearch] = useState('')
@@ -151,6 +160,7 @@ export function StockTab() {
                     <th>Reservado</th>
                     <th>Disponível para distribuição</th>
                     <th>Fornecido</th>
+                    <th>Consumo médio por mês</th>
                     <th>Mínimo</th>
                     <th>Última movimentação</th>
                     <th>
@@ -172,6 +182,7 @@ export function StockTab() {
                       <td>{item.reserved} {item.unit}</td>
                       <td>{item.available} {item.unit}</td>
                       <td>{item.provided} {item.unit}</td>
+                      <td>{consumptionText(item)}</td>
                       <td>{item.minimum > 0 ? `${item.minimum} ${item.unit}` : 'Não definido'}</td>
                       <td>{formatDateTime(item.lastMovement)}</td>
                       <td>

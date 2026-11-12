@@ -6,7 +6,7 @@ import { IntegrationRepository } from '../database/integrationRepository.js'
 import { conflict, notFound, sendModuleError } from '../database/moduleErrors.js'
 import { listTemplates } from '../integrations/catalog.js'
 import { configuredReminderDays } from '../integrations/worker.js'
-import { calendarMode, emailMode, integrationStatus } from '../integrations/config.js'
+import { emailMode, integrationStatus } from '../integrations/config.js'
 import { requireCsrf } from '../middleware/requireCsrf.js'
 import { requirePermission } from '../middleware/requirePermission.js'
 import { asBody, isUuid, readPage, readSearch } from '../requests/validation.js'
@@ -48,7 +48,6 @@ function idParam(request: Request, name: string) {
 }
 
 const emailStatuses = ['pending', 'sending', 'sent', 'failed', 'not_configured']
-const calendarStatuses = ['pending', 'syncing', 'synced', 'failed', 'not_configured']
 const modules = ['maintenance', 'fleet', 'flights', 'warehouse', 'system', 'demands']
 
 function oneOf(allowed: readonly string[], value: unknown) {
@@ -161,45 +160,6 @@ router.post(
       throw conflict('O serviço de e-mail não está configurado. Nada foi reprocessado.')
     }
     await integrations.retry(identityOf(response), 'email', id)
-    response.json({ success: true })
-  }),
-)
-
-router.get(
-  '/integrations/calendar',
-  read,
-  guarded(async (request, response) => {
-    const query = asBody(request.query)
-    response.json({
-      success: true,
-      ...(await integrations.listCalendarItems({
-        status: oneOf(calendarStatuses, query.status),
-        page: readPage(query.page),
-      })),
-    })
-  }),
-)
-
-router.get(
-  '/integrations/calendar/:itemId/attempts',
-  read,
-  guarded(async (request, response) => {
-    response.json({
-      success: true,
-      attempts: await integrations.attemptsOf('calendar', idParam(request, 'itemId')),
-    })
-  }),
-)
-
-router.post(
-  '/integrations/calendar/:itemId/retry',
-  manage,
-  guarded(async (request, response) => {
-    const id = idParam(request, 'itemId')
-    if (calendarMode() === 'none') {
-      throw conflict('A integração com o calendário não está configurada. Nada foi reprocessado.')
-    }
-    await integrations.retry(identityOf(response), 'calendar', id)
     response.json({ success: true })
   }),
 )
