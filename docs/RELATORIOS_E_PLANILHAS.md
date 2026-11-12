@@ -9,7 +9,7 @@ Os números continuam numéricos, para somar e filtrar no Excel.
 | Planilha | Onde | Quem vê o botão |
 |---|---|---|
 | Almoxarifado | Almoxarifado → Relatórios → "Planilha do Almoxarifado" | Quem administra o Almoxarifado (Administrador e Operador SLM da equipe) |
-| Frota | Relatórios → "Planilha da Frota" | Quem consulta relatórios e a Frota. As abas de carga horária só para quem administra os motoristas |
+| Frota | Frota → "Planilha da Frota", abaixo da lista de solicitações | Quem consulta relatórios e a Frota. As abas de carga horária só para quem administra os motoristas |
 
 Escolha o período ("De" e "Até", até cerca de 13 meses) e clique em **Baixar planilha (Excel)**.
 

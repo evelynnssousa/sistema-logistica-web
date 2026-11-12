@@ -29,6 +29,8 @@ type ServiceRequestsPageProps = {
   secondExtraAction?: { to: string; label: string; icon: IconName; permission: string }
   /** Filtro próprio do módulo, enviado à API. */
   tripTypeOptions?: { value: string; label: string }[]
+  /** Conteúdo próprio do módulo, abaixo da lista (ex.: a planilha da Frota). */
+  footer?: ReactNode
 }
 
 function ServiceRequestsPage({
@@ -44,6 +46,7 @@ function ServiceRequestsPage({
   extraAction,
   secondExtraAction,
   tripTypeOptions,
+  footer,
 }: ServiceRequestsPageProps) {
   const canCreate = useHasPermission(createPermission)
   const canSeeExtra = useHasPermission(extraAction?.permission ?? '')
@@ -223,6 +226,7 @@ function ServiceRequestsPage({
           </>
         )}
       </section>
+      {footer}
     </div>
   )
 }

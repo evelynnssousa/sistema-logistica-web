@@ -13,7 +13,6 @@ import type { PerformanceReport, TeamMember } from '../api/operationsApi'
 import { useHasPermission } from '../auth/UserContext'
 import { usePeriodFilter } from '../app/period'
 import { useCatalog } from '../app/useCatalog'
-import SpreadsheetDownload from '../components/SpreadsheetDownload'
 import StatCard from '../components/StatCard'
 import { BarChart, MonthlyChart } from '../components/ui/Charts'
 import type { ChartRow } from '../components/ui/Charts'
@@ -297,8 +296,6 @@ function ReportsPage() {
   const [operational, setOperational] = useState<OperationalReport | null>(null)
   const [performance, setPerformance] = useState<PerformanceReport | null>(null)
   const canSeeTeam = useHasPermission('slm_central:read')
-  const canSeeFleet = useHasPermission('fleet:read')
-  const canManageFleet = useHasPermission('fleet:manage')
   const [team, setTeam] = useState<TeamMember[]>([])
   const [responsibleId, setResponsibleId] = useState('')
   const [status, setStatus] = useState('')
@@ -423,17 +420,6 @@ function ReportsPage() {
         )}
       </FilterBar>
 
-      {canSeeFleet && (
-        <SpreadsheetDownload
-          kind="fleet"
-          title="Planilha da Frota"
-          description={
-            canManageFleet
-              ? 'Viagens com motorista, veículo e quilometragem, resumo por veículo e carga horária estimada dos motoristas (horas extras e horas a menos).'
-              : 'Viagens com motorista, veículo e quilometragem do período.'
-          }
-        />
-      )}
 
       {error && <Alert tone="error">{error}</Alert>}
       {!report && !error && <Loading label="Carregando relatório..." />}
