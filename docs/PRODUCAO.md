@@ -32,7 +32,7 @@ A API não serve a tela. O mesmo domínio atende a tela e a API, o que mantém o
 |---|---|
 | Servidor | PostgreSQL 17 (Supabase atual). Conexão pelo session pooler, porta 5432; **não usar** o transaction pooler (6543) |
 | TLS | Sempre verificado, com `backend/certificates/prod-ca-2021.crt` ou `DATABASE_SSL_CA_PATH` |
-| Migrações | 002 a 019 aplicadas com `scripts/apply-migrations.cjs`, em duas etapas, só com autorização expressa. A 018 fecha a API pública do Supabase (P-02); a 019 cria a cota diária de e-mails e sela a fila anterior |
+| Migrações | 002 a 020 aplicadas com `scripts/apply-migrations.cjs`, em duas etapas, só com autorização expressa. A 018 fecha a API pública do Supabase (P-02); a 019 cria a cota diária de e-mails e sela a fila anterior; a 020 cria os valores do Almoxarifado |
 | Papel da API | Dono das tabelas (`postgres` no Supabase). A API não usa PostgREST, Auth nem Storage do Supabase |
 | Data API do Supabase | Recomendado desligar ou restringir os schemas expostos no painel (Settings → API). Depois da 018, nada em `public` fica acessível a `anon`, `authenticated` ou `service_role` |
 | Backups do provedor | Conferir no painel (Database → Backups) o plano e a retenção. Não substituem as cópias próprias (seção 7) |
@@ -159,7 +159,7 @@ Detalhes em `BACKUP_E_MIGRACOES_SUPABASE.md`, seção "Cópia externa e recupera
 | 7 | Conta Resend com domínio verificado | TI | Pendente |
 | 8 | `npm run config:check` sem erros, com `NODE_ENV=production` | Desenvolvimento | Pendente |
 | 9 | Backup verificado do banco real, com cópia externa | Responsável | Pendente |
-| 10 | Migrações 002 a 019 aplicadas com autorização | Responsável | Pendente |
+| 10 | Migrações 002 a 020 aplicadas com autorização | Responsável | Pendente |
 | 11 | `npm run verify` e `npm run test:all` no commit a implantar | Desenvolvimento | Pronto para executar |
 | 12 | Homologação do e-mail (roteiro em `INTEGRACOES_E_AUTOMACOES.md`) | Responsável e TI | Pendente |
 | 13 | Agendamento dos backups e do monitor externo | TI | Pendente |

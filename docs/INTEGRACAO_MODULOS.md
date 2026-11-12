@@ -69,7 +69,7 @@ Como ficou:
 
 Pedidos com duas origens em uma só central, catálogo de materiais e conferência de inventário. **O sistema não se comunica com o sistema governamental:** a origem "governamental" é uma cópia digitada, e a tela diz isso.
 
-A entrega e a conferência **não movimentam** `materials.estoque_atual` nem `stock_movements`, porque a decisão sobre quem controla o estoque oficial está em aberto. Veja `PLANO_DESENVOLVIMENTO_INTEGRAL.md`.
+Desde 12/11/2026, **a entrega dá baixa automática** no estoque interno (`debitDelivery`, em `database/warehouseFinanceRepository.ts`): uma saída por material, com `material_request_id`, nunca maior que o saldo, sem bloquear a entrega. A conferência de inventário continua sem movimentar o saldo. Com a migração 020, cada movimentação também guarda o valor (custo médio ponderado, regras em `requests/warehouseValuation.ts`), visível só com `warehouse:finance`.
 
 A previsão de entrega fica no próprio pedido, em `PUT /warehouse/requests/:requestId/delivery-forecast`, com `warehouse:manage`. Regras em `requests/deliveryRules.ts`. A situação da entrega é calculada na leitura, e a data efetiva continua em `entregue_em`. O histórico fica em `material_delivery_history`, separado de `material_request_history`, porque este é exibido ao solicitante.
 

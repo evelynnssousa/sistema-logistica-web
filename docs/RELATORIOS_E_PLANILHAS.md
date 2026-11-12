@@ -25,7 +25,19 @@ Escolha o período ("De" e "Até", até cerca de 13 meses) e clique em **Baixar 
 | Estoque | Situação **de agora**: código, material, unidade, estoque físico, reservado, disponível, mínimo, se está abaixo do mínimo, **consumo médio por mês**, base do consumo (meses), entregue nos últimos 12 meses, total fornecido e última movimentação |
 | Pedidos | Pedidos abertos no período: protocolo, data, situação, origem (interna ou governamental), setor, solicitante, itens, quantidades solicitadas e atendidas, data da entrega |
 | Itens entregues | Cada material entregue no período, com o pedido, o setor e as quantidades |
-| Movimentações | Entradas e saídas do estoque interno registradas no período |
+| Movimentações | Entradas e saídas do estoque interno registradas no período, inclusive as baixas automáticas das entregas |
+| Financeiro, Atas, Entradas com valor, Saídas com valor | **Só para quem vê valores** (Administrador e Operador SLM): valor em estoque, compras e consumo por mês, consumo por setor, gasto e saldo de cada ata, e cada entrada com valor pago, nota fiscal, empenho, fornecedor e ata. A aba Estoque ganha as colunas "Custo médio" e "Valor em estoque" |
+
+## Valores do Almoxarifado (12/11/2026)
+
+Controle orçamentário do estoque. Depende da migração 020. Só o **Administrador** e o **Operador SLM da equipe** veem e registram valores (permissão "Ver e registrar valores do Almoxarifado"). O Solicitante nunca vê preços.
+
+- **Entrada:** em Almoxarifado → Estoque interno, ao registrar uma entrada, informe o **valor total pago** (de toda a quantidade), a nota fiscal, o empenho, o fornecedor e, se houver, a **ata**. Em branco (por exemplo, numa devolução), a entrada vale o custo médio atual.
+- **Custo médio ponderado:** valor do estoque ÷ quantidade. Exemplo: 10 resmas a R$ 20 e mais 10 a R$ 30 dão custo médio de R$ 25.
+- **Saída e entrega:** saem pelo custo médio do momento. **Registrar a entrega de um pedido dá baixa automática** nas quantidades entregues; se o saldo interno não bastar, sai o que houver e a justificativa diz quanto faltou. A entrega nunca é bloqueada por isso.
+- **Estoque que já existia:** começa sem valor. Use o botão **"Informar valor"** de cada material, uma vez, com justificativa (fica registrado para sempre).
+- **Atas:** em Almoxarifado → **Valores**, cadastre cada ata com número, fornecedor, objeto, valor total e vigência. O gasto é a soma das entradas vinculadas a ela; o saldo e o percentual usado aparecem na mesma tabela.
+- **Painel Valores:** valor em estoque agora; compras e consumo no período (padrão: últimos 12 meses); compras e consumo por mês; materiais mais caros (custo médio e último preço pago); maiores gastos; consumo em reais por setor; onde está o valor do estoque; aviso dos materiais com saldo sem valor.
 
 ### Consumo médio por mês
 
@@ -35,7 +47,7 @@ Também aparece na tela **Almoxarifado → Estoque**, na coluna "Consumo médio 
 - Divide pelos meses da base: 12, ou menos se a primeira entrega do material foi mais recente
   (no mínimo 1 mês). Assim, um material novo não fica com uma média artificialmente baixa.
 - Mostra a base ("base: 3 meses") para indicar o quanto a média já é confiável.
-- **Não** usa as movimentações manuais do estoque, que podem repetir as mesmas entregas.
+- **Não** usa as movimentações do estoque: conta os pedidos entregues, que é o consumo de fato.
 - "Sem entregas": o material nunca foi entregue por pedido.
 
 ## Planilha da Frota

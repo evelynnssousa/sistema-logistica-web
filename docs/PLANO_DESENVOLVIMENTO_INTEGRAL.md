@@ -31,7 +31,8 @@ Referência central dos supercomandos. Os requisitos ficam em `REQUISITOS_FUNCIO
 | Passagens aéreas | Concluída | Exige `PASSENGER_DATA_KEY` |
 | Configurações: listas | Concluída | |
 | Configurações: editor de campos | Concluída | No servidor desde a revisão dos supercomandos; exige a migração 007 para gravar |
-| Almoxarifado: pedidos, catálogo, entrega e conferência | Concluída | Não movimenta estoque; ver questão 3 |
+| Almoxarifado: pedidos, catálogo, entrega e conferência | Concluída | Desde 12/11/2026 a entrega dá baixa no estoque interno; ver questão 3 |
+| Almoxarifado: valores, custo médio e atas | Concluída | Migração 020; ver `RELATORIOS_E_PLANILHAS.md` |
 | Agenda interna | Concluída | Filtros, detalhes e conflitos no Supercomando 03 |
 | Notificações internas | Concluída | Depende da migração 006 |
 | Fila, modelos e histórico de e-mails | Concluída | Depende da migração 006. Testada com provedor simulado |
@@ -62,7 +63,7 @@ Dependem de decisão da instituição. O sistema segue o comportamento indicado 
 
 1. **Administrador pode agendar sem ser da SLM?** O requisito diz que só integrantes autorizados da SLM agendam. A implementação corrigida da D4, preservada aqui, permite ao Administrador agendar pelo perfil, mesmo fora da equipe. Não há registro escrito da D4 no repositório para confirmar.
 2. **Solicitante pode cancelar a própria solicitação?** Pelo perfil, não. Desde 11/11/2026 existe a permissão individual `requests:cancel_own` ("Cancelar as próprias solicitações antes do atendimento"): com ela, o solicitante cancela, com motivo, só a que ele abriu e só enquanto aguarda agendamento (Manutenção e Frota) ou está em cotação (Passagens). Não vem em nenhum perfil. Se a instituição decidir que todos os solicitantes podem, basta incluí-la no perfil Solicitante.
-3. **Quem controla o estoque oficial?** A entrega não altera `estoque_atual`. Se o JUCESP tiver de controlar saldo, será preciso ativar `stock_movements` e definir o saldo inicial.
+3. **Quem controla o estoque oficial?** Decidido em 12/11/2026 pela responsável: a entrega dá baixa automática no estoque interno (`stock_movements`, com o pedido vinculado), nunca mais que o saldo, sem bloquear a entrega. O estoque interno continua não substituindo o sistema governamental.
 4. **Cancelar um atendimento em andamento é permitido?** Hoje é, com motivo obrigatório, para o atendimento não ficar sem desfecho.
 5. **Fluxos do sistema antigo:** falta acesso às planilhas para conferir campos, sobretudo cadastro de veículos e de motoristas, criados sem essa conferência.
 6. **Solicitante acompanha pedidos do próprio setor?** Hoje só os dele. Solicitação aberta pela SLM em nome de um setor não aparece para as pessoas desse setor.
@@ -201,7 +202,7 @@ Nada foi executado no banco real, e nenhum provedor real foi chamado.
 - **Produtividade:** volume, complexidade e tempo aparecem lado a lado, sem nota nem classificação. A complexidade é informada pela equipe, e o que não foi classificado aparece como tal.
 - **Disponibilidade:** intervalo sem verificação conta como "sem verificação", e não como disponível.
 - **Prazo padrão:** começa vazio, para nenhuma data ser presumida. O período "sem movimentação" começa em 5 dias, valor de trabalho, ajustável pela tela.
-- **Estoque interno:** usa `stock_movements`, que já existia. A entrega de pedidos continua sem alterar o saldo, como na questão 3.
+- **Estoque interno:** usa `stock_movements`, que já existia. Desde 12/11/2026 a entrega de pedidos dá baixa no saldo (questão 3).
 - **Exportação sem biblioteca nova:** CSV que o Excel abre, e PDF pela impressão do navegador.
 
 **Defeito anterior corrigido:** a mensagem técnica do gatilho `reject_history_change` (risco do Supercomando 03), na 007.
@@ -270,6 +271,6 @@ Conferência dos critérios contra o código, feita em 04/11/2026 a pedido da re
 
 ## Próximos blocos
 
-- **Aplicação das migrações 002 a 019 no banco real**, com autorização e backup, seguindo `BACKUP_E_MIGRACOES_SUPABASE.md`.
+- **Aplicação das migrações 002 a 020 no banco real**, com autorização e backup, seguindo `BACKUP_E_MIGRACOES_SUPABASE.md`.
 - **Validação das integrações:** homologação com credenciais institucionais, conforme `INTEGRACOES_E_AUTOMACOES.md`.
 - **Fora dos supercomandos, sem data:** resolver as questões em aberto.

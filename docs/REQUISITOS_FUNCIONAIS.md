@@ -70,6 +70,8 @@ Setores, andares, tipos de serviço e outras opções compartilhadas: inclusão,
 - O solicitante é avisado por e-mail e na central de notificações, uma vez por mudança real, e consulta protocolo, materiais, previsão, situação e data efetiva, sem justificativas nem observações.
 - Relatórios: entradas e saídas do estoque interno por material, para quem administra o módulo.
 - Sigilo do estoque: quem não administra o Almoxarifado (em especial o Solicitante) não vê nem infere saldo, reserva, mínimo, movimentações, contagens ou disponibilidade. O catálogo traz só código, nome, descrição, unidade e categoria; o pedido é aceito em qualquer quantidade, sem mensagem que revele o saldo; não há filtro de disponíveis ou indisponíveis; os totais por material dos relatórios exigem `warehouse:manage` (ou Operador SLM com `requests:read_all`); e a auditoria esconde os eventos de estoque, reserva, controle interno e inventário de quem não administra o módulo.
+- Baixa automática na entrega (12/11/2026): registrar a entrega lança a saída das quantidades entregues no estoque interno, nunca mais que o saldo, sem bloquear a entrega.
+- Valores (12/11/2026, migração 020): custo médio ponderado; entrada com valor pago, nota fiscal, empenho, fornecedor e ata de registro de preços; valor do saldo existente informado com justificativa; painel com valor em estoque, compras e consumo por mês, materiais mais caros, consumo por setor e saldo das atas. Só Administrador e Operador SLM da equipe (`warehouse:finance`); valores fora da auditoria.
 - Situação da entrega: Aguardando entrega, Entrega reagendada ou Entregue. Só o registro da entrega conclui: uma previsão, mesmo vencida, não conta como entrega.
 
 ### Justificativas e comunicação (Supercomando 06)
