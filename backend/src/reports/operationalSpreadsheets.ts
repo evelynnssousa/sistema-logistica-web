@@ -33,13 +33,13 @@ const brasiliaDay = new Intl.DateTimeFormat('pt-BR', {
   year: 'numeric',
 })
 
-const dateTime = (value: Date | string | null | undefined): Cell =>
+export const dateTime = (value: Date | string | null | undefined): Cell =>
   value ? brasilia.format(new Date(value)) : null
 const dayOnly = (value: string): Cell => {
   const [year, month, day] = value.split('-')
   return `${day}/${month}/${year}`
 }
-const number = (value: string | number | null | undefined): Cell =>
+export const number = (value: string | number | null | undefined): Cell =>
   value === null || value === undefined || value === '' ? null : Number(value)
 
 const warehouseStatusLabels: Record<string, string> = {
@@ -61,7 +61,7 @@ const operationalStatusLabels: Record<string, string> = {
 }
 const movementLabels: Record<string, string> = { entrada: 'Entrada', saida: 'Saída' }
 
-function periodSheet(title: string, period: SpreadsheetPeriod, generatedBy: string, notes: string[]): Sheet {
+export function periodSheet(title: string, period: SpreadsheetPeriod, generatedBy: string, notes: string[]): Sheet {
   return {
     name: 'Sobre',
     rows: [
@@ -75,7 +75,7 @@ function periodSheet(title: string, period: SpreadsheetPeriod, generatedBy: stri
   }
 }
 
-async function tableExists(pool: Pool, table: string) {
+export async function tableExists(pool: Pool, table: string) {
   const result = await pool.query<{ present: boolean }>(`SELECT to_regclass($1) IS NOT NULL AS present`, [`public.${table}`])
   return result.rows[0].present
 }

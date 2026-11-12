@@ -18,6 +18,7 @@ import { authRateLimits } from '../security/authRateLimits.js'
 import { resetAccessSchemaCacheForTests } from './accessSchema.js'
 import { requireDisposableDatabaseUrl } from './databaseSafety.js'
 import { setDatabasePoolForTests } from './pool.js'
+import { allSheetsText, readXlsx, sheetNamesOf } from '../reports/xlsxReader.testSupport.js'
 
 // Fluxos completos dos módulos, pela API real, em um PostgreSQL descartável.
 
@@ -1255,6 +1256,65 @@ test('recuperação por link: uso único, prazo e encerramento das sessões', as
   assert.equal((await reset(expired, randomBytes(20).toString('hex'))).status, 400, 'expirado')
 })
 
+/** Baixa um arquivo binário (o `call` lê como JSON). */
+async function download(path: string, session: Session) {
+  const response = await fetch(`${baseUrl}/api${path}`, { headers: { cookie: session.cookie } })
+  return { status: response.status, file: Buffer.from(await response.arrayBuffer()) }
+}
+
+test('planilhas de Manutenção, Passagens e geral: conteúdo, filtros, permissão e sem dados de passageiros', async () => {
+  const requester = await createUser('planilhas-solicitante@example.gov.br')
+  const maintenance = await post('/maintenance/requests', requester, maintenanceBody({ localServico: 'Sala da planilha' }))
+  assert.equal(maintenance.status, 201, maintenance.text)
+  const flight = await post('/flights/requests', requester, flightBody({
+    ida: { origem: 'GRU', destino: 'SDU', data: '2031-09-01', horario: '08:00' },
+    volta: { origem: 'SDU', destino: 'GRU', data: '2031-09-02', horario: '18:00' },
+  }))
+  assert.equal(flight.status, 201, flight.text)
+
+  const range = `from=${encodeURIComponent(new Date(Date.now() - 86_400_000).toISOString())}&to=${encodeURIComponent(new Date(Date.now() + 86_400_000).toISOString())}`
+
+  const maintenanceFile = await download(`/reports/maintenance/spreadsheet?${range}`, admin)
+  assert.equal(maintenanceFile.status, 200)
+  const maintenanceSheets = readXlsx(maintenanceFile.file)
+  assert.deepEqual(sheetNamesOf(maintenanceSheets).slice(0, 6), ['Sobre', 'Solicitações', 'Por tipo de serviço', 'Por setor', 'Por andar', 'Evolução mensal'])
+  const maintenanceText = allSheetsText(maintenanceSheets)
+  for (const expected of ['Sala da planilha', 'Elétrica', '1º andar', 'Aguardando agendamento']) {
+    assert.ok(maintenanceText.includes(expected), `manutenção sem ${expected}`)
+  }
+
+  const flightsFile = await download(`/reports/flights/spreadsheet?${range}`, admin)
+  assert.equal(flightsFile.status, 200)
+  const flightSheets = readXlsx(flightsFile.file)
+  assert.deepEqual(sheetNamesOf(flightSheets), ['Sobre', 'Solicitações', 'Por setor', 'Por destino', 'Evolução mensal'])
+  const flightText = allSheetsText(flightSheets)
+  assert.ok(flightText.includes('GRU → SDU') && flightText.includes('01/09/2031 08:00'))
+  assert.ok(flightText.includes('>SDU<'), 'destino agrupado')
+  // Nunca nome nem CPF de passageiro.
+  assert.doesNotMatch(flightText, /Passageira Fictícia|00000000191|000\.000\.001-91/)
+
+  // Geral com o filtro de módulo da tela: só Manutenção na lista.
+  const general = await download('/reports/general/spreadsheet?module=maintenance', admin)
+  assert.equal(general.status, 200)
+  const generalSheets = readXlsx(general.file)
+  assert.deepEqual(sheetNamesOf(generalSheets), ['Sobre', 'Indicadores', 'Por módulo', 'Por situação', 'Por setor', 'Por responsável', 'Evolução mensal', 'Atrasadas', 'Solicitações'])
+  const list = generalSheets.get('xl/worksheets/sheet9.xml') ?? ''
+  assert.ok(list.includes('>Manutenção<'))
+  assert.ok(!list.includes('>Passagens aéreas<') && !list.includes('>Frota<'))
+  assert.ok(allSheetsText(generalSheets).includes('Todo o período'))
+
+  // Sem permissão de relatórios, recusa; sem período, as dos módulos explicam.
+  assert.equal((await download(`/reports/maintenance/spreadsheet?${range}`, requester)).status, 403)
+  assert.equal((await download('/reports/general/spreadsheet', requester)).status, 403)
+  assert.equal((await download('/reports/flights/spreadsheet', admin)).status, 400)
+  const audit = await pool.query<{ action: string }>(
+    `SELECT action FROM public.auth_audit_events WHERE action LIKE '%spreadsheet_exported' ORDER BY id`,
+  )
+  for (const action of ['maintenance.spreadsheet_exported', 'flights.spreadsheet_exported', 'reports.spreadsheet_exported']) {
+    assert.ok(audit.rows.some((row) => row.action === action), action)
+  }
+})
+
 test('a migração 005 é revertida sem resíduos, e recusa a reversão se houver dados', async () => {
   // Com dados dos módulos, a reversão para e nada muda.
   await assert.rejects(pool.query(schema('005_operational_modules.rollback.sql')), /interrompida/)
@@ -1320,3 +1380,4 @@ test('a migração 005 é revertida sem resíduos, e recusa a reversão se houve
   )
   assert.equal(privileges.rows[0].total, 0, 'toda tabela com RLS')
 })
+

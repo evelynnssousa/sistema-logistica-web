@@ -66,7 +66,9 @@ async function call(
   })
   const text = await response.text()
   const setCookie = (response.headers.get('set-cookie') ?? '').split(';')[0]
-  const body = JSON.parse(text) as Record<string, any>
+  // Rotas de planilha devolvem o arquivo (.xlsx), não JSON: o corpo fica vazio e o status vale.
+  const isJson = (response.headers.get('content-type') ?? '').includes('json')
+  const body = (isJson ? JSON.parse(text) : {}) as Record<string, any>
   if (setCookie && body.csrfToken) csrfTokens.set(setCookie, body.csrfToken)
   return { status: response.status, body, text, setCookie }
 }

@@ -5,11 +5,13 @@ import Icon from './ui/Icon'
  * Baixa a planilha (.xlsx) do Almoxarifado ou da Frota do período escolhido. O período vai como
  * instantes: do início do primeiro dia ao fim do último, no horário de quem baixa.
  */
-type Kind = 'warehouse' | 'fleet'
+type Kind = 'warehouse' | 'fleet' | 'maintenance' | 'flights'
 
 const paths: Record<Kind, string> = {
   warehouse: '/api/reports/warehouse/spreadsheet',
   fleet: '/api/reports/fleet/spreadsheet',
+  maintenance: '/api/reports/maintenance/spreadsheet',
+  flights: '/api/reports/flights/spreadsheet',
 }
 
 const toInput = (date: Date) =>

@@ -19,6 +19,7 @@ import { requireDisposableDatabaseUrl } from './databaseSafety.js'
 import { publishDeadlineAlerts } from './demandInsightsRepository.js'
 import { generateDueOccurrences, todayInSaoPaulo } from './demandSeriesRepository.js'
 import { setDatabasePoolForTests } from './pool.js'
+import { allSheetsText, readXlsx, sheetNamesOf } from '../reports/xlsxReader.testSupport.js'
 
 // Controle de Demandas pela API real, em um PostgreSQL descartável. Nada sai da máquina.
 
@@ -1159,6 +1160,17 @@ test('painel e relatórios usam dados reais, respeitando filtros e permissões',
   assert.ok(pdfFile.buffer.toString('latin1').includes('Controle de Demandas'))
   const xlsx = await get('/demands/reports/export?format=xlsx', manager)
   assert.equal(detectKind(xlsx.buffer), 'xlsx')
+  // Planilha melhorada (12/11/2026): aba Sobre, aba de atrasadas e colunas de conclusão e etapas.
+  const sheets = readXlsx(xlsx.buffer)
+  assert.deepEqual(sheetNamesOf(sheets).slice(0, 2), ['Sobre', 'Indicadores'])
+  assert.ok(sheetNamesOf(sheets).includes('Atrasadas'))
+  assert.equal(sheetNamesOf(sheets).at(-1), 'Demandas')
+  const allText = allSheetsText(sheets)
+  for (const expected of ['Gerado por', 'Concluídas dentro do prazo', 'Dias de atraso', 'Concluída em', 'Etapas concluídas', 'Reaberturas']) {
+    assert.ok(allText.includes(expected), `planilha sem "${expected}"`)
+  }
+  const filtered = readXlsx((await get(`/demands/reports/export?format=xlsx&sectorId=${sectorB}`, manager)).buffer)
+  assert.ok(allSheetsText(filtered).includes('selecionado na tela'), 'a aba Sobre registra o filtro de setor')
   assert.equal((await get('/demands/reports/export?format=doc', manager)).status, 400)
   assert.equal((await get('/demands/reports/export?format=pdf', memberA)).status, 403)
   const exported = await pool.query(`SELECT count(*)::int AS total FROM public.auth_audit_events WHERE action = 'demand.report_exported'`)

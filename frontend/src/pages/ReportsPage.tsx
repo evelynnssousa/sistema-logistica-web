@@ -164,128 +164,6 @@ function PerformanceSection({ data }: { data: PerformanceReport }) {
   )
 }
 
-function exportCsv(report: Report, operational: OperationalReport | null, performance: PerformanceReport | null) {
-  const quote = (value: string | number) => {
-    // Evita que uma planilha interprete o texto como fórmula.
-    const text = String(value).replace(/^[=+\-@]/, "'$&")
-    return `"${text.replace(/"/g, '""')}"`
-  }
-  const lines = [
-    ['Módulo', 'Situação', 'Quantidade'],
-    ...statusRows(report).map((row) => [row.module, row.status, row.total]),
-    [],
-    ['Mês', 'Solicitações'],
-    ...report.byPeriod.map((row) => [row.month, row.total]),
-    [],
-    ['Setor', 'Solicitações'],
-    ...report.bySector.map((row) => [row.sector, row.total]),
-    [],
-    ['Material', 'Unidade', 'Solicitada', 'Atendida'],
-    ...report.materials.map((row) => [row.material, row.unit, row.requested, row.fulfilled]),
-    ...(operational
-      ? [
-          [],
-          ['Indicador', 'Quantidade'],
-          ['Agendamentos', operational.scheduling.scheduled],
-          ['Reagendamentos', operational.scheduling.rescheduled],
-          ['Cancelamentos', operational.scheduling.cancelled],
-          ...(operational.fleet
-            ? [
-                ['Execuções de frota', operational.fleet.executions],
-                ['Ocorrências de frota', operational.fleet.occurrences],
-                ['Atrasos de frota', operational.fleet.delays],
-                ['Minutos de atraso', operational.fleet.delayMinutes],
-              ]
-            : []),
-          ...(operational.warehouse
-            ? [
-                ...operational.warehouse.byOrigin.map((row) => [`Pedidos: ${originLabel(row.origin)}`, row.total]),
-                ['Pedidos atendidos parcialmente', operational.warehouse.partial],
-              ]
-            : []),
-          ...(operational.inventory
-            ? [
-                ['Conferências de inventário', operational.inventory.checks],
-                ['Itens contados', operational.inventory.counted],
-                ['Itens com divergência', operational.inventory.divergent],
-              ]
-            : []),
-          [],
-          ['Módulo', 'Concluídas', 'Com horários reais', 'Tempo médio (minutos)'],
-          ...operational.serviceTime.map((row) => [
-            moduleLabels[row.module],
-            row.concluded,
-            row.withData,
-            row.averageMinutes ?? 'Sem dados',
-          ]),
-          ...(operational.fleetUsage
-            ? [
-                [],
-                ['Veículo', 'Usos', 'Quilômetros', 'Ocorrências', 'Abastecimentos', 'Litros', 'Valor', 'Manutenções'],
-                ...operational.fleetUsage.map((row) => [
-                  row.vehicle,
-                  row.uses,
-                  row.kilometers ?? 'Sem dados',
-                  row.occurrences,
-                  row.fuelings,
-                  row.liters ?? 'Sem dados',
-                  row.cost ?? 'Sem dados',
-                  row.maintenances,
-                ]),
-              ]
-            : []),
-          ...(operational.stockFlow
-            ? [
-                [],
-                ['Material', 'Unidade', 'Entradas', 'Saídas'],
-                ...operational.stockFlow.map((row) => [row.material, row.unit, row.entries, row.exits]),
-              ]
-            : []),
-        ]
-      : []),
-    ...(performance
-      ? [
-          [],
-          ['Desempenho', 'Valor'],
-          ['Recebidas', performance.received],
-          ['Concluídas', performance.concluded],
-          ['Pendentes', performance.pending],
-          ['Atrasadas', performance.late],
-          ['Cancelamentos', performance.cancelled],
-          ['Reagendamentos', performance.rescheduled],
-          ['Concluídas no prazo', performance.deadlines.onTime],
-          ['Concluídas com prazo', performance.deadlines.withDeadline],
-          ['Até o agendamento (minutos)', performance.times.untilSchedule.minutes ?? 'Sem dados'],
-          ['Espera até o início (minutos)', performance.times.waitUntilStart.minutes ?? 'Sem dados'],
-          ['Atendimento efetivo (minutos)', performance.times.effectiveService.minutes ?? 'Sem dados'],
-          ['Resolução total (minutos)', performance.times.totalResolution.minutes ?? 'Sem dados'],
-          ...(performance.productivity
-            ? [
-                [],
-                ['Responsável', 'Concluídas', 'Em aberto', 'Simples', 'Médias', 'Complexas', 'Sem classificação'],
-                ...performance.productivity.map((row) => [
-                  row.responsible,
-                  row.concluded,
-                  row.open,
-                  row.complexity.simple,
-                  row.complexity.medium,
-                  row.complexity.complex,
-                  row.complexity.unclassified,
-                ]),
-              ]
-            : []),
-        ]
-      : []),
-  ]
-  const csv = `${String.fromCharCode(0xfeff)}${lines.map((line) => line.map(quote).join(';')).join('\r\n')}`
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'relatorio-operacional.csv'
-  link.click()
-  URL.revokeObjectURL(url)
-}
-
 function ReportsPage() {
   const { catalog } = useCatalog()
   const period = usePeriodFilter()
@@ -363,15 +241,19 @@ function ReportsPage() {
               <Icon name="reports" size={18} />
               Imprimir ou salvar em PDF
             </button>
-            <button
+            {/* Planilha geral (.xlsx) gerada no servidor, com os mesmos filtros da tela. */}
+            <a
               className="maintenance-primary-button no-print"
-              type="button"
-              disabled={!report}
-              onClick={() => report && exportCsv(report, operational, performance)}
+              href={`/api/reports/general/spreadsheet?${new URLSearchParams(
+                Object.entries({ from, to, module, sectorId, responsibleId, status }).filter(
+                  (entry): entry is [string, string] => Boolean(entry[1]),
+                ),
+              ).toString()}`}
+              download
             >
               <Icon name="download" size={18} />
-              Exportar para Excel (CSV)
-            </button>
+              Baixar planilha (Excel)
+            </a>
           </>
         }
       />

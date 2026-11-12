@@ -2,6 +2,7 @@ import { ticketStatusLabels } from '../api/communicationsApi'
 import { formatDateTime } from '../api/modulesApi'
 import { useHasPermission } from '../auth/UserContext'
 import ServiceRequestsPage from '../components/ServiceRequestsPage'
+import SpreadsheetDownload from '../components/SpreadsheetDownload'
 
 const statuses = ['em_cotacao', 'aguardando_aprovacao', 'em_emissao', 'emitida', 'cancelada'] as const
 
@@ -15,6 +16,7 @@ function AirTravelPage() {
   const readsCommunications = useHasPermission('communications:read')
   const attendsFlights = useHasPermission('flights:update')
   const seesTicket = readsCommunications && attendsFlights
+  const canDownload = useHasPermission('reports:read')
 
   return (
     <ServiceRequestsPage
@@ -36,6 +38,19 @@ function AirTravelPage() {
           : []),
       ]}
       createPermission="flights:create"
+      footer={
+        canDownload && (
+          <SpreadsheetDownload
+            kind="flights"
+            title="Planilha das Passagens Aéreas"
+            description={
+              attendsFlights
+                ? 'Solicitações com trechos, datas, quantidade de passageiros e valor da cotação escolhida, mais resumos por setor, destino e mês. Sem nomes nem CPFs.'
+                : 'Solicitações com trechos, datas e quantidade de passageiros, mais resumos por setor, destino e mês. Sem nomes nem CPFs.'
+            }
+          />
+        )
+      }
     />
   )
 }

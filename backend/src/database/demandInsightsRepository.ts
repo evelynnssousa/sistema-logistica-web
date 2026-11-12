@@ -268,10 +268,19 @@ export class DemandInsightsRepository {
   async reportRows(context: DemandContext, filters: DemandFilters) {
     const builder = this.built(context, filters)
     const { rows } = await this.poolProvider().query(
-      `${listSelect} WHERE ${builder.sql} ORDER BY d.data_abertura DESC, d.id LIMIT 5000`,
+      `SELECT base.*, extra.concluida_em, extra.reaberturas
+         FROM (${listSelect} WHERE ${builder.sql} ORDER BY d.data_abertura DESC, d.id LIMIT 5000) base
+         JOIN public.demands extra ON extra.id::text = base.id
+        ORDER BY base.data_abertura DESC, base.id`,
       builder.values,
     )
-    return rows.map((row) => presentSummary(row as never))
+    // Para a planilha: conclusão, reaberturas e com quem está aguardando, além do resumo da lista.
+    return rows.map((row) => ({
+      ...presentSummary(row as never),
+      completedAt: (row.concluida_em as Date | null) ?? null,
+      reopenings: (row.reaberturas as number | null) ?? 0,
+      waitingOn: (row.aguardando_quem as string | null) ?? null,
+    }))
   }
 
   async recordExport(identity: AuthenticatedIdentity, format: string) {

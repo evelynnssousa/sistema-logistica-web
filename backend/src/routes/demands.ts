@@ -26,7 +26,7 @@ import {
   isConsultationOnly,
 } from '../demands/demandPolicy.js'
 import type { DemandAccess, DemandContext, DemandFacts } from '../demands/demandPolicy.js'
-import { demandReportDocument, demandReportWorkbook } from '../demands/demandReport.js'
+import { demandReportDocument, demandReportWorkbook, describeDemandFilters } from '../demands/demandReport.js'
 import {
   demandStatuses,
   optionalDate,
@@ -252,7 +252,7 @@ router.get(
     } else {
       response
         .type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        .send(renderWorkbook(demandReportWorkbook(report, rows)))
+        .send(renderWorkbook(demandReportWorkbook(report, rows, { generatedBy, filters: describeDemandFilters(filters) })))
     }
   }),
 )

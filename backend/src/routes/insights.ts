@@ -15,6 +15,7 @@ import { requirePermission } from '../middleware/requirePermission.js'
 import { insertAuthAuditEvent } from '../database/authAuditRepository.js'
 import { getDatabasePool } from '../database/pool.js'
 import { fleetWorkbook, warehouseWorkbook } from '../reports/operationalSpreadsheets.js'
+import { flightsWorkbook, generalWorkbook, maintenanceWorkbook } from '../reports/requestSpreadsheets.js'
 import type { SpreadsheetPeriod } from '../reports/operationalSpreadsheets.js'
 import { renderWorkbook } from '../reports/xlsxDocument.js'
 import {
@@ -172,10 +173,28 @@ function spreadsheetPeriod(request: Request): SpreadsheetPeriod {
   return { from, to }
 }
 
+type SpreadsheetKind = 'warehouse' | 'fleet' | 'maintenance' | 'flights' | 'general'
+
+const spreadsheetFiles: Record<SpreadsheetKind, string> = {
+  warehouse: 'almoxarifado',
+  fleet: 'frota',
+  maintenance: 'manutencao',
+  flights: 'passagens-aereas',
+  general: 'relatorio-geral',
+}
+
+const spreadsheetAudit = {
+  warehouse: 'warehouse_spreadsheet_exported',
+  fleet: 'fleet_spreadsheet_exported',
+  maintenance: 'maintenance_spreadsheet_exported',
+  flights: 'flights_spreadsheet_exported',
+  general: 'general_spreadsheet_exported',
+} as const
+
 async function sendSpreadsheet(
   response: Response,
-  kind: 'warehouse' | 'fleet',
-  period: SpreadsheetPeriod,
+  kind: SpreadsheetKind,
+  period: { from: Date | null; to: Date | null },
   build: (generatedBy: string) => Promise<Parameters<typeof renderWorkbook>[0]>,
 ) {
   const identity = identityOf(response)
@@ -188,11 +207,12 @@ async function sendSpreadsheet(
     actorKind: 'user',
     subjectUserId: null,
     sessionId: null,
-    eventType: kind === 'warehouse' ? 'warehouse_spreadsheet_exported' : 'fleet_spreadsheet_exported',
-    details: { de: period.from.toISOString(), ate: period.to.toISOString() },
+    eventType: spreadsheetAudit[kind],
+    details: { de: period.from?.toISOString() ?? 'todo o período', ate: period.to?.toISOString() ?? 'todo o período' },
   })
   const day = (date: Date) => date.toISOString().slice(0, 10)
-  response.set('Content-Disposition', `attachment; filename="${kind === 'warehouse' ? 'almoxarifado' : 'frota'}-${day(period.from)}-a-${day(new Date(period.to.getTime() - 1))}.xlsx"`)
+  const range = period.from && period.to ? `-${day(period.from)}-a-${day(new Date(period.to.getTime() - 1))}` : ''
+  response.set('Content-Disposition', `attachment; filename="${spreadsheetFiles[kind]}${range}.xlsx"`)
   response.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').send(workbook)
 }
 
@@ -220,5 +240,62 @@ router.get(
     }
   },
 )
+
+router.get(
+  '/reports/maintenance/spreadsheet',
+  requirePermission('reports:read'),
+  requirePermission('maintenance:read'),
+  async (request, response) => {
+    try {
+      const period = spreadsheetPeriod(request)
+      await sendSpreadsheet(response, 'maintenance', period, (generatedBy) =>
+        maintenanceWorkbook(identityOf(response), period, generatedBy),
+      )
+    } catch (error) {
+      sendModuleError(response, error)
+    }
+  },
+)
+
+router.get(
+  '/reports/flights/spreadsheet',
+  requirePermission('reports:read'),
+  requirePermission('flights:read'),
+  async (request, response) => {
+    try {
+      const period = spreadsheetPeriod(request)
+      await sendSpreadsheet(response, 'flights', period, (generatedBy) =>
+        flightsWorkbook(identityOf(response), period, generatedBy),
+      )
+    } catch (error) {
+      sendModuleError(response, error)
+    }
+  },
+)
+
+/** Planilha geral: os mesmos filtros da tela Relatórios; sem período, todo o período. */
+router.get('/reports/general/spreadsheet', requirePermission('reports:read'), async (request, response) => {
+  try {
+    const filters = readFilters(request)
+    const query = asBody(request.query)
+    const status = typeof query.status === 'string' && [...operationalStatuses, ...flightStatuses].includes(query.status as never)
+      ? query.status
+      : null
+    // O fim do filtro da tela é o último instante incluído; a planilha usa o limite exclusivo.
+    const to = filters.to ? new Date(filters.to.getTime() + 1) : null
+    const modules = (['maintenance', 'fleet', 'flights'] as RequestModule[]).filter(
+      (module) => !filters.module || filters.module === module,
+    )
+    await sendSpreadsheet(response, 'general', { from: filters.from ?? null, to }, (generatedBy) =>
+      generalWorkbook(
+        identityOf(response),
+        { from: filters.from ?? null, to, modules, sectorId: filters.sectorId, responsibleId: isUuid(query.responsibleId) ? query.responsibleId : null, status },
+        generatedBy,
+      ),
+    )
+  } catch (error) {
+    sendModuleError(response, error)
+  }
+})
 
 export default router

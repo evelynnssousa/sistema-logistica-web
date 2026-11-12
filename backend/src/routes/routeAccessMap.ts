@@ -151,6 +151,9 @@ export const routeAccessMap: readonly RouteAccess[] = [
   { method: 'GET', path: '/calendar/events', access: 'permission', requires: ['calendar:read'] },
   { method: 'GET', path: '/reports/warehouse/spreadsheet', access: 'permission', requires: ['warehouse:manage'] },
   { method: 'GET', path: '/reports/fleet/spreadsheet', access: 'permission', requires: ['reports:read', 'fleet:read'] },
+  { method: 'GET', path: '/reports/maintenance/spreadsheet', access: 'permission', requires: ['reports:read', 'maintenance:read'] },
+  { method: 'GET', path: '/reports/flights/spreadsheet', access: 'permission', requires: ['reports:read', 'flights:read'] },
+  { method: 'GET', path: '/reports/general/spreadsheet', access: 'permission', requires: ['reports:read'] },
 
   { method: 'GET', path: '/notifications', access: 'session' },
   { method: 'GET', path: '/notifications/unread-count', access: 'session' },
