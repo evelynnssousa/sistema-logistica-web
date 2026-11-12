@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { errorMessage, formatDateTime, listOwnSessions, revokeOtherSessions, revokeOwnSession } from '../api/modulesApi'
 import { useAuthenticatedUser } from '../auth/UserContext'
 import { Alert, Loading } from '../components/ui/Feedback'
+import PageHeader from '../components/ui/PageHeader'
 
 type Session = Awaited<ReturnType<typeof listOwnSessions>>['sessions'][number]
 
@@ -55,18 +56,11 @@ function AccountPage() {
   }
 
   return (
-    <section className="page-section">
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">MINHA CONTA</p>
-          <h1>{user?.name}</h1>
-          <p>
-            {user?.email} · {user?.sector}
-          </p>
-        </div>
-      </div>
+    <section className="page-section admin-module-page">
+      <PageHeader eyebrow="Minha conta" title={user?.name ?? 'Minha conta'} description={`${user?.email ?? ''} · ${user?.sector ?? ''}`} />
 
-      <h2>Sessões ativas</h2>
+      <section className="ui-card ui-stacked" aria-labelledby="account-sessions">
+      <h2 id="account-sessions">Sessões ativas</h2>
       {error && <Alert tone="error">{error}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}
       {!sessions && !error && <Loading label="Carregando sessões..." />}
@@ -95,7 +89,7 @@ function AccountPage() {
                     <td>{session.current ? 'Esta sessão' : 'Outra sessão'}</td>
                     <td>
                       {!session.current && (
-                        <button type="button" onClick={() => void revokeOne(session.id)}>
+                        <button type="button" className="maintenance-secondary-button" onClick={() => void revokeOne(session.id)}>
                           Encerrar
                         </button>
                       )}
@@ -105,11 +99,19 @@ function AccountPage() {
               </tbody>
             </table>
           </div>
-          <button type="button" disabled={sessions.length <= 1} onClick={() => void revoke()}>
-            Encerrar as outras sessões
-          </button>
+          <div className="ui-card-actions">
+            <button
+              type="button"
+              className="maintenance-secondary-button"
+              disabled={sessions.length <= 1}
+              onClick={() => void revoke()}
+            >
+              Encerrar as outras sessões
+            </button>
+          </div>
         </>
       )}
+      </section>
     </section>
   )
 }

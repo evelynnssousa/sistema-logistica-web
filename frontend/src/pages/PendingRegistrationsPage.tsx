@@ -9,7 +9,9 @@ import {
 } from '../auth/usersApi'
 import type { InstitutionalLinks, InstitutionalOptions, PermissionCatalog } from '../auth/usersApi'
 import PermissionDescription, { PermissionScopeNotice } from '../components/PermissionDescription'
-import { Alert } from '../components/ui/Feedback'
+import { Alert, EmptyState, Loading } from '../components/ui/Feedback'
+import Icon from '../components/ui/Icon'
+import PageHeader from '../components/ui/PageHeader'
 import InstitutionalLinksEditor from '../components/InstitutionalLinksEditor'
 import Modal from '../components/ui/Modal'
 
@@ -332,29 +334,36 @@ function PendingRegistrationsPage() {
   }
 
   return (
-    <section className="page-section">
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">ADMINISTRAÇÃO</p>
-          <h1>Cadastros pendentes</h1>
-          <p>Analise as solicitações e defina o perfil de acesso de cada usuário.</p>
-        </div>
-        <button type="button" onClick={() => void loadRegistrations()} disabled={loading}>
-          Atualizar lista
-        </button>
-      </div>
+    <section className="page-section admin-module-page">
+      <PageHeader
+        title="Cadastros pendentes"
+        description="Analise as solicitações e defina o perfil de acesso de cada usuário."
+        actions={
+          <button
+            type="button"
+            className="maintenance-secondary-button"
+            onClick={() => void loadRegistrations()}
+            disabled={loading}
+          >
+            <Icon name="repeat" size={18} />
+            Atualizar lista
+          </button>
+        }
+      />
 
-      {error && <p role="alert">{error}</p>}
-      {notice && <p role="status">{notice}</p>}
+      {error && <Alert tone="error">{error}</Alert>}
+      {notice && <Alert tone="success">{notice}</Alert>}
 
       {loading ? (
-        <p>Carregando solicitações...</p>
+        <Loading label="Carregando solicitações..." />
       ) : registrations.length === 0 ? (
-        <div className="empty-state">
-          <h2>Nenhum cadastro pendente</h2>
-          <p>Quando houver novas solicitações, elas aparecerão aqui.</p>
-        </div>
+        <section className="ui-card">
+          <EmptyState icon="users" title="Nenhum cadastro pendente">
+            Quando houver novas solicitações, elas aparecerão aqui.
+          </EmptyState>
+        </section>
       ) : (
+        <section className="ui-card" aria-label="Cadastros pendentes">
         <div className="data-table-wrapper">
           <table className="data-table">
             <thead>
@@ -443,6 +452,7 @@ function PendingRegistrationsPage() {
             </tbody>
           </table>
         </div>
+        </section>
       )}
       {editing && options && (
         <ApprovalSetupDialog

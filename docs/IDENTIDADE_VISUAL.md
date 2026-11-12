@@ -8,7 +8,7 @@ Identidade executiva, adotada em 2026-11-07. Ela substitui a antiga, de preto e 
 
 | Token | Valor | Uso |
 |---|---|---|
-| `--executive` | `#17365D` | Menu lateral, abas de módulo, cartão de indicador escuro, títulos (`--heading`), gráficos |
+| `--executive` | `#17365D` | Menu lateral, abas de módulo, títulos (`--heading`), gráficos |
 | `--institutional` | `#034EA2` | Ações: botão principal, item ativo do menu e das abas, links, foco, informação |
 | `--accent` | `#FBB900` | Só detalhe: traço do item ativo, faixa do cartão de entrada, marca de destaque, foco sobre fundo escuro |
 | `--page` | `#F1F4F8` | Fundo geral |
@@ -44,7 +44,7 @@ Use sempre `components/ui/Icon.tsx`, que associa um nome de significado ao desen
 | Componente | Finalidade |
 |---|---|
 | `PageHeader` | Título, descrição e ações. Sem o nome do sistema: `eyebrow` só para o contexto do registro aberto |
-| `StatCard` | Indicador nos tons `black` (azul executivo), `yellow` (azul institucional), `graphite` (branco com faixa executiva) e `white`. Os nomes dos tons ficaram por compatibilidade |
+| `StatCard` | Indicador. **Desde 12/11/2026, todos em cartão branco**, com ícone em azul sobre fundo azul claro (decisão da responsável). A propriedade `tone` continua no código, mas não muda a aparência |
 | `Alert`, `EmptyState`, `Loading` | Mensagens, estados vazios com ilustração e carregamento |
 | `FilterBar`, `FilterSelect`, `SearchField`, `PeriodFields` | Filtros suspensos, com "Limpar filtros" |
 | `usePeriodFilter` | Períodos prontos e datas personalizadas |
@@ -54,6 +54,18 @@ Use sempre `components/ui/Icon.tsx`, que associa um nome de significado ao desen
 | `BarChart`, `MonthlyChart` | Gráficos de uma série e uma cor, com valores em texto |
 
 Botões: `ui-button-primary` azul institucional, `maintenance-secondary-button` branco com contorno discreto, `ui-button-danger` vermelho.
+
+### Padrão das telas (12/11/2026)
+
+Regras únicas, na seção "Padronização visual" do fim de `theme.css`:
+
+- **Cabeçalho:** toda tela usa `PageHeader`. O rótulo acima do título (`eyebrow`) só em telas de um registro ("Usuário", "Veículo", "Minha conta"), nunca em listas.
+- **Cartões:** todo conteúdo fica em `ui-card` (branco, borda `--border`, cantos `--radius`, sombra `--shadow`, 20 px de espaço). Cartões dentro de cartões usam `--radius-small` e sem sombra.
+- **Filtros:** sempre dentro de um cartão. Nas listas, no cartão da tabela; soltos na página, `FilterBar` ganha cartão próprio automaticamente.
+- **Botões:** 42 px de altura e o mesmo tamanho de letra. Dentro de tabelas, versão compacta de 34 px ("Ver", "Gerenciar", "Encerrar"), sempre como botão, nunca como link de texto.
+- **Mensagens:** `Alert` para erro, sucesso e aviso; `Loading` para carregamento; `EmptyState` dentro de cartão para lista vazia. Nada de parágrafo solto com `role="alert"`.
+- **Rodapé de cartão:** ações finais em `ui-card-actions`, alinhadas à direita.
+- **Paginação:** sempre o componente `Pagination`.
 
 ## Gráficos
 

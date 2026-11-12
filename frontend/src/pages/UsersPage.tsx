@@ -5,6 +5,10 @@ import { roleLabels } from '../app/roleLabels'
 import { useHasPermission } from '../auth/UserContext'
 import { listUsers, statusLabels } from '../auth/usersApi'
 import type { ManagedUser, UserFilters } from '../auth/usersApi'
+import { Alert, EmptyState, Loading } from '../components/ui/Feedback'
+import Icon from '../components/ui/Icon'
+import PageHeader from '../components/ui/PageHeader'
+import Pagination from '../components/ui/Pagination'
 
 const initialFilters: UserFilters = {
   search: '',
@@ -57,23 +61,23 @@ function UsersPage() {
   const lastPage = result ? Math.max(1, Math.ceil(result.total / result.pageSize)) : 1
 
   return (
-    <section className="page-section">
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">ADMINISTRAÇÃO</p>
-          <h1>Usuários</h1>
-          <p>
-            {canManage
-              ? 'Consulte as contas e gerencie perfis, permissões e a equipe SLM.'
-              : 'Consulte as contas cadastradas.'}
-          </p>
-        </div>
-        <Link className="maintenance-secondary-button" to="/usuarios/revisao-de-acessos">
-          Revisão de acessos
-        </Link>
-      </div>
+    <section className="page-section admin-module-page">
+      <PageHeader
+        title="Usuários"
+        description={
+          canManage
+            ? 'Consulte as contas e gerencie perfis, permissões e a equipe SLM.'
+            : 'Consulte as contas cadastradas.'
+        }
+        actions={
+          <Link className="maintenance-secondary-button" to="/usuarios/revisao-de-acessos">
+            <Icon name="review" size={18} />
+            Revisão de acessos
+          </Link>
+        }
+      />
 
-      <form className="users-filters" onSubmit={submitSearch} role="search">
+      <form className="users-filters ui-card" onSubmit={submitSearch} role="search">
         <label className="users-search">
           <span>Nome ou e-mail</span>
           <input
@@ -125,12 +129,18 @@ function UsersPage() {
         <button type="submit">Pesquisar</button>
       </form>
 
-      {error && <p role="alert">{error}</p>}
+      {error && <Alert tone="error">{error}</Alert>}
 
-      {!result && !error && <p>Carregando usuários...</p>}
+      {!result && !error && <Loading label="Carregando usuários..." />}
 
-      {result && (
-        <>
+      {result && result.users.length === 0 && (
+        <section className="ui-card ui-stacked">
+          <EmptyState icon="users" title="Nenhum usuário encontrado com esses filtros" />
+        </section>
+      )}
+
+      {result && result.users.length > 0 && (
+        <section className="ui-card ui-stacked" aria-label="Usuários">
           <div className="data-table-wrapper">
             <table className="data-table">
               <thead>
@@ -161,46 +171,24 @@ function UsersPage() {
                       </span>
                     </td>
                     <td>
-                      <Link className="users-link" to={`/usuarios/${user.id}`}>
+                      <Link className="users-link maintenance-secondary-button" to={`/usuarios/${user.id}`}>
+                        <Icon name="view" size={16} />
                         {canManage ? 'Gerenciar' : 'Consultar'}
                       </Link>
                     </td>
                   </tr>
                 ))}
-                {result.users.length === 0 && (
-                  <tr>
-                    <td colSpan={6}>Nenhum usuário encontrado com esses filtros.</td>
-                  </tr>
-                )}
               </tbody>
             </table>
           </div>
 
-          <div className="users-pagination">
-            <span>
-              {result.total} {result.total === 1 ? 'usuário' : 'usuários'} · página{' '}
-              {filters.page} de {lastPage}
-            </span>
-            <button
-              type="button"
-              disabled={filters.page <= 1}
-              onClick={() =>
-                setFilters((current) => ({ ...current, page: current.page - 1 }))
-              }
-            >
-              Anterior
-            </button>
-            <button
-              type="button"
-              disabled={filters.page >= lastPage}
-              onClick={() =>
-                setFilters((current) => ({ ...current, page: current.page + 1 }))
-              }
-            >
-              Próxima
-            </button>
-          </div>
-        </>
+          <Pagination
+            page={filters.page}
+            summary={`${result.total} ${result.total === 1 ? 'usuário' : 'usuários'} · página ${filters.page} de ${lastPage}`}
+            hasNext={filters.page < lastPage}
+            onChange={(page) => setFilters((current) => ({ ...current, page }))}
+          />
+        </section>
       )}
     </section>
   )

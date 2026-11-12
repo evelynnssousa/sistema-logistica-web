@@ -43,10 +43,11 @@
   --danger-soft: #fdecea;
   --info-border: #b9cfe9;
   --info-text: #05305f;
-  --success-border: var(--success-border);
-  --success-text: var(--success-text);
+  /* Antes de 12/11/2026 estas três apontavam para si mesmas, o que as anulava. */
+  --success-border: #a9dcc0;
+  --success-text: #0f5132;
   --warning-border: #f7c9a6;
-  --danger-border: var(--danger-border);
+  --danger-border: #f3b8b2;
 
   /* Tipografia */
   --font-family: Inter, Arial, sans-serif;
@@ -693,70 +694,35 @@ a {
   font-size: 0.78rem;
 }
 
-.ui-metric-black {
-  border-color: var(--executive);
-  background: var(--executive);
-  color: var(--white);
-}
-
-.ui-metric-black .ui-metric-icon {
-  background: rgb(255 255 255 / 12%);
-  color: var(--accent);
-}
-
-.ui-metric-black .ui-metric-description {
-  color: var(--on-dark-muted);
-}
-
-.ui-metric-yellow {
-  border-color: var(--institutional);
-  background: var(--institutional);
-  color: var(--white);
-}
-
-.ui-metric-yellow .ui-metric-icon {
-  background: rgb(255 255 255 / 14%);
-  color: var(--white);
-}
-
-.ui-metric-yellow .ui-metric-description {
-  color: var(--on-dark-muted);
-}
-
-.ui-metric-graphite {
-  border-color: var(--border);
-  border-top: 3px solid var(--executive);
-  background: var(--surface);
-  color: var(--text);
-}
-
-.ui-metric-graphite .ui-metric-icon {
-  background: var(--institutional-soft);
-  color: var(--executive);
-}
-
-.ui-metric-graphite .ui-metric-value {
-  color: var(--heading);
-}
-
-.ui-metric-graphite .ui-metric-description {
-  color: var(--text-muted);
-}
-
+.ui-metric-black,
+.ui-metric-yellow,
+.ui-metric-graphite,
 .ui-metric-white {
+  /* Padrão único (12/11/2026, decisão da responsável): todos os indicadores em cartão branco.
+     O "tom" do componente continua existindo no código, mas não muda mais a aparência. */
+  border-color: var(--border);
   background: var(--surface);
   color: var(--text);
 }
 
+.ui-metric-black .ui-metric-icon,
+.ui-metric-yellow .ui-metric-icon,
+.ui-metric-graphite .ui-metric-icon,
 .ui-metric-white .ui-metric-icon {
   background: var(--institutional-soft);
   color: var(--institutional);
 }
 
+.ui-metric-black .ui-metric-value,
+.ui-metric-yellow .ui-metric-value,
+.ui-metric-graphite .ui-metric-value,
 .ui-metric-white .ui-metric-value {
   color: var(--heading);
 }
 
+.ui-metric-black .ui-metric-description,
+.ui-metric-yellow .ui-metric-description,
+.ui-metric-graphite .ui-metric-description,
 .ui-metric-white .ui-metric-description {
   color: var(--text-muted);
 }
@@ -2704,4 +2670,72 @@ a {
 .spreadsheet-download-fields .maintenance-form-field {
   flex: 1 1 160px;
   max-width: 220px;
+}
+
+/* =====================================================================
+ * Padronização visual (12/11/2026)
+ * Regras únicas para o que antes variava de tela para tela. Fica no fim do
+ * último arquivo carregado, para valer sobre os estilos antigos.
+ * ===================================================================== */
+
+/* Filtros sempre dentro de um cartão: nas listas, já ficam no cartão da tabela;
+   soltos na página (Painel, Relatórios, Estoque...), ganham o próprio cartão. */
+.page-content .ui-filter-bar {
+  padding: 16px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.page-content :is(.ui-card, .admin-data-card, .maintenance-list, .maintenance-request-card, .recent-section,
+  .users-card, .settings-card, .reports-chart-card, .placeholder-card, .detail-action) .ui-filter-bar,
+.ui-modal .ui-filter-bar {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Botões: a mesma altura para comuns, principais e secundários. */
+.page-content button,
+.ui-modal button,
+.ui-button,
+.page-content .ui-button {
+  min-height: 42px;
+  font-size: var(--font-size-body);
+}
+
+/* Botões compactos dentro de tabelas ("Ver", "Detalhes", "Gerenciar", "Encerrar"). */
+.page-content .data-table :is(button, .maintenance-secondary-button, .ui-button) {
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+}
+
+/* Bloco de download das planilhas (Almoxarifado e Frota). */
+.spreadsheet-download {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.spreadsheet-download-fields .maintenance-form-field span {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* Ações no rodapé de um cartão (ex.: "Encerrar as outras sessões"). */
+.ui-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* O primeiro título de um cartão encosta no espaçamento do próprio cartão. */
+.ui-card > :is(h2, h3):first-child {
+  margin-top: 0;
 }

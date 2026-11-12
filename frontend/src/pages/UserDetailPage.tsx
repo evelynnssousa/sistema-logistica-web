@@ -4,7 +4,9 @@ import { Link, useParams } from 'react-router-dom'
 import { revokeUserSessions } from '../api/modulesApi'
 import { roleLabels } from '../app/roleLabels'
 import { useAuthenticatedUser, useHasPermission } from '../auth/UserContext'
-import { Alert } from '../components/ui/Feedback'
+import { Alert, Loading } from '../components/ui/Feedback'
+import Icon from '../components/ui/Icon'
+import PageHeader from '../components/ui/PageHeader'
 import { useConfirm } from '../components/ui/useConfirm'
 import InstitutionalLinksEditor from '../components/InstitutionalLinksEditor'
 import PermissionDescription, { PermissionScopeNotice } from '../components/PermissionDescription'
@@ -297,10 +299,11 @@ function UserDetailPage() {
 
   if (loadError) {
     return (
-      <section className="page-section">
-        <p role="alert">{loadError}</p>
-        <Link className="users-link" to="/usuarios">
-          ← Voltar aos usuários
+      <section className="page-section admin-module-page">
+        <Alert tone="error">{loadError}</Alert>
+        <Link className="maintenance-secondary-button" to="/usuarios">
+          <Icon name="back" size={18} weight="bold" />
+          Voltar aos usuários
         </Link>
       </section>
     )
@@ -308,31 +311,28 @@ function UserDetailPage() {
 
   if (!user || !catalog) {
     return (
-      <section className="page-section">
-        <p>Carregando usuário...</p>
+      <section className="page-section admin-module-page">
+        <Loading label="Carregando usuário..." />
       </section>
     )
   }
 
   return (
-    <section className="page-section">
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">ADMINISTRAÇÃO · USUÁRIOS</p>
-          <h1>{user.name}</h1>
-          <p>
-            {user.role ? roleLabels[user.role] : 'Sem perfil'} ·{' '}
-            {statusLabels[user.status] ?? user.status}
-            {user.slmMember ? ' · Equipe SLM' : ''}
-          </p>
-        </div>
-        <Link className="users-link" to="/usuarios">
-          ← Voltar aos usuários
-        </Link>
-      </div>
+    <section className="page-section admin-module-page">
+      <PageHeader
+        eyebrow="Usuário"
+        title={user.name}
+        description={`${user.role ? roleLabels[user.role] : 'Sem perfil'} · ${statusLabels[user.status] ?? user.status}${user.slmMember ? ' · Equipe SLM' : ''}`}
+        actions={
+          <Link className="maintenance-secondary-button" to="/usuarios">
+            <Icon name="back" size={18} weight="bold" />
+            Voltar
+          </Link>
+        }
+      />
 
-      {error && <p role="alert">{error}</p>}
-      {notice && <p role="status">{notice}</p>}
+      {error && <Alert tone="error">{error}</Alert>}
+      {notice && <Alert tone="success">{notice}</Alert>}
 
       {isSelf && (
         <p className="users-note" role="note">
