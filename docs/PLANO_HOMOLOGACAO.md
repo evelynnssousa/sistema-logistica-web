@@ -10,12 +10,12 @@ Preparado em 06/11/2026. Complementa `docs/auditoria/PRE_MIGRACAO_2026-11-06.md`
 
 | | Projeto separado (recomendado) | Migrar o banco real agora |
 |---|---|---|
-| Banco que poderá ser o de produção | Intocado | Recebe as 19 migrações (002 a 020) e todos os dados de teste |
+| Banco que poderá ser o de produção | Migrado (002 a 020) em 12/11/2026, sem dados de teste | Recebe as 19 migrações (002 a 020) e todos os dados de teste |
 | Dados pessoais na homologação | Só das contas criadas para homologar | As 7 contas atuais, inclusive as fictícias |
 | Depois da homologação | O projeto de homologação pode ser mantido para testes futuros ou apagado | Limpar os dados de teste exige exclusões, com sua autorização |
 | Backup externo | Não é pré-requisito para começar (o banco real não muda) | **Obrigatório antes** de aplicar |
 | Reversão | Desnecessária: recria-se o projeto | Reversões ou restauração do backup |
-| O que muda no banco real | Nada, até a produção. Lá, aplicam-se as mesmas 19 migrações (002 a 020), já homologadas | Já fica migrado |
+| O que muda no banco real | As mesmas 19 migrações (002 a 020) foram aplicadas em 12/11/2026, a pedido da responsável; dados de teste nunca vão para lá | Já fica migrado |
 | Tempo para começar | Criar o projeto (minutos) e preparar o acesso | Cópia externa + aplicação + acesso |
 
 O procedimento do projeto separado foi ensaiado nesta etapa num PostgreSQL 17 descartável que reproduz um projeto Supabase novo (`postgres` sem superusuário): o esquema base (001) e as 17 migrações aplicaram com saída 0 e conferência final sem problemas (64 tabelas, todas com RLS, nada aberto à API pública).
@@ -127,7 +127,7 @@ npm run homolog -- -- node scripts/apply-migrations.cjs --aplicar --confirmar=AP
 #   saída 5: backup do banco de homologação em backups/homologacao/, testado
 
 npm run homolog -- -- node scripts/apply-migrations.cjs --aplicar --confirmar=APLICAR-MIGRACOES --backup=backups/homologacao/<arquivo>.dump
-#   saída 0: as migrações pendentes (hoje 002 a 020; a homologação tem até a 019)
+#   saída 0: as migrações pendentes (desde 12/11/2026, nenhuma nos dois bancos)
 
 npm run homolog -- -- npm run migrations:check
 #   "Nenhuma migração pendente."
@@ -157,7 +157,7 @@ npm run homolog -- -- npm run dev:frontend    # terminal 2: tela da homologaçã
 | 3 | Pasta institucional restrita para o backup, e senha no cofre | **TI** | Só se migrar o banco real |
 | 4 | Cifrar e gravar a cópia na pasta (seção A) | **Você** | Só se migrar o banco real |
 | 5 | Criar o projeto Supabase de homologação | **TI** ou **você** | Sim (opção recomendada) |
-| 6 | Aplicar 001 e as migrações 002 a 020 no projeto de homologação (seção E) — **feito até a 019** (09/11/2026); **falta a 020** (valores do Almoxarifado) | **Você**, ou eu, se liberar a ferramenta | Sim |
+| 6 | Aplicar 001 e as migrações 002 a 020 no projeto de homologação (seção E) — **feito** (020 em 12/11/2026) | **Você**, ou eu, se liberar a ferramenta | Sim |
 | 7 | Servidor de homologação com HTTPS na rede interna | **TI** | Sim, para os operadores acessarem sozinhos |
 | 8 | Gerar `PASSENGER_DATA_KEY` e definir `ATTACHMENTS_DIR` no servidor de homologação | **TI** | Não (Passagens e anexos ficam pendentes no roteiro) |
 | 9 | Criar a administradora e aprovar os 4 operadores (seção C) | **Você** | Sim |

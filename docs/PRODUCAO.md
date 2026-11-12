@@ -159,7 +159,7 @@ Detalhes em `BACKUP_E_MIGRACOES_SUPABASE.md`, seção "Cópia externa e recupera
 | 7 | Conta Resend com domínio verificado | TI | Pendente |
 | 8 | `npm run config:check` sem erros, com `NODE_ENV=production` | Desenvolvimento | Pendente |
 | 9 | Backup verificado do banco real, com cópia externa | Responsável | Pendente |
-| 10 | Migrações 002 a 020 aplicadas com autorização | Responsável | Pendente |
+| 10 | Migrações 002 a 020 aplicadas com autorização | Responsável | **Feito em 12/11/2026** (backup `backups/slm-completo-2026-11-12T23-32-41-436Z.dump`, conferência sem problemas) |
 | 11 | `npm run verify` e `npm run test:all` no commit a implantar | Desenvolvimento | Pronto para executar |
 | 12 | Homologação do e-mail (roteiro em `INTEGRACOES_E_AUTOMACOES.md`) | Responsável e TI | Pendente |
 | 13 | Agendamento dos backups e do monitor externo | TI | Pendente |

@@ -25,7 +25,7 @@ serviços, endereços, variáveis e credenciais; nada é compartilhado entre ele
 | | Homologação | Produção |
 |---|---|---|
 | Situação | Proposta para a primeira publicação | **Não autorizada** |
-| Supabase | Projeto existente `rrqulhpnghoetgrdswqr` (`jucesp-logistica-homologacao`), com as migrações 002 a 019 aplicadas; a 020 (valores do Almoxarifado, 12/11/2026) ainda não | Banco real. **Tem 19 migrações pendentes (002 a 020) e não pode ser usado na primeira publicação** |
+| Supabase | Projeto existente `rrqulhpnghoetgrdswqr` (`jucesp-logistica-homologacao`), com as migrações 002 a 020 aplicadas (020 em 12/11/2026) | Banco real. **Migrações 002 a 020 aplicadas em 12/11/2026**, a pedido da responsável; continua reservado para a produção |
 | Cloudflare Pages | Projeto próprio de homologação | Projeto próprio de produção |
 | Render | Serviço próprio de homologação | Serviço próprio de produção |
 | Endereços | `*.pages.dev` e `*.onrender.com` próprios | Próprios, sem reaproveitar os da homologação |
@@ -249,8 +249,8 @@ antes e autorização expressa:
    delas.
 
 O procedimento completo está em `scripts/apply-migrations.cjs` e em
-`docs/BACKUP_E_MIGRACOES_SUPABASE.md`. A homologação já tem 002 a 019; falta a 020. O banco real não tem
-nenhuma delas, e aplicá-las depende de autorização própria.
+`docs/BACKUP_E_MIGRACOES_SUPABASE.md`. A homologação e o banco real têm 002 a 020 desde 12/11/2026.
+Migração nova, no banco real, continua dependendo de autorização própria.
 
 ### Backup e restauração
 
