@@ -7,8 +7,11 @@ import { conflict, ModuleError, notFound } from './moduleErrors.js'
 import { getDatabasePool } from './pool.js'
 import { protocolSql } from './protocolSql.js'
 import { recordHistory } from './serviceRequestRepository.js'
+import { financeSchemaExists, recordStockMovement } from './warehouseFinanceRepository.js'
+import type { MovementFinance } from './warehouseFinanceRepository.js'
 import { withTransaction } from './withTransaction.js'
 import { consumptionWindowMonths, monthlyConsumption } from '../requests/warehouseConsumption.js'
+import { unitCost } from '../requests/warehouseValuation.js'
 
 /** Ampliações de Frota, Manutenção, Passagens e Almoxarifado. Registros históricos não mudam. */
 
@@ -501,7 +504,8 @@ export class ModuleExtensionsRepository {
   // -------------------------------------------------------------------------
   // Estoque interno. Não substitui o sistema governamental.
   // -------------------------------------------------------------------------
-  async stock(filters: { search: string; belowMinimum: boolean }) {
+  /** withValues: só para quem tem warehouse:finance. Sem a 020, os valores vêm nulos. */
+  async stock(filters: { search: string; belowMinimum: boolean; withValues?: boolean }) {
     const parameters: unknown[] = []
     const conditions = ['m.ativo']
     if (filters.search) {
@@ -522,8 +526,10 @@ export class ModuleExtensionsRepository {
       fornecida: string | null
       consumo_janela: string | null
       primeira_entrega: Date | null
+      valor_estoque: string | null
     }>(
       `SELECT m.id::text AS id, m.codigo, m.nome, m.unidade, m.estoque_atual, m.estoque_minimo,
+              to_jsonb(m)->>'valor_estoque' AS valor_estoque,
               to_jsonb(m)->>'quantidade_reservada' AS reservada,
               (SELECT sum(i.quantidade_atendida) FROM public.material_request_items i
                  JOIN public.material_requests r ON r.id = i.material_request_id
@@ -557,6 +563,12 @@ export class ModuleExtensionsRepository {
       provided: Number(row.fornecida ?? 0),
       monthlyConsumption: monthlyConsumption(Number(row.consumo_janela ?? 0), row.primeira_entrega),
       lastMovement: row.ultima_movimentacao,
+      ...(filters.withValues
+        ? {
+            stockValue: row.valor_estoque === null ? null : Number(row.valor_estoque),
+            averageCost: row.valor_estoque === null ? null : unitCost(Number(row.estoque_atual), Number(row.valor_estoque)),
+          }
+        : {}),
     }))
   }
 
@@ -593,23 +605,25 @@ export class ModuleExtensionsRepository {
 
   async addMovement(
     actor: AuthenticatedIdentity,
-    input: { materialId: string; type: 'entrada' | 'saida'; quantity: number; reason: string },
+    input: {
+      materialId: string
+      type: 'entrada' | 'saida'
+      quantity: number
+      reason: string
+      finance?: MovementFinance
+    },
   ) {
     await withTransaction(this.poolProvider(), async (client) => {
-      const found = await client.query<{ estoque_atual: string }>(
-        `SELECT estoque_atual FROM public.materials WHERE id = $1 FOR UPDATE`,
-        [input.materialId],
-      )
-      if (!found.rows[0]) throw notFound()
-      if (input.type === 'saida' && Number(found.rows[0].estoque_atual) < input.quantity) {
-        throw conflict('A saída é maior que o saldo interno registrado.')
-      }
-      // O gatilho trg_apply_stock_movement, da estrutura original, atualiza o saldo.
-      await client.query(
-        `INSERT INTO public.stock_movements (material_id, tipo, quantidade, motivo, usuario_id)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [input.materialId, input.type, input.quantity, redactValidCpf(input.reason), actor.userId],
-      )
+      // O gatilho trg_apply_stock_movement, da estrutura original, atualiza o saldo; o valor do
+      // estoque (migração 020) é atualizado em recordStockMovement, sob o mesmo bloqueio.
+      await recordStockMovement(client, {
+        materialId: input.materialId,
+        type: input.type,
+        quantity: input.quantity,
+        reason: redactValidCpf(input.reason),
+        userId: actor.userId,
+        finance: input.finance,
+      })
       await audit(client, actor, 'stock_movement_added', input.materialId, {
         type: input.type,
         quantity: String(input.quantity),
@@ -617,11 +631,16 @@ export class ModuleExtensionsRepository {
     })
   }
 
-  async movements(filters: { materialId?: string; page: number }) {
+  async movements(filters: { materialId?: string; page: number; withValues?: boolean }) {
     const parameters: unknown[] = []
     const where = filters.materialId ? 'WHERE s.material_id = $1' : ''
     if (filters.materialId) parameters.push(filters.materialId)
     const pool = this.poolProvider()
+    // Sem a 020 a tabela de atas não existe e a consulta não pode citá-la.
+    const agreementSql =
+      filters.withValues && (await financeSchemaExists(pool))
+        ? `(SELECT a.numero FROM public.warehouse_price_agreements a WHERE a.id = s.ata_id)`
+        : 'NULL::text'
     const [rows, total] = await Promise.all([
       pool.query<{
         id: string
@@ -632,9 +651,19 @@ export class ModuleExtensionsRepository {
         motivo: string | null
         usuario: string
         created_at: Date
+        valor_total: string | null
+        valor_informado: string | null
+        nota_fiscal: string | null
+        empenho: string | null
+        fornecedor: string | null
+        ata: string | null
       }>(
         `SELECT s.id::text AS id, m.nome AS material, m.unidade, s.tipo, s.quantidade, s.motivo,
-                u.full_name AS usuario, s.created_at
+                u.full_name AS usuario, s.created_at,
+                to_jsonb(s)->>'valor_total' AS valor_total, to_jsonb(s)->>'valor_informado' AS valor_informado,
+                to_jsonb(s)->>'nota_fiscal' AS nota_fiscal, to_jsonb(s)->>'empenho' AS empenho,
+                to_jsonb(s)->>'fornecedor' AS fornecedor,
+                ${agreementSql} AS ata
            FROM public.stock_movements s
            JOIN public.materials m ON m.id = s.material_id
            JOIN public.auth_users u ON u.id = s.usuario_id
@@ -658,6 +687,16 @@ export class ModuleExtensionsRepository {
         reason: row.motivo,
         user: row.usuario,
         at: row.created_at,
+        ...(filters.withValues
+          ? {
+              value: row.valor_total === null ? null : Number(row.valor_total),
+              valueInformed: row.valor_informado === 'true',
+              invoice: row.nota_fiscal,
+              commitment: row.empenho,
+              supplier: row.fornecedor,
+              agreement: row.ata,
+            }
+          : {}),
       })),
       total: total.rows[0].total,
       page: filters.page,

@@ -219,7 +219,9 @@ async function sendSpreadsheet(
 router.get('/reports/warehouse/spreadsheet', requirePermission('warehouse:manage'), async (request, response) => {
   try {
     const period = spreadsheetPeriod(request)
-    await sendSpreadsheet(response, 'warehouse', period, (generatedBy) => warehouseWorkbook(period, generatedBy))
+    await sendSpreadsheet(response, 'warehouse', period, (generatedBy) =>
+      warehouseWorkbook(period, generatedBy, undefined, holdsPermission(identityOf(response), 'warehouse:finance')),
+    )
   } catch (error) {
     sendModuleError(response, error)
   }

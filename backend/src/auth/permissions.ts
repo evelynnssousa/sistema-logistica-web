@@ -347,6 +347,14 @@ export const permissionGroups = [
           'Revela quantidades e saldos do estoque: só vale para o Administrador e para o Operador SLM da equipe SLM. Solicitante e Motorista nunca a recebem.',
       },
       {
+        key: 'warehouse:finance',
+        label: 'Ver e registrar valores do Almoxarifado',
+        kind: 'manage',
+        description:
+          'Permite ver o valor do estoque, o custo médio e o painel financeiro, registrar o valor pago nas entradas e cadastrar as atas de registro de preços. Exige também a permissão de gerenciar o Almoxarifado.',
+        note: 'Só vale para o Administrador e para o Operador SLM da equipe SLM.',
+      },
+      {
         key: 'warehouse:forecast',
         label: 'Registrar previsão de entrega',
         kind: 'update',
@@ -524,6 +532,7 @@ export function isPermission(value: unknown): value is Permission {
 export const restrictedPermissions = [
   'requests:schedule',
   'warehouse:manage',
+  'warehouse:finance',
   'warehouse:forecast',
   'requests:create_on_behalf',
   'flights:cpf:read',
@@ -557,7 +566,8 @@ export function isEligibleForRestrictedPermission(
     return isSlmStaff
   }
   // Fora da SLM, só o Administrador. Solicitante e Motorista nunca, qualquer que seja a origem.
-  if (permission === 'warehouse:manage') {
+  // Valores do Almoxarifado (12/11/2026): mesmo alcance da gestão do módulo.
+  if (permission === 'warehouse:manage' || permission === 'warehouse:finance') {
     return role === 'administrator' || isSlmStaff
   }
   return true
@@ -632,6 +642,7 @@ const profilePermissions: Record<AuthRole, readonly Permission[]> = {
     'flights:update',
     'warehouse:read',
     'warehouse:manage',
+    'warehouse:finance',
     'warehouse:forecast',
     'reports:read',
     'calendar:read',

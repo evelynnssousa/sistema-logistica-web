@@ -5,6 +5,7 @@ import {
   BellIcon,
   CalendarDotsIcon,
   CaretLeftIcon,
+  CoinsIcon,
   HeadsetIcon,
   HeartbeatIcon,
   PaperclipIcon,
@@ -111,6 +112,7 @@ const icons = {
   stock: StackIcon,
   demands: KanbanIcon,
   repeat: RepeatIcon,
+  money: CoinsIcon,
 } satisfies Record<string, PhosphorIcon>
 
 export type IconName = keyof typeof icons

@@ -543,7 +543,8 @@ test('almoxarifado: atendimento parcial com motivo, observação interna e saldo
   await post(`${path}/deliver`, manager, { receivedBy: 'Pessoa Recebedora' })
   const stock = await call('/warehouse/stock', { session: manager })
   const item = stock.body.items.find((entry: { id: string }) => entry.id === materialId)
-  assert.deepEqual([item.current, item.reserved, item.available, item.provided], [20, 5, 15, 6])
+  // Desde 12/11/2026 a entrega dá baixa automática: 20 de entrada, 6 entregues, 14 no físico.
+  assert.deepEqual([item.current, item.reserved, item.available, item.provided], [14, 5, 9, 6])
   assert.equal(
     (await pool.query(`SELECT 1 FROM public.auth_audit_events WHERE action = 'warehouse.reserve_changed'`)).rows.length,
     1,

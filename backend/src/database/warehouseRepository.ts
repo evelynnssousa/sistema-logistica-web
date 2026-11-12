@@ -23,6 +23,7 @@ import { conflict, ModuleError, notFound } from './moduleErrors.js'
 import { getDatabasePool } from './pool.js'
 import { optionalColumnSql, protocolSql } from './protocolSql.js'
 import { readSystemSettings } from './settingsRepository.js'
+import { debitDelivery } from './warehouseFinanceRepository.js'
 import { withTransaction } from './withTransaction.js'
 import { otherReasonKey } from '../requests/justificationRules.js'
 
@@ -1296,8 +1297,11 @@ export class WarehouseRepository {
           userId: actor.userId,
         })
       }
+      // Baixa automática do saldo interno (12/11/2026), com o custo médio quando há a 020.
+      const debit = await debitDelivery(client, { requestId: id, protocol: current.protocolo, userId: actor.userId })
       await audit(client, actor, 'warehouse_delivered', id, { from: current.status })
       await this.publishStatus(client, actor, id, current, 'entregue', null)
+      return { stockDebit: debit }
     })
   }
 

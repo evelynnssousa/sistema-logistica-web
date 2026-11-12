@@ -31,6 +31,7 @@ const pages = [
   ['almoxarifado-materiais', '/almoxarifado/materiais'],
   ['almoxarifado-inventario', '/almoxarifado/inventario'],
   ['almoxarifado-relatorios', '/almoxarifado/relatorios'],
+  ['almoxarifado-valores', '/almoxarifado/valores'],
   ['calendario', '/calendario'],
   ['relatorios', '/relatorios'],
   ['configuracoes', '/configuracoes'],

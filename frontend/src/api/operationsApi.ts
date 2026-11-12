@@ -399,6 +399,9 @@ export type StockItem = {
   /** Pedidos entregues nos últimos 12 meses, ou desde a primeira entrega, se for mais recente. */
   monthlyConsumption?: { average: number | null; total: number; months: number | null }
   lastMovement: string | null
+  /** Só para quem vê valores (warehouse:finance). Nulo sem a migração 020. */
+  stockValue?: number | null
+  averageCost?: number | null
 }
 
 export type StockMovement = {
@@ -410,6 +413,12 @@ export type StockMovement = {
   reason: string | null
   user: string
   at: string
+  value?: number | null
+  valueInformed?: boolean
+  invoice?: string | null
+  commitment?: string | null
+  supplier?: string | null
+  agreement?: string | null
 }
 
 export const listStock = (filters: { search?: string; belowMinimum?: boolean }) =>
@@ -429,7 +438,88 @@ export const addStockMovement = (body: {
   tipo: string
   quantidade: number | string
   justificativa: string
+  valorPago?: string
+  notaFiscal?: string
+  empenho?: string
+  fornecedor?: string
+  ataId?: string
 }) => send<Envelope>('/warehouse/stock-movements', 'POST', body)
+
+// ---------------------------------------------------------------------------
+// Valores do Almoxarifado (warehouse:finance)
+// ---------------------------------------------------------------------------
+export type PriceAgreement = {
+  id: string
+  number: string
+  supplier: string | null
+  subject: string | null
+  total: number
+  spent: number
+  balance: number
+  usedPercent: number | null
+  entries: number
+  validFrom: string | null
+  validUntil: string | null
+  active: boolean
+  situation: 'vigente' | 'futura' | 'vencida' | 'encerrada'
+}
+
+export type FinanceMaterial = {
+  id: string
+  code: string | null
+  name: string
+  unit: string
+  quantity: number
+  stockValue: number
+  averageCost: number | null
+  lastPrice: number | null
+}
+
+export type WarehouseFinanceSummary = {
+  period: { from: string; to: string }
+  stockValue: number
+  materialsInStock: number
+  materialsWithoutValue: number
+  purchases: number
+  consumption: number
+  agreementsTotal: number
+  agreementsSpent: number
+  agreementsBalance: number
+  monthly: { month: string; purchases: number; consumption: number }[]
+  mostExpensive: FinanceMaterial[]
+  highestStockValue: FinanceMaterial[]
+  topSpend: { name: string; unit: string; quantity: number; value: number }[]
+  bySector: { sector: string; value: number; requests: number }[]
+  agreements: PriceAgreement[]
+  withoutValue: { id: string; code: string | null; name: string; unit: string; quantity: number }[]
+}
+
+export type PriceAgreementInput = {
+  numero: string
+  fornecedor: string
+  objeto: string
+  valorTotal: string
+  vigenciaInicio: string
+  vigenciaFim: string
+  ativo: boolean
+}
+
+export const getWarehouseFinance = (filters: { from?: string; to?: string }) =>
+  apiRequest<Envelope & { summary: WarehouseFinanceSummary }>(`/warehouse/finance${queryString(filters)}`)
+export const listPriceAgreements = () =>
+  apiRequest<Envelope & { agreements: PriceAgreement[] }>('/warehouse/finance/agreements')
+export const createPriceAgreement = (body: PriceAgreementInput) =>
+  send<Envelope & { id: string }>('/warehouse/finance/agreements', 'POST', body)
+export const updatePriceAgreement = (id: string, body: PriceAgreementInput) =>
+  send<Envelope>(`/warehouse/finance/agreements/${id}`, 'PUT', body)
+export const setStockValue = (id: string, valor: string, justificativa: string) =>
+  send<Envelope>(`/warehouse/stock/${id}/value`, 'PUT', { valor, justificativa })
+
+/** Reais no formato brasileiro. Nulo vira travessão. */
+export const formatMoney = (value: number | null | undefined) =>
+  value === null || value === undefined
+    ? '—'
+    : value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 // ---------------------------------------------------------------------------
 // Indicadores

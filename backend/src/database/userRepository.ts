@@ -362,6 +362,8 @@ type AuditRow = {
 export const stockAuditActions = [
   'warehouse.stock_movement',
   'warehouse.reserve_changed',
+  'warehouse.agreement_saved',
+  'warehouse.value_set',
   'warehouse.control_recorded',
   'warehouse.inventory_created',
   'warehouse.inventory_item_updated',

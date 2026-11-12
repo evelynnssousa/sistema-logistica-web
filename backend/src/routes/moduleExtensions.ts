@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import type { Request, Response } from 'express'
+import { holdsPermission } from '../auth/permissions.js'
 import type { Permission } from '../auth/permissions.js'
 import { canReadRequest } from '../auth/requestPolicy.js'
 import type { RequestModule } from '../auth/requestPolicy.js'
@@ -8,6 +9,7 @@ import { ModuleExtensionsRepository } from '../database/moduleExtensionsReposito
 import type { VehicleInput } from '../database/moduleExtensionsRepository.js'
 import { notFound, sendModuleError } from '../database/moduleErrors.js'
 import { ServiceRequestRepository } from '../database/serviceRequestRepository.js'
+import { WarehouseFinanceRepository } from '../database/warehouseFinanceRepository.js'
 import { requirePermission } from '../middleware/requirePermission.js'
 import {
   asBody,
@@ -32,6 +34,7 @@ import {
 const router = Router()
 const extensions = new ModuleExtensionsRepository()
 const requests = new ServiceRequestRepository()
+const finance = new WarehouseFinanceRepository()
 
 function identityOf(response: Response) {
   return response.locals.authenticatedUser as AuthenticatedIdentity
@@ -332,6 +335,7 @@ router.get(
       items: await extensions.stock({
         search: readSearch(query.search),
         belowMinimum: query.belowMinimum === 'true',
+        withValues: seesValues(response),
       }),
     })
   }),
@@ -375,6 +379,7 @@ router.get(
       ...(await extensions.movements({
         materialId: isUuid(query.materialId) ? query.materialId : undefined,
         page: readPage(query.page),
+        withValues: seesValues(response),
       })),
     })
   }),
@@ -388,13 +393,146 @@ router.post(
     if (body.tipo !== 'entrada' && body.tipo !== 'saida') {
       throw new RequestValidationError('Selecione entrada ou saída.')
     }
+    const movementFinance = readMovementFinance(body, body.tipo)
+    if (movementFinance && !seesValues(response)) {
+      response.status(403).json({ success: false, message: 'Você não tem permissão para registrar valores do Almoxarifado.' })
+      return
+    }
     await extensions.addMovement(identityOf(response), {
       materialId: requiredUuid(body.materialId, 'o material'),
       type: body.tipo,
       quantity: readQuantity(body.quantidade, 'A quantidade'),
       reason: requiredText(body.justificativa, 'a justificativa', { min: 3, max: 2000 }),
+      finance: movementFinance ?? undefined,
     })
     response.status(201).json({ success: true })
+  }),
+)
+
+// ---------------------------------------------------------------------------
+// Valores do Almoxarifado (migração 020): Administrador e Operador SLM da equipe.
+// ---------------------------------------------------------------------------
+const warehouseFinance = all('warehouse:manage', 'warehouse:finance')
+
+function seesValues(response: Response) {
+  return holdsPermission(identityOf(response), 'warehouse:finance')
+}
+
+/** Reais com até duas casas; aceita vírgula. */
+function money(value: unknown, label: string, { required = false } = {}) {
+  if (value === undefined || value === null || value === '') {
+    if (required) throw new RequestValidationError(`Informe ${label}.`)
+    return null
+  }
+  const text = String(value).trim().replace(/\s/g, '')
+  const normalized = text.includes(',') ? text.replace(/\./g, '').replace(',', '.') : text
+  const number = Number(normalized)
+  if (!/^\d+(\.\d+)?$/.test(normalized) || !Number.isFinite(number) || number > 999_999_999_999) {
+    throw new RequestValidationError(`${label} inválido.`)
+  }
+  return Math.round(number * 100) / 100
+}
+
+function optionalDay(value: unknown, label: string) {
+  if (value === undefined || value === null || value === '') return null
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
+    throw new RequestValidationError(`${label} inválida.`)
+  }
+  return value
+}
+
+/** Campos de valor de uma entrada. Nulo quando nenhum foi enviado. Saída não recebe valor digitado. */
+function readMovementFinance(body: Record<string, unknown>, type: unknown) {
+  const finance = {
+    paid: money(body.valorPago, 'O valor pago'),
+    invoice: optionalText(body.notaFiscal, 'Nota fiscal', 60),
+    commitment: optionalText(body.empenho, 'Empenho', 60),
+    supplier: optionalText(body.fornecedor, 'Fornecedor', 200),
+    agreementId: optionalUuid(body.ataId, 'a ata'),
+  }
+  const any = Object.values(finance).some((value) => value !== null)
+  if (!any) return null
+  if (type !== 'entrada') throw new RequestValidationError('Valor, nota, empenho, fornecedor e ata são só para entradas.')
+  return finance
+}
+
+/** Período do painel em dias de Brasília; padrão: os últimos 12 meses, contando o atual. */
+function financePeriod(query: Record<string, unknown>) {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+  const [year, month] = today.split('-').map(Number)
+  const firstMonth = new Date(Date.UTC(year, month - 12, 1)).toISOString().slice(0, 10)
+  const from = optionalDay(query.from, 'Data inicial') ?? firstMonth
+  const to = optionalDay(query.to, 'Data final') ?? today
+  if (to < from) throw new RequestValidationError('O fim do período não pode ser anterior ao início.')
+  const start = new Date(`${from}T00:00:00-03:00`)
+  const end = new Date(new Date(`${to}T00:00:00-03:00`).getTime() + 86_400_000)
+  if (end.getTime() - start.getTime() > 5 * 366 * 86_400_000) throw new RequestValidationError('O período é longo demais.')
+  return { from: start, to: end }
+}
+
+function readAgreement(body: Record<string, unknown>) {
+  const validFrom = optionalDay(body.vigenciaInicio, 'Início da vigência')
+  const validUntil = optionalDay(body.vigenciaFim, 'Fim da vigência')
+  if (validFrom && validUntil && validUntil < validFrom) {
+    throw new RequestValidationError('O fim da vigência não pode ser anterior ao início.')
+  }
+  return {
+    number: requiredText(body.numero, 'o número da ata', { min: 1, max: 60 }),
+    supplier: optionalText(body.fornecedor, 'Fornecedor', 200),
+    subject: optionalText(body.objeto, 'Objeto', 500),
+    total: money(body.valorTotal, 'o valor da ata', { required: true })!,
+    validFrom,
+    validUntil,
+    active: body.ativo === undefined ? true : body.ativo === true,
+  }
+}
+
+router.get(
+  '/warehouse/finance',
+  ...warehouseFinance,
+  guarded(async (request, response) => {
+    response.json({ success: true, summary: await finance.summary(financePeriod(asBody(request.query))) })
+  }),
+)
+
+router.get(
+  '/warehouse/finance/agreements',
+  ...warehouseFinance,
+  guarded(async (_request, response) => {
+    response.json({ success: true, agreements: await finance.agreements() })
+  }),
+)
+
+router.post(
+  '/warehouse/finance/agreements',
+  ...warehouseFinance,
+  guarded(async (request, response) => {
+    const id = await finance.saveAgreement(identityOf(response), null, readAgreement(asBody(request.body)))
+    response.status(201).json({ success: true, id })
+  }),
+)
+
+router.put(
+  '/warehouse/finance/agreements/:agreementId',
+  ...warehouseFinance,
+  guarded(async (request, response) => {
+    await finance.saveAgreement(identityOf(response), idParam(request, 'agreementId'), readAgreement(asBody(request.body)))
+    response.json({ success: true })
+  }),
+)
+
+router.put(
+  '/warehouse/stock/:materialId/value',
+  ...warehouseFinance,
+  guarded(async (request, response) => {
+    const body = asBody(request.body)
+    await finance.setStockValue(
+      identityOf(response),
+      idParam(request, 'materialId'),
+      money(body.valor, 'o valor do estoque', { required: true })!,
+      requiredText(body.justificativa, 'a justificativa', { min: 3, max: 2000 }),
+    )
+    response.json({ success: true })
   }),
 )
 

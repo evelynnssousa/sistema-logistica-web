@@ -5,6 +5,7 @@ import { journeyOf } from '../requests/driverPortalRules.js'
 import { normalizeStatus } from '../requests/workflow.js'
 import { ModuleExtensionsRepository } from '../database/moduleExtensionsRepository.js'
 import { getDatabasePool } from '../database/pool.js'
+import { WarehouseFinanceRepository } from '../database/warehouseFinanceRepository.js'
 import { protocolSql } from '../database/protocolSql.js'
 import { readSystemSettings } from '../database/settingsRepository.js'
 import { formatHours, workloadByDay, workloadSummary } from './driverWorkload.js'
@@ -88,9 +89,12 @@ export async function warehouseWorkbook(
   period: SpreadsheetPeriod,
   generatedBy: string,
   poolProvider: () => Pool = getDatabasePool,
+  /** Só para quem tem warehouse:finance: custo médio, valor do estoque e as abas financeiras. */
+  withValues = false,
 ): Promise<Sheet[]> {
   const pool = poolProvider()
-  const stock = await new ModuleExtensionsRepository(poolProvider).stock({ search: '', belowMinimum: false })
+  const stock = await new ModuleExtensionsRepository(poolProvider).stock({ search: '', belowMinimum: false, withValues })
+  const financial = withValues ? await new WarehouseFinanceRepository(poolProvider).spreadsheetRows(period) : null
 
   const requests = await pool.query<{
     protocolo: string
@@ -162,9 +166,12 @@ export async function warehouseWorkbook(
     [period.from, period.to],
   )
 
-  return [
+  const sheets: Sheet[] = [
     periodSheet('Almoxarifado: estoque, pedidos e entregas', period, generatedBy, [
       'Estoque: situação de agora, sem filtro de período.',
+      ...(financial
+        ? ['Valores: custo médio ponderado. Entradas pelo valor pago; saídas e entregas pelo custo médio do momento. Compras e consumo: só o período informado.']
+        : []),
       'Consumo médio por mês: quantidades entregues nos pedidos dos últimos 12 meses (ou desde a primeira entrega, se for mais recente), divididas pelos meses da base.',
       'Pedidos, Itens entregues e Movimentações: só o período informado.',
       'O saldo é o controle interno do sistema e não substitui o sistema governamental.',
@@ -173,12 +180,14 @@ export async function warehouseWorkbook(
       name: 'Estoque',
       rows: [
         ['Código', 'Material', 'Unidade', 'Estoque físico', 'Reservado', 'Disponível', 'Mínimo', 'Abaixo do mínimo',
-          'Consumo médio por mês', 'Base do consumo (meses)', 'Entregue nos últimos 12 meses', 'Fornecido (total)', 'Última movimentação'],
+          'Consumo médio por mês', 'Base do consumo (meses)', 'Entregue nos últimos 12 meses', 'Fornecido (total)', 'Última movimentação',
+          ...(financial ? ['Custo médio (R$)', 'Valor em estoque (R$)'] : [])],
         ...stock.map((item) => [
           item.code, item.name, item.unit, item.current, item.reserved, item.available,
           item.minimum > 0 ? item.minimum : null, item.belowMinimum ? 'Sim' : 'Não',
           item.monthlyConsumption.average, item.monthlyConsumption.months, item.monthlyConsumption.total,
           item.provided, dateTime(item.lastMovement),
+          ...(financial ? [item.averageCost ?? null, item.stockValue ?? null] : []),
         ]),
       ],
     },
@@ -212,7 +221,61 @@ export async function warehouseWorkbook(
       ],
     },
   ]
+  if (!financial) return sheets
+  const summary = financial.summary
+  return [
+    ...sheets,
+    {
+      name: 'Financeiro',
+      rows: [
+        ['Indicador', 'Valor (R$)'],
+        ['Valor total em estoque (agora)', summary.stockValue],
+        ['Compras no período', summary.purchases],
+        ['Consumo no período (saídas)', summary.consumption],
+        ['Atas vigentes: valor', summary.agreementsTotal],
+        ['Atas vigentes: gasto', summary.agreementsSpent],
+        ['Atas vigentes: saldo', summary.agreementsBalance],
+        ['Materiais com saldo e sem valor informado', summary.materialsWithoutValue],
+        [],
+        ['Mês', 'Compras (R$)', 'Consumo (R$)'],
+        ...summary.monthly.map((row) => [row.month.split('-').reverse().join('/'), row.purchases, row.consumption]),
+        [],
+        ['Consumo por setor', 'Valor (R$)', 'Pedidos'],
+        ...summary.bySector.map((row) => [row.sector, row.value, row.requests]),
+      ],
+    },
+    {
+      name: 'Atas',
+      rows: [
+        ['Número', 'Fornecedor', 'Objeto', 'Início', 'Fim', 'Situação', 'Valor (R$)', 'Gasto (R$)', 'Saldo (R$)', 'Usado (%)', 'Entradas'],
+        ...summary.agreements.map((row) => [
+          row.number, row.supplier, row.subject, row.validFrom ? dayOnly(row.validFrom) : null, row.validUntil ? dayOnly(row.validUntil) : null,
+          agreementLabels[row.situation], row.total, row.spent, row.balance, row.usedPercent, row.entries,
+        ]),
+      ],
+    },
+    {
+      name: 'Entradas com valor',
+      rows: [
+        ['Data', 'Material', 'Unidade', 'Quantidade', 'Valor total (R$)', 'Valor por unidade (R$)', 'Valor digitado', 'Nota fiscal', 'Empenho', 'Fornecedor', 'Ata', 'Registrado por'],
+        ...financial.entries.map((row) => [
+          dateTime(row.at), row.material, row.unit, row.quantity, row.value,
+          row.value !== null && row.quantity > 0 ? Math.round((row.value / row.quantity) * 100) / 100 : null,
+          row.informed ? 'Sim' : 'Não (custo médio)', row.invoice, row.commitment, row.supplier, row.agreement, row.user,
+        ]),
+      ],
+    },
+    {
+      name: 'Saídas com valor',
+      rows: [
+        ['Data', 'Material', 'Unidade', 'Quantidade', 'Custo (R$)', 'Pedido', 'Setor'],
+        ...financial.exits.map((row) => [dateTime(row.at), row.material, row.unit, row.quantity, row.value, row.protocol, row.sector]),
+      ],
+    },
+  ]
 }
+
+const agreementLabels: Record<string, string> = { vigente: 'Vigente', futura: 'Ainda não vigente', vencida: 'Vencida', encerrada: 'Encerrada' }
 
 // ---------------------------------------------------------------------------
 // Frota

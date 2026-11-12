@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { errorMessage, formatDateTime } from '../api/modulesApi'
-import { addStockMovement, listStock, listStockMovements, setStockMinimum, setStockReserved } from '../api/operationsApi'
-import type { StockItem, StockMovement } from '../api/operationsApi'
+import {
+  addStockMovement,
+  formatMoney,
+  listPriceAgreements,
+  listStock,
+  listStockMovements,
+  setStockMinimum,
+  setStockReserved,
+  setStockValue,
+} from '../api/operationsApi'
+import type { PriceAgreement, StockItem, StockMovement } from '../api/operationsApi'
+import { useHasPermission } from '../auth/UserContext'
 import { Alert, EmptyState, Loading } from '../components/ui/Feedback'
 import { FilterBar, FilterSelect, SearchField } from '../components/ui/Filters'
 import Modal from '../components/ui/Modal'
@@ -11,8 +21,9 @@ import Pagination from '../components/ui/Pagination'
 const movementLabels: Record<string, string> = { entrada: 'Entrada', saida: 'Saída' }
 
 /**
- * Controle interno de saldo, à parte do sistema governamental. Registrar a entrega de um pedido
- * não movimenta este saldo: quem administra lança as entradas e saídas, com justificativa.
+ * Controle interno de saldo, à parte do sistema governamental. Desde 12/11/2026, registrar a
+ * entrega de um pedido dá baixa automática no saldo; as demais entradas e saídas são lançadas
+ * aqui, com justificativa. Quem tem warehouse:finance vê e registra os valores (custo médio).
  */
 /** Média mensal das entregas, com a base do cálculo, para a pessoa saber o quanto confiar. */
 function consumptionText(item: StockItem) {
@@ -42,6 +53,31 @@ export function StockTab() {
   const [reserved, setReserved] = useState('')
   const [reservedReason, setReservedReason] = useState('')
   const [reservedError, setReservedError] = useState('')
+  const seesValues = useHasPermission('warehouse:finance')
+  const [agreements, setAgreements] = useState<PriceAgreement[]>([])
+  const [paid, setPaid] = useState('')
+  const [invoice, setInvoice] = useState('')
+  const [commitment, setCommitment] = useState('')
+  const [supplier, setSupplier] = useState('')
+  const [agreementId, setAgreementId] = useState('')
+  const [valueFor, setValueFor] = useState<StockItem | null>(null)
+  const [stockValue, setStockValueInput] = useState('')
+  const [valueReason, setValueReason] = useState('')
+  const [valueError, setValueError] = useState('')
+
+  useEffect(() => {
+    if (!seesValues) return
+    let active = true
+    listPriceAgreements()
+      .then((result) => {
+        if (active) setAgreements(result.agreements.filter((agreement) => agreement.active))
+      })
+      // Sem a migração 020 não há atas: o formulário segue sem a lista.
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [seesValues])
 
   const load = useCallback(async () => {
     const [stock, history] = await Promise.all([
@@ -77,9 +113,29 @@ export function StockTab() {
     setFormError('')
     setNotice('')
     try {
-      await addStockMovement({ materialId, tipo: type, quantidade: quantity, justificativa: reason })
+      const withFinance = seesValues && type === 'entrada'
+      await addStockMovement({
+        materialId,
+        tipo: type,
+        quantidade: quantity,
+        justificativa: reason,
+        ...(withFinance
+          ? {
+              valorPago: paid || undefined,
+              notaFiscal: invoice || undefined,
+              empenho: commitment || undefined,
+              fornecedor: supplier || undefined,
+              ataId: agreementId || undefined,
+            }
+          : {}),
+      })
       setQuantity('')
       setReason('')
+      setPaid('')
+      setInvoice('')
+      setCommitment('')
+      setSupplier('')
+      setAgreementId('')
       setNotice('Movimentação registrada.')
       await load()
     } catch (err) {
@@ -113,6 +169,20 @@ export function StockTab() {
     }
   }
 
+  async function saveValue(event: FormEvent) {
+    event.preventDefault()
+    if (!valueFor) return
+    setValueError('')
+    try {
+      await setStockValue(valueFor.id, stockValue, valueReason)
+      setValueFor(null)
+      setNotice('Valor do estoque registrado.')
+      await load()
+    } catch (err) {
+      setValueError(errorMessage(err, 'Não foi possível salvar o valor.'))
+    }
+  }
+
   const below = items?.filter((item) => item.belowMinimum).length ?? 0
 
   return (
@@ -120,6 +190,7 @@ export function StockTab() {
       <p className="module-notice">
         Controle interno de conferência. Não substitui o sistema governamental nem recebe solicitações de materiais.
         Ter saldo físico não obriga a disponibilizar o material: a decisão considera a necessidade apresentada.
+        Ao registrar a entrega de um pedido, o sistema dá baixa automática nas quantidades entregues.
       </p>
       {error && <Alert tone="error">{error}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}
@@ -162,6 +233,8 @@ export function StockTab() {
                     <th>Fornecido</th>
                     <th>Consumo médio por mês</th>
                     <th>Mínimo</th>
+                    {seesValues && <th>Custo médio</th>}
+                    {seesValues && <th>Valor em estoque</th>}
                     <th>Última movimentação</th>
                     <th>
                       <span className="visually-hidden">Ações</span>
@@ -184,6 +257,15 @@ export function StockTab() {
                       <td>{item.provided} {item.unit}</td>
                       <td>{consumptionText(item)}</td>
                       <td>{item.minimum > 0 ? `${item.minimum} ${item.unit}` : 'Não definido'}</td>
+                      {seesValues && <td>{item.averageCost === null || item.averageCost === undefined ? '—' : `${formatMoney(item.averageCost)} / ${item.unit}`}</td>}
+                      {seesValues && (
+                        <td>
+                          {formatMoney(item.stockValue)}
+                          {item.current > 0 && item.stockValue === 0 && (
+                            <span className="central-flag central-flag-late">Sem valor</span>
+                          )}
+                        </td>
+                      )}
                       <td>{formatDateTime(item.lastMovement)}</td>
                       <td>
                         <button
@@ -208,6 +290,23 @@ export function StockTab() {
                         >
                           Definir reserva
                         </button>
+                        {seesValues && item.stockValue !== null && item.stockValue !== undefined && (
+                          <>
+                            {' '}
+                            <button
+                              type="button"
+                              className="central-link-button"
+                              onClick={() => {
+                                setValueFor(item)
+                                setStockValueInput(item.stockValue ? String(item.stockValue) : '')
+                                setValueReason('')
+                                setValueError('')
+                              }}
+                            >
+                              Informar valor
+                            </button>
+                          </>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -244,6 +343,50 @@ export function StockTab() {
               <span>Quantidade *</span>
               <input type="number" min="0.01" step="0.01" required value={quantity} onChange={(event) => setQuantity(event.target.value)} />
             </label>
+            {seesValues && type === 'entrada' && (
+              <>
+                <label className="maintenance-form-field">
+                  <span>Valor total pago (R$)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    inputMode="decimal"
+                    value={paid}
+                    aria-describedby="stock-paid-hint"
+                    onChange={(event) => setPaid(event.target.value)}
+                  />
+                </label>
+                <label className="maintenance-form-field">
+                  <span>Nota fiscal</span>
+                  <input maxLength={60} value={invoice} onChange={(event) => setInvoice(event.target.value)} />
+                </label>
+                <label className="maintenance-form-field">
+                  <span>Empenho</span>
+                  <input maxLength={60} value={commitment} onChange={(event) => setCommitment(event.target.value)} />
+                </label>
+                <label className="maintenance-form-field">
+                  <span>Fornecedor</span>
+                  <input maxLength={200} value={supplier} onChange={(event) => setSupplier(event.target.value)} />
+                </label>
+                <label className="maintenance-form-field">
+                  <span>Ata de registro de preços</span>
+                  <select value={agreementId} onChange={(event) => setAgreementId(event.target.value)}>
+                    <option value="">Sem ata</option>
+                    {agreements.map((agreement) => (
+                      <option key={agreement.id} value={agreement.id}>
+                        {agreement.number}
+                        {agreement.supplier ? ` (${agreement.supplier})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p id="stock-paid-hint" className="central-subtext form-grid-wide">
+                  Valor total pago: o valor de toda a quantidade da entrada. Em branco (por exemplo, numa devolução), a entrada
+                  vale o custo médio atual.
+                </p>
+              </>
+            )}
             <label className="maintenance-form-field form-grid-wide">
               <span>Justificativa *</span>
               <textarea required rows={2} maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} />
@@ -270,6 +413,8 @@ export function StockTab() {
                     <th>Material</th>
                     <th>Tipo</th>
                     <th>Quantidade</th>
+                    {seesValues && <th>Valor</th>}
+                    {seesValues && <th>Nota, empenho e ata</th>}
                     <th>Justificativa</th>
                     <th>Registro</th>
                   </tr>
@@ -283,6 +428,26 @@ export function StockTab() {
                       <td>
                         {movement.quantity} {movement.unit}
                       </td>
+                      {seesValues && (
+                        <td>
+                          {formatMoney(movement.value)}
+                          {movement.value !== null && movement.value !== undefined && !movement.valueInformed && (
+                            <small className="central-subtext">pelo custo médio</small>
+                          )}
+                        </td>
+                      )}
+                      {seesValues && (
+                        <td>
+                          {[
+                            movement.invoice && `NF ${movement.invoice}`,
+                            movement.commitment && `Empenho ${movement.commitment}`,
+                            movement.agreement && `Ata ${movement.agreement}`,
+                            movement.supplier,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ') || '—'}
+                        </td>
+                      )}
                       <td>{movement.reason ?? '—'}</td>
                       <td>{movement.user}</td>
                     </tr>
@@ -312,6 +477,36 @@ export function StockTab() {
               <textarea required rows={2} minLength={3} maxLength={2000} value={reservedReason} onChange={(event) => setReservedReason(event.target.value)} />
             </label>
             {reservedError && <Alert tone="error">{reservedError}</Alert>}
+            <button type="submit" className="maintenance-primary-button">Salvar</button>
+          </form>
+        </Modal>
+      )}
+
+      {valueFor && (
+        <Modal title={`Valor do estoque de ${valueFor.name}`} onClose={() => setValueFor(null)}>
+          <form className="ui-stacked" onSubmit={(event) => void saveValue(event)}>
+            <p>
+              Informe quanto vale, em reais, todo o saldo atual ({valueFor.current} {valueFor.unit}). Use para o estoque que
+              já existia antes do controle de valores ou para corrigir um valor. O custo médio passa a ser este valor dividido
+              pela quantidade.
+            </p>
+            <label className="maintenance-form-field">
+              <span>Valor total do saldo (R$) *</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                required
+                value={stockValue}
+                onChange={(event) => setStockValueInput(event.target.value)}
+              />
+            </label>
+            <label className="maintenance-form-field">
+              <span>Justificativa *</span>
+              <textarea required rows={2} minLength={3} maxLength={2000} value={valueReason} onChange={(event) => setValueReason(event.target.value)} />
+            </label>
+            {valueError && <Alert tone="error">{valueError}</Alert>}
             <button type="submit" className="maintenance-primary-button">Salvar</button>
           </form>
         </Modal>

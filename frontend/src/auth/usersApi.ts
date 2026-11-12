@@ -253,6 +253,8 @@ export const auditActionLabels: Record<string, string> = {
   'maintenance.equipment_changed': 'Equipamento alterado',
   'flights.quote_changed': 'Cotação registrada ou escolhida',
   'warehouse.stock_movement': 'Movimentação de estoque',
+  'warehouse.agreement_saved': 'Ata de registro de preços salva',
+  'warehouse.value_set': 'Valor do estoque informado',
   'settings.created': 'Opção de configuração criada',
   'settings.updated': 'Opção de configuração alterada',
   'settings.activated': 'Opção de configuração ativada',

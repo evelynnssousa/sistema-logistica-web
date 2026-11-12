@@ -24,6 +24,7 @@ const migrations = [
   // Não cria tabela: vale como aplicada quando a 017 existe e nada de public está aberto à API pública.
   { file: '018_public_api_privileges', marker: 'driver_occurrence_types', closesPublicApi: true },
   { file: '019_email_quota', marker: 'email_daily_usage' },
+  { file: '020_warehouse_finance', marker: 'warehouse_price_agreements' },
 ]
 
 module.exports = { migrations }

@@ -88,6 +88,9 @@ const auditActions = {
   request_report_exported: 'request.report_exported',
   warehouse_quantity_changed: 'warehouse.quantity_changed',
   warehouse_reserve_changed: 'warehouse.reserve_changed',
+  // Valores do Almoxarifado (020). Sem valores nos detalhes.
+  warehouse_agreement_saved: 'warehouse.agreement_saved',
+  warehouse_value_set: 'warehouse.value_set',
   warehouse_control_recorded: 'warehouse.control_recorded',
   warehouse_report_exported: 'warehouse.report_exported',
   warehouse_spreadsheet_exported: 'warehouse.spreadsheet_exported',
