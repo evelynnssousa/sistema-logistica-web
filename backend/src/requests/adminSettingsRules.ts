@@ -15,7 +15,7 @@ export type SystemModule = (typeof systemModules)[number]
  * agendamento, que seguem por concessão individual e com as regras de elegibilidade.
  */
 export const adjustablePermissions = [
-  'requests:create', 'requests:read_own', 'requests:read_all', 'requests:update', 'requests:cancel', 'requests:cancel_own',
+  'requests:create', 'requests:read_own', 'requests:read_sector', 'requests:read_all', 'requests:update', 'requests:cancel', 'requests:cancel_own',
   'maintenance:read', 'maintenance:create', 'maintenance:update',
   'fleet:read', 'fleet:create', 'fleet:update',
   'flights:read', 'flights:create', 'flights:update',

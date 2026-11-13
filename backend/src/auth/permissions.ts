@@ -48,6 +48,14 @@ export const permissionGroups = [
         description: 'Permite acompanhar as solicitações abertas pelo próprio usuário.',
       },
       {
+        key: 'requests:read_sector',
+        label: 'Consultar as solicitações do próprio setor',
+        kind: 'read',
+        description:
+          'Permite consultar, sem alterar, as solicitações de Manutenção, Frota e Almoxarifado abertas para o mesmo setor de lotação.',
+        note: 'Desligada por padrão. Liga-se para todos os solicitantes em Configurações → Sistema (permissões padrão do perfil) ou para uma pessoa no cadastro dela. Passagens aéreas ficam de fora, porque têm dados pessoais dos passageiros.',
+      },
+      {
         key: 'requests:read_all',
         label: 'Consultar solicitações de todos os setores',
         kind: 'read',

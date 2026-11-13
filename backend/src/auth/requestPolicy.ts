@@ -12,6 +12,8 @@ export type RequestModule = 'maintenance' | 'fleet' | 'flights'
 export type RequestScope = {
   module: RequestModule
   requesterId: string
+  /** O registro é do setor de lotação de quem consulta (conferido no banco por quem chama). */
+  sameSector?: boolean
 }
 
 const scheduleByModule: Record<RequestModule, Permission> = {
@@ -98,10 +100,8 @@ export function canReadRequest(
   if (!holds(identity, `${request.module}:read`)) return false
   if (holds(identity, 'requests:read_all')) return true
 
-  return (
-    holds(identity, 'requests:read_own') &&
-    request.requesterId === identity.userId
-  )
+  if (holds(identity, 'requests:read_own') && request.requesterId === identity.userId) return true
+  return Boolean(request.sameSector) && request.module !== 'flights' && holds(identity, 'requests:read_sector')
 }
 
 export function canUpdateRequest(

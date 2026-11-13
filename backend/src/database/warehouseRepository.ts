@@ -27,6 +27,7 @@ import { readSystemSettings } from './settingsRepository.js'
 import { debitDelivery } from './warehouseFinanceRepository.js'
 import { withTransaction } from './withTransaction.js'
 import { otherReasonKey } from '../requests/justificationRules.js'
+import { sameSectorSql } from './sectorScope.js'
 
 /**
  * O JUCESP não se comunica com o sistema governamental. Pedidos de origem "governamental"
@@ -435,7 +436,7 @@ export class WarehouseRepository {
   // Central de pedidos
   // -------------------------------------------------------------------------
   async listRequests(
-    scope: { allRequests: boolean; userId: string },
+    scope: { allRequests: boolean; userId: string; sector?: boolean },
     filters: {
       status?: WarehouseStatus
       origin?: 'interna' | 'governamental'
@@ -454,7 +455,11 @@ export class WarehouseRepository {
 
     if (!scope.allRequests) {
       const user = bind(scope.userId)
-      conditions.push(`(r.solicitante_id = ${user} OR ${identifiedRequesterSql('r', user)})`)
+      conditions.push(
+        scope.sector
+          ? `(r.solicitante_id = ${user} OR ${identifiedRequesterSql('r', user)} OR ${sameSectorSql('r', user)})`
+          : `(r.solicitante_id = ${user} OR ${identifiedRequesterSql('r', user)})`,
+      )
     }
     if (filters.status) conditions.push(`r.status = ${bind(filters.status)}`)
     if (filters.origin) conditions.push(`r.origem = ${bind(filters.origin)}`)

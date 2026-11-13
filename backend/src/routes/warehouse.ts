@@ -43,6 +43,7 @@ import {
 } from '../requests/deliveryRules.js'
 import { isWarehouseStatus } from '../requests/workflow.js'
 import type { WarehouseStatus } from '../requests/workflow.js'
+import { readsSector, sharesSector } from '../database/sectorScope.js'
 
 /**
  * Almoxarifado. A escrita é de quem tem warehouse:manage, exceto a abertura de um pedido
@@ -224,7 +225,7 @@ router.get(
     const identity = identityOf(response)
     const query = asBody(request.query)
     const found = await warehouse.listRequests(
-      { allRequests: seesAllRequests(identity), userId: identity.userId },
+      { allRequests: seesAllRequests(identity), userId: identity.userId, sector: readsSector(identity, 'warehouse') },
       {
         status: isWarehouseStatus(query.status) ? query.status : undefined,
         origin:
@@ -293,7 +294,12 @@ router.get(
 
     const seesAll = seesAllRequests(identity)
     const owns = seesAll || current.requesterId === identity.userId
-    if (!owns && !(await warehouse.isIdentifiedRequester(current, identity.userId))) {
+    // Identificado pelo e-mail ou do mesmo setor: só o acompanhamento, sem o histórico interno.
+    if (
+      !owns &&
+      !(await warehouse.isIdentifiedRequester(current, identity.userId)) &&
+      !(readsSector(identity, 'warehouse') && (await sharesSector(getDatabasePool(), 'material_requests', current.id, identity.userId)))
+    ) {
       throw notFound()
     }
 
