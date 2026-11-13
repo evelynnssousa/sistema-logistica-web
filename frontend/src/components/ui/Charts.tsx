@@ -5,8 +5,9 @@
 
 export type ChartRow = { label: string; value: number }
 
-export function BarChart({ rows, unit = '' }: { rows: ChartRow[]; unit?: string }) {
+export function BarChart({ rows, unit = '', showPercent = false }: { rows: ChartRow[]; unit?: string; showPercent?: boolean }) {
   const maximum = Math.max(1, ...rows.map((row) => row.value))
+  const total = rows.reduce((sum, row) => sum + row.value, 0)
   return (
     <ul className="report-bars ui-bars">
       {rows.map((row) => (
@@ -21,6 +22,9 @@ export function BarChart({ rows, unit = '' }: { rows: ChartRow[]; unit?: string 
           <strong>
             {row.value.toLocaleString('pt-BR')}
             {unit}
+            {showPercent && total > 0 && (
+              <span className="ui-bar-percent"> ({((row.value / total) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%)</span>
+            )}
           </strong>
         </li>
       ))}

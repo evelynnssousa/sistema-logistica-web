@@ -668,7 +668,15 @@ export type SummaryResponse = Envelope & {
   }
   byModule: Record<string, Record<string, number>>
   warehouse: Record<string, number> | null
+  /** Taxas de desempenho; porcentagem nula quando não há base. */
+  rates?: {
+    onTime: Rate
+    cancelled: Rate
+    warehouseComplete: Rate | null
+  }
 }
+
+export type Rate = { eligible: number; value: number; percent: number | null }
 
 export type InsightFilters = {
   from?: string

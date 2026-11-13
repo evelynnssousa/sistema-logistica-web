@@ -2793,3 +2793,24 @@ a {
 .spreadsheet-download {
   margin-bottom: 16px;
 }
+
+/* ---------------------------------------------------------------- Dashboard: porcentagens (12/11/2026) */
+.ui-metric-trend {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted, #5b6472);
+}
+
+.ui-metric-trend-good {
+  color: var(--success-text, #166534);
+}
+
+.ui-metric-trend-bad {
+  color: var(--danger, #b91c1c);
+}
+
+.ui-bar-percent {
+  font-weight: 500;
+  color: var(--text-muted, #5b6472);
+}

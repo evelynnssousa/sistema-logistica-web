@@ -98,6 +98,9 @@ function readsWarehouse(identity: AuthenticatedIdentity, filter?: InsightFilters
 
 const closedStatuses = new Set(['concluido', 'cancelado', 'emitida', 'cancelada'])
 
+/** Porcentagem com uma casa; sem base, nula. */
+export const percentOf = (value: number, base: number) => (base > 0 ? Math.round((value / base) * 1000) / 10 : null)
+
 export class InsightsRepository {
   constructor(private readonly poolProvider: () => Pool = getDatabasePool) {}
 
@@ -105,8 +108,15 @@ export class InsightsRepository {
     const pool = this.poolProvider()
     const scope = buildScope(identity, filters)
 
-    const counts = await pool.query<{ tipo: string; status: string; total: number }>(
-      `SELECT r.tipo, r.status, count(*)::int AS total
+    // Prazo e término são colunas opcionais (005 e 007): lidas por to_jsonb, nulas sem a migração.
+    const counts = await pool.query<{ tipo: string; status: string; total: number; com_prazo: number; no_prazo: number }>(
+      `SELECT r.tipo, r.status, count(*)::int AS total,
+              count(*) FILTER (WHERE to_jsonb(r)->>'prazo_em' IS NOT NULL)::int AS com_prazo,
+              count(*) FILTER (
+                WHERE to_jsonb(r)->>'prazo_em' IS NOT NULL
+                  AND COALESCE((to_jsonb(r)->>'execucao_fim')::timestamptz, r.concluida_em, r.updated_at)
+                      <= (to_jsonb(r)->>'prazo_em')::timestamptz
+              )::int AS no_prazo
          FROM public.service_requests r
          ${scope.where}
         GROUP BY r.tipo, r.status`,
@@ -115,13 +125,20 @@ export class InsightsRepository {
 
     const byModule: Record<string, Record<string, number>> = {}
     for (const module of readableModules(identity, filters.module)) byModule[module] = {}
+    let withDeadline = 0
+    let onTime = 0
     for (const row of counts.rows) {
       const module = moduleByType[row.tipo]
       const status = normalizeStatus(module, row.status)
       byModule[module][status] = (byModule[module][status] ?? 0) + row.total
+      if (status === 'concluido' || status === 'emitida') {
+        withDeadline += row.com_prazo
+        onTime += row.no_prazo
+      }
     }
 
     let warehouse: Record<string, number> | null = null
+    let warehouseComplete: { eligible: number; complete: number } | null = null
     if (readsWarehouse(identity, filters.module)) {
       const warehouseScope = buildWarehouseScope(identity, filters)
       const rows = await pool.query<{ status: string; total: number }>(
@@ -131,6 +148,17 @@ export class InsightsRepository {
         warehouseScope.parameters,
       )
       warehouse = Object.fromEntries(rows.rows.map((row) => [row.status, row.total]))
+      // Atendidos por completo: o atendido cobre o pedido, entre os já atendidos ou entregues.
+      const complete = await pool.query<{ atendidos: number; completos: number }>(
+        `SELECT count(*)::int AS atendidos, count(*) FILTER (WHERE t.atendida >= t.solicitada)::int AS completos
+           FROM (SELECT sum(i.quantidade_solicitada) AS solicitada, sum(i.quantidade_atendida) AS atendida
+                   FROM public.material_requests r
+                   JOIN public.material_request_items i ON i.material_request_id = r.id
+                   ${warehouseScope.where ? `${warehouseScope.where} AND` : 'WHERE'} r.status IN ('atendido', 'atendido_parcial', 'entregue')
+                  GROUP BY r.id) t`,
+        warehouseScope.parameters,
+      )
+      warehouseComplete = { eligible: complete.rows[0].atendidos, complete: complete.rows[0].completos }
     }
 
     const requestTotals = Object.values(byModule).flatMap((statuses) => Object.entries(statuses))
@@ -156,6 +184,21 @@ export class InsightsRepository {
       },
       byModule,
       warehouse,
+      // Taxas de desempenho do Dashboard (12/11/2026). Porcentagem nula quando não há base.
+      rates: {
+        onTime: { eligible: withDeadline, value: onTime, percent: percentOf(onTime, withDeadline) },
+        cancelled: {
+          eligible: total,
+          value: requestTotals.filter(([status]) => status === 'cancelado' || status === 'cancelada').reduce((sum, [, count]) => sum + count, 0),
+          percent: percentOf(
+            requestTotals.filter(([status]) => status === 'cancelado' || status === 'cancelada').reduce((sum, [, count]) => sum + count, 0),
+            total,
+          ),
+        },
+        warehouseComplete: warehouseComplete
+          ? { ...warehouseComplete, value: warehouseComplete.complete, percent: percentOf(warehouseComplete.complete, warehouseComplete.eligible) }
+          : null,
+      },
     }
   }
 
