@@ -35,6 +35,8 @@ import { authRateLimits, loginBlockWindowMs } from '../security/authRateLimits.j
 import { describeError, logSecurityEvent } from '../security/logger.js'
 import { readPublishedConfig } from '../database/configRepository.js'
 import { getDatabasePool } from '../database/pool.js'
+import { readSystemSettings } from '../database/settingsRepository.js'
+import { registrationDomains } from '../requests/adminSettingsRules.js'
 import { validateCustomValues } from '../requests/formRules.js'
 import type { ManagedFormContent } from '../requests/formRules.js'
 import { RequestValidationError } from '../requests/validation.js'
@@ -95,7 +97,11 @@ authRouter.post('/auth/register', async (request, response) => {
     return
   }
 
-  if (isTestAccountBlocked(email) || !isInstitutionalEmailAllowed(email)) {
+  // Domínios definidos em Configurações; sem lista na tela, vale a variável do servidor.
+  const settings = await readSystemSettings(getDatabasePool()).catch(() => null)
+  const domains = registrationDomains(settings?.registration.allowedDomains ?? [])
+  const domainAllowed = domains.length === 0 || domains.includes(email.trim().toLowerCase().split('@').pop() ?? '')
+  if (isTestAccountBlocked(email) || !isInstitutionalEmailAllowed(email, {}) || !domainAllowed) {
     response.status(400).json({
       success: false,
       message: 'Informe um e-mail institucional válido.',

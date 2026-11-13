@@ -1,3 +1,4 @@
+import { useSystemInfo } from '../../app/useSystemInfo'
 import { useCallback, useEffect, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
@@ -44,6 +45,7 @@ export function InstrumentDetail() {
   const [amendmentFile, setAmendmentFile] = useState<File | null>(null)
   const [dialogError, setDialogError] = useState('')
   const [uploading, setUploading] = useState(false)
+  const { contracts } = useSystemInfo()
 
   const load = useCallback(async () => {
     setLoaded(await fetchInstrument(instrumentId))
@@ -255,7 +257,7 @@ export function InstrumentDetail() {
                       <td>{quantity(item.used)} {item.unit}</td>
                       <td>
                         {quantity(item.balance)} {item.unit}
-                        {item.registered > 0 && item.balance / item.registered <= 0.2 && (
+                        {item.registered > 0 && item.balance / item.registered <= contracts.lowBalancePercent / 100 && (
                           <span className="central-flag central-flag-late">Saldo baixo</span>
                         )}
                       </td>

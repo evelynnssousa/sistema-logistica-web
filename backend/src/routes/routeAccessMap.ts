@@ -64,6 +64,8 @@ const slmManage: readonly Permission[] = ['slm_central:manage', 'requests:read_a
 
 export const routeAccessMap: readonly RouteAccess[] = [
   { method: 'GET', path: '/health', access: 'public', reason: 'Saúde da API' },
+  { method: 'GET', path: '/public/screen', access: 'public', reason: 'Mensagem da tela de entrada e aviso geral, definidos em Configurações' },
+  { method: 'GET', path: '/system/info', access: 'session' },
   { method: 'GET', path: '/public/forms/registration', access: 'public', reason: 'Textos do formulário de cadastro, que abre sem sessão' },
   { method: 'POST', path: '/auth/register', access: 'public', reason: 'Pedido de acesso, limitado por IP' },
   { method: 'POST', path: '/auth/login', access: 'public', reason: 'Entrada, com limite de tentativas' },

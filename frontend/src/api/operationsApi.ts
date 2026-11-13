@@ -690,6 +690,14 @@ export type SystemSettings = {
     guidance: { active: boolean; text: string }
     contact: { active: boolean; name: string; phone: string; email: string; hours: string }
   }
+  // Administração do sistema (13/11/2026).
+  registration: { allowedDomains: string[] }
+  holidays: { list: { date: string; name: string }[] }
+  announcement: { active: boolean; text: string; tone: 'info' | 'warning'; until: string | null }
+  modules: Record<'maintenance' | 'fleet' | 'flights' | 'warehouse' | 'demands', boolean>
+  contracts: { defaultNoticeDays: number; lowBalancePercent: number }
+  texts: { loginMessage: string; homeMessage: string }
+  profileDefaults: Record<'requester' | 'slm_operator', { add: string[]; remove: string[] }>
 }
 
 export type OccurrenceType = PortalOccurrenceType & { active: boolean }
@@ -712,6 +720,10 @@ export type ParametersResponse = Envelope & {
     driverPortal: {
       notificationEvents: { key: string; label: string; appliesToDriver: boolean }[]
       tripFields: { key: TripField; label: string }[]
+    }
+    profileDefaults?: {
+      adjustable: { key: string; label: string }[]
+      base: Record<'requester' | 'slm_operator', string[]>
     }
   }
 }

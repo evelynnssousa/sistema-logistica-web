@@ -1,3 +1,4 @@
+import { disabledModulePaths, useSystemInfo } from '../app/useSystemInfo'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
@@ -47,14 +48,17 @@ function HomePage() {
     }
   }, [])
 
+  const systemInfo = useSystemInfo()
   const canRequest = user?.permissions.includes('requests:create')
   // Cadastrar demanda depende do perfil no módulo, e não de uma permissão: vem do contexto do módulo.
   // Em desenvolvimento, sem as migrações, o atalho aparece como o item do menu e leva ao aviso do módulo.
   const showDemandShortcut = demandContext?.canCreate || (import.meta.env.DEV && demandContext?.migrated === false)
+  // Módulos desligados em Configurações não oferecem atalho de pedido novo.
+  const hidden = disabledModulePaths(systemInfo)
   const shortcuts: { path: string; label: string; icon: IconName }[] = [
     ...(canRequest ? newRequestShortcuts.filter((item) => user?.permissions.includes(item.permission)) : []),
     ...(showDemandShortcut ? [{ path: '/demandas/nova', label: 'Criar demanda', icon: 'demands' as const }] : []),
-  ]
+  ].filter((item) => !hidden.some((path) => item.path.startsWith(`${path}/`)))
   const firstName = user?.name.trim().split(/\s+/)[0]
 
   return (
@@ -67,6 +71,8 @@ function HomePage() {
             : 'Acompanhe aqui as suas solicitações.'
         }
       />
+
+      {systemInfo.homeMessage && <Alert tone="info">{systemInfo.homeMessage}</Alert>}
 
       {shortcuts.length > 0 && (
         <nav className="home-actions" aria-label="Abrir nova solicitação">

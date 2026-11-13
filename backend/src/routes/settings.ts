@@ -1,7 +1,11 @@
+import { codePermissionsForProfile, permissionGroups } from '../auth/permissions.js'
+import { adjustablePermissions, adjustableProfiles } from '../requests/adminSettingsRules.js'
 import { Router } from 'express'
 import type { Request, Response } from 'express'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
 import { requireAuth } from '../auth/sessionRuntime.js'
+import { refreshAdminSettings } from '../database/adminSettingsRuntime.js'
+import { activeAnnouncement } from '../requests/adminSettingsRules.js'
 import { CatalogRepository, isCatalogCategory } from '../database/catalogRepository.js'
 import type { CatalogCategory } from '../database/catalogRepository.js'
 import { notFound, sendModuleError } from '../database/moduleErrors.js'
@@ -71,6 +75,40 @@ function readOption(raw: unknown, category: CatalogCategory) {
 router.get('/catalog', async (_request, response) => {
   try {
     response.json({ success: true, catalog: await catalog.list({ activeOnly: true }) })
+  } catch (error) {
+    sendModuleError(response, error)
+  }
+})
+
+// Informações administrativas que toda tela usa: módulos ligados, aviso geral, mensagem da página
+// inicial, feriados e padrões das atas. Nenhum dado pessoal.
+router.get('/system/info', requireAuth, async (_request, response) => {
+  try {
+    const settings = await parameters.read()
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+    response.json({
+      success: true,
+      modules: settings.modules,
+      announcement: activeAnnouncement(settings.announcement, today),
+      homeMessage: settings.texts.homeMessage,
+      holidays: settings.holidays.list,
+      contracts: settings.contracts,
+    })
+  } catch (error) {
+    sendModuleError(response, error)
+  }
+})
+
+// A tela de entrada abre sem sessão: só a mensagem dela e o aviso geral.
+router.get('/public/screen', async (_request, response) => {
+  try {
+    const settings = await parameters.read()
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+    response.json({
+      success: true,
+      loginMessage: settings.texts.loginMessage,
+      announcement: activeAnnouncement(settings.announcement, today),
+    })
   } catch (error) {
     sendModuleError(response, error)
   }
@@ -191,6 +229,16 @@ router.get('/settings/parameters', requirePermission('settings:read'), async (_r
           label: definition.label,
         })),
         driverPortal: { notificationEvents: driverNotificationEvents, tripFields },
+        // Permissões padrão: o que o código dá a cada perfil e o que pode ser ajustado na tela.
+        profileDefaults: {
+          adjustable: adjustablePermissions.map((key) => ({
+            key,
+            label: (permissionGroups as readonly { permissions: readonly { key: string; label: string }[] }[])
+              .flatMap((group) => group.permissions)
+              .find((item) => item.key === key)?.label ?? key,
+          })),
+          base: Object.fromEntries(adjustableProfiles.map((role) => [role, codePermissionsForProfile(role)])),
+        },
       },
     })
   } catch (error) {
@@ -214,6 +262,8 @@ router.put('/settings/parameters/:section', requirePermission('settings:manage')
     if (!isSettingsSection(section)) throw notFound()
     const value = validateSettings(section, request.body, Object.keys(eventCatalog))
     await parameters.save(response.locals.authenticatedUser as AuthenticatedIdentity, section, value)
+    // Permissões padrão valem já na próxima requisição de cada pessoa.
+    if (section === 'profileDefaults') await refreshAdminSettings()
     response.json({ success: true, value })
   } catch (error) {
     sendModuleError(response, error)

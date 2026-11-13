@@ -1,3 +1,4 @@
+import { adjustablePermissions, adjustableProfiles } from '../requests/adminSettingsRules.js'
 import type { AuthRole } from './roles.js'
 
 /**
@@ -665,7 +666,35 @@ const profilePermissions: Record<AuthRole, readonly Permission[]> = {
   driver: ['driver_portal:access'],
 }
 
+/**
+ * Ajustes do padrão de Solicitante e Operador SLM feitos em Configurações (13/11/2026). Só as
+ * permissões comuns de cada módulo (adjustablePermissions); as especiais continuam exigindo
+ * elegibilidade, e Administrador e Motorista não mudam. Carregados na partida e a cada gravação.
+ */
+let profileAdjustments: Partial<Record<AuthRole, { add: readonly Permission[]; remove: readonly Permission[] }>> = {}
+
+export function setProfileAdjustments(value: Partial<Record<string, { add: readonly string[]; remove: readonly string[] }>>) {
+  const allowed = new Set<string>(adjustablePermissions)
+  const clean = (list: readonly string[] | undefined) =>
+    (list ?? []).filter((item): item is Permission => allowed.has(item) && isPermission(item))
+  profileAdjustments = Object.fromEntries(
+    adjustableProfiles.map((role) => [role, { add: clean(value[role]?.add), remove: clean(value[role]?.remove) }]),
+  )
+}
+
+function profileBase(role: AuthRole): readonly Permission[] {
+  const adjustment = profileAdjustments[role]
+  if (!adjustment) return profilePermissions[role]
+  const removed = new Set(adjustment.remove)
+  return [...new Set([...profilePermissions[role].filter((item) => !removed.has(item)), ...adjustment.add])]
+}
+
 export function permissionsForProfile(role: AuthRole): readonly Permission[] {
+  return profileBase(role)
+}
+
+/** Padrão do perfil definido no código, sem os ajustes de Configurações. */
+export function codePermissionsForProfile(role: AuthRole): readonly Permission[] {
   return profilePermissions[role]
 }
 
@@ -690,7 +719,7 @@ export function computeEffectivePermissions(
     ),
   )
   const available = new Set<Permission>([
-    ...profilePermissions[role],
+    ...profileBase(role),
     ...granted,
   ])
 

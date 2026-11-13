@@ -130,6 +130,12 @@ export const publishForm = (key: string, conteudo: FormContent, observacao: stri
 export const restoreForm = (key: string, versao: number) =>
   send<Envelope & { version: number }>(`${forms}/${key}/restore`, 'POST', { versao })
 
+/** Mensagem da tela de entrada e aviso geral, definidos em Configurações. Abre sem sessão. */
+export const getPublicScreen = () =>
+  apiRequest<Envelope & { loginMessage: string; announcement: { text: string; tone: 'info' | 'warning'; until: string | null } | null }>(
+    '/public/screen',
+  )
+
 export const getPublicRegistrationForm = () =>
   apiRequest<Envelope & { form: FormContent | null; version: number | null }>('/public/forms/registration')
 

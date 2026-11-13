@@ -1,3 +1,4 @@
+import { useSystemInfo } from '../../app/useSystemInfo'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -39,8 +40,15 @@ export function InstrumentForm() {
   // Para cadastrar: os setores em que a pessoa pode cadastrar demandas (todos, para o Diretor).
   const ownSectors = new Set(context.memberships.map((item) => item.sectorId))
   const responsibleOptions = options.sectors.filter((sector) => context.directorate || ownSectors.has(sector.id))
+  const { contracts } = useSystemInfo()
   const [form, setForm] = useState<InstrumentInput | null>(() =>
-    instrumentId ? null : { ...empty, responsibleSectorId: responsibleOptions.length === 1 ? responsibleOptions[0].id : '' },
+    instrumentId
+      ? null
+      : {
+          ...empty,
+          noticeDays: String(contracts.defaultNoticeDays),
+          responsibleSectorId: responsibleOptions.length === 1 ? responsibleOptions[0].id : '',
+        },
   )
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)

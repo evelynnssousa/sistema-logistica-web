@@ -51,6 +51,13 @@ const hardLimit = express.raw({ type: () => true, limit: '101mb' })
 
 type Handler = (request: Request, response: Response) => Promise<void>
 
+
+/** AAAA-MM-DD que existe no calendário (recusa 30/02 e 13/2026). */
+function isCalendarDay(value: string) {
+  const date = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+}
+
 function guarded(handler: Handler): Handler {
   return async (request, response) => {
     try {
@@ -124,7 +131,7 @@ function day(value: unknown, label: string, required = false) {
     if (required) throw new RequestValidationError(`Informe ${label}.`)
     return null
   }
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !isCalendarDay(value)) {
     throw new RequestValidationError(`${label} inválida.`)
   }
   return value

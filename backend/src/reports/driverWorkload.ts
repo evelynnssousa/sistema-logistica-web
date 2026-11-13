@@ -104,7 +104,8 @@ function minutesOutside(start: Date, end: Date, journey: Journey) {
   return outside
 }
 
-export function workloadByDay(trips: readonly WorkloadTrip[], journey: Journey): WorkloadDay[] {
+/** holidays: datas AAAA-MM-DD definidas em Configurações; nelas não há horas previstas. */
+export function workloadByDay(trips: readonly WorkloadTrip[], journey: Journey, holidays: readonly string[] = []): WorkloadDay[] {
   const groups = new Map<string, { driverId: string; driverName: string; day: string; spans: { start: Date; end: Date }[] }>()
   for (const trip of trips) {
     if (!trip.startedAt || !trip.finishedAt || trip.finishedAt < trip.startedAt) continue
@@ -126,7 +127,7 @@ export function workloadByDay(trips: readonly WorkloadTrip[], journey: Journey):
       )
       const spanMinutes = Math.round((lastFinish.getTime() - firstStart.getTime()) / 60_000)
       const workedMinutes = Math.max(tripMinutes, spanMinutes - journey.breakMinutes)
-      const expectedMinutes = journey.weekdays.includes(weekdayOf(group.day)) ? expected : 0
+      const expectedMinutes = journey.weekdays.includes(weekdayOf(group.day)) && !holidays.includes(group.day) ? expected : 0
       return {
         driverId: group.driverId,
         driverName: group.driverName,

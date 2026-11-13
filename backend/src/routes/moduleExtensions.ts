@@ -36,6 +36,13 @@ const extensions = new ModuleExtensionsRepository()
 const requests = new ServiceRequestRepository()
 const finance = new WarehouseFinanceRepository()
 
+
+/** AAAA-MM-DD que existe no calendário (recusa 30/02 e 13/2026). */
+function isCalendarDay(value: string) {
+  const date = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+}
+
 function identityOf(response: Response) {
   return response.locals.authenticatedUser as AuthenticatedIdentity
 }
@@ -435,7 +442,7 @@ function money(value: unknown, label: string, { required = false } = {}) {
 
 function optionalDay(value: unknown, label: string) {
   if (value === undefined || value === null || value === '') return null
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !isCalendarDay(value)) {
     throw new RequestValidationError(`${label} inválida.`)
   }
   return value

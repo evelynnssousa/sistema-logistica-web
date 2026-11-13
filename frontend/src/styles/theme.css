@@ -2814,3 +2814,29 @@ a {
   font-weight: 500;
   color: var(--text-muted, #5b6472);
 }
+
+/* ---------------------------------------------------------------- Configurações administrativas (13/11/2026) */
+.system-announcement {
+  margin-bottom: 16px;
+}
+
+.calendar-holiday {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--danger, #b42318);
+}
+
+.login-notice {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #eef4ff;
+  color: #1d3b6e;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.login-notice-warning {
+  background: #fff4e5;
+  color: #8a4b00;
+}

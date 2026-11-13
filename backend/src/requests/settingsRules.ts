@@ -1,3 +1,4 @@
+import { defaultAdminSettings, isAdminSettingsSection, skipHolidays, validateAdminSettings } from './adminSettingsRules.js'
 import { defaultDriverSettings, isDriverSettingsSection, validateDriverSettings } from './driverPortalRules.js'
 import { defaultReasons, otherReasonKey } from './justificationRules.js'
 import type { ReasonGroup, ReasonOption } from './justificationRules.js'
@@ -82,6 +83,8 @@ export const defaultSettings = {
   },
   // Portal do Motorista: uma seção por grupo da tela. Ver driverPortalRules.ts.
   ...defaultDriverSettings,
+  // Administração (13/11/2026): domínios, feriados, aviso, módulos, atas, textos e perfis.
+  ...defaultAdminSettings,
 }
 
 type DeadlineModule = 'maintenance' | 'fleet' | 'flights'
@@ -279,6 +282,7 @@ export function validateSettings(
   const body = record(raw, 'Parâmetro')
 
   if (isDriverSettingsSection(section)) return validateDriverSettings(section, body)
+  if (isAdminSettingsSection(section)) return validateAdminSettings(section, body)
 
   if (section === 'operations') {
     const deadlines = record(body.deadlineDays ?? {}, 'Prazo')
@@ -422,7 +426,7 @@ export function mergeSettings(rows: readonly { secao: string; valor: unknown }[]
 
 /** Prazo padrão de uma nova solicitação, ou null quando o parâmetro não foi definido. */
 export function defaultDeadline(
-  settings: Pick<SystemSettings, 'operations'> & Partial<Pick<SystemSettings, 'deadlines'>>,
+  settings: Pick<SystemSettings, 'operations'> & Partial<Pick<SystemSettings, 'deadlines' | 'holidays'>>,
   priority: string,
   now = new Date(),
   scope: { module?: DeadlineModule; serviceTypeId?: string | null } = {},
@@ -433,5 +437,7 @@ export function defaultDeadline(
     scope.module ? settings.deadlines?.byModule?.[scope.module] : null,
     scope.serviceTypeId ? settings.deadlines?.byServiceType?.[scope.serviceTypeId] : null,
   ].filter((value): value is number => typeof value === 'number' && value > 0)
-  return candidates.length > 0 ? new Date(now.getTime() + Math.min(...candidates) * 86_400_000) : null
+  if (candidates.length === 0) return null
+  // Prazo que cair em feriado (Configurações) passa para o próximo dia útil quanto a feriados.
+  return skipHolidays(new Date(now.getTime() + Math.min(...candidates) * 86_400_000), (settings.holidays?.list ?? []).map((item) => item.date))
 }

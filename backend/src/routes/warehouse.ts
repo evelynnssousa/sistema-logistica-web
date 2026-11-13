@@ -1,3 +1,4 @@
+import { assertModuleEnabled } from '../database/moduleSwitch.js'
 import { holdsPermission } from '../auth/permissions.js'
 import { Router } from 'express'
 import type { Request, Response } from 'express'
@@ -239,6 +240,7 @@ router.post(
   requirePermission('warehouse:read'),
   requirePermission('requests:create'),
   guarded(async (request, response) => {
+    await assertModuleEnabled('warehouse')
     const body = asBody(request.body)
     const created = await warehouse.createInternalRequest(identityOf(response), {
       note: optionalText(body.note, 'Observação'),
@@ -253,6 +255,7 @@ router.post(
   '/warehouse/external-requests',
   manage,
   guarded(async (request, response) => {
+    await assertModuleEnabled('warehouse')
     const body = asBody(request.body)
     const created = await warehouse.createExternalRequest(identityOf(response), {
       externalReference: optionalText(body.externalReference, 'Número de referência', 120),

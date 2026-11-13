@@ -420,7 +420,9 @@ export async function fleetWorkbook(
 
   // Horas dos motoristas: dado de pessoal, só para quem administra a Frota (cadastro de motoristas).
   if (hasDrivers && holdsPermission(identity, 'fleet:manage')) {
-    const journey = journeyOf(await readSystemSettings(pool))
+    const settings = await readSystemSettings(pool)
+    const journey = journeyOf(settings)
+    const holidays = settings.holidays.list.map((item) => item.date)
     const days = workloadByDay(
       tripRows
         .filter(({ row }) => row.motorista_id && row.motorista)
@@ -431,6 +433,7 @@ export async function fleetWorkbook(
           finishedAt: row.execucao_fim,
         })),
       journey,
+      holidays,
     )
     const weekdayNames = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado']
     const journeyText = `${journey.weekdays.map((day) => weekdayNames[day]).join(', ')}, das ${journey.start} às ${journey.end}, intervalo de ${journey.breakMinutes} min`

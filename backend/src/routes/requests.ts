@@ -1,3 +1,4 @@
+import { assertModuleEnabled } from '../database/moduleSwitch.js'
 import { Router } from 'express'
 import type { Request, Response } from 'express'
 import { holdsPermission } from '../auth/permissions.js'
@@ -381,6 +382,7 @@ export function registerRequestRoutes(router: Router, module: RequestModule) {
     requirePermission('requests:create'),
     requirePermission(`${module}:create` as Permission),
     guarded(async (request, response) => {
+      await assertModuleEnabled(module === 'flights' ? 'flights' : module)
       const input: NewRequest = toFormInput(module, request.body)
       const body = asBody(request.body)
       const pool = getDatabasePool()

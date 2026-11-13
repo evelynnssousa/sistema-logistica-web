@@ -12,6 +12,7 @@ import { startIntegrationWorker } from './integrations/worker.js'
 import { shouldRunMonitoring, startMonitoring } from './monitoring/healthChecks.js'
 import { logSecurityEvent } from './security/logger.js'
 import { checkEnvironment } from './config/environmentCheck.js'
+import { startAdminSettingsRefresh } from './database/adminSettingsRuntime.js'
 
 // Em produção, PASSWORD_RESET_PEPPER definido e curto impede o início (ausente só desliga a recuperação).
 assertPasswordResetPepperForStartup()
@@ -19,6 +20,8 @@ assertPasswordResetPepperForStartup()
 const PORT = Number(process.env.PORT) || 3000
 
 app.listen(PORT, '0.0.0.0', () => {
+  // Permissões padrão ajustadas em Configurações. Sem banco ou sem gravação, valem as do código.
+  startAdminSettingsRefresh()
   console.log(`API iniciada na porta ${PORT}`)
   console.log(
     isRemoteDatabaseConfigured()

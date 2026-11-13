@@ -1,3 +1,4 @@
+import { assertModuleEnabled } from '../database/moduleSwitch.js'
 import express, { Router } from 'express'
 import type { Request, RequestHandler, Response } from 'express'
 import { AttachmentRejectedError, contentTypes, inlineKinds, validateAttachment } from '../attachments/fileValidation.js'
@@ -578,6 +579,7 @@ router.post(
     const context = await requireContext(response)
     // A autorização vem antes da validação: quem não pode cadastrar não recebe dicas sobre os dados.
     if (!canCreateDemands(context)) throw forbidden()
+    await assertModuleEnabled('demands')
     const created = await demands.create(identityOf(response), context, readDemandInput(asBody(request.body)))
     response.status(201).json({ success: true, ...created })
   }),

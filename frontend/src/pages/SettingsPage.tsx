@@ -17,6 +17,7 @@ import { refreshCatalog } from '../app/useCatalog'
 import { useHasPermission } from '../auth/UserContext'
 import { useDemandContext } from '../app/useDemandContext'
 import AccessDeniedPage from './AccessDeniedPage'
+import AdminSettingsSection from '../components/AdminSettingsSection'
 import DemandSettingsSection from '../components/DemandSettingsSection'
 import DriverPortalSettingsSection from '../components/DriverPortalSettingsSection'
 import EmailTemplatesManager from '../components/EmailTemplatesManager'
@@ -413,6 +414,8 @@ function FullSettingsPage() {
           </div>
         </section>
       ))}
+
+      <AdminSettingsSection canManage={canManage} />
 
       <ParametersSection canManage={canManage} />
 

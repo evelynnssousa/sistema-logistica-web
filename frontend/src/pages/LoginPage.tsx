@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { getPublicScreen } from '../api/configApi'
 import { login } from '../auth/auth'
 import logoJucesp from '../assets/logoJucespNovo.png'
 import '../App.css'
@@ -16,6 +17,20 @@ function LoginPage({ notice = '', onLogin, onRegister, onRecoverPassword }: Logi
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [screen, setScreen] = useState<Awaited<ReturnType<typeof getPublicScreen>> | null>(null)
+
+  // Mensagem e aviso definidos em Configurações. Sem resposta, a tela segue igual.
+  useEffect(() => {
+    let active = true
+    getPublicScreen()
+      .then((result) => {
+        if (active) setScreen(result)
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [])
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -53,6 +68,12 @@ function LoginPage({ notice = '', onLogin, onRegister, onRecoverPassword }: Logi
         <p className="login-description">
           Sistema de Serviços de Logística e Manutenção
         </p>
+        {screen?.announcement && (
+          <p className={`login-notice${screen.announcement.tone === 'warning' ? ' login-notice-warning' : ''}`} role="status">
+            {screen.announcement.text}
+          </p>
+        )}
+        {screen?.loginMessage && <p className="login-notice">{screen.loginMessage}</p>}
 
         <form onSubmit={handleSubmit} className="login-form">
           <label htmlFor="login-identifier">E-mail</label>

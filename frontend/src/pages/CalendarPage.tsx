@@ -1,3 +1,4 @@
+import { useSystemInfo } from '../app/useSystemInfo'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
@@ -189,6 +190,12 @@ function EventDetails({
 }
 
 function CalendarPage() {
+  // Feriados definidos em Configurações, pela data local do dia mostrado.
+  const { holidays } = useSystemInfo()
+  const holidayOf = (day: Date) => {
+    const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`
+    return holidays.find((item) => item.date === key)?.name ?? null
+  }
   const canSeeAssignees = useHasPermission('requests:update')
   const [view, setView] = useState<View>('Mês')
   const [reference, setReference] = useState(() => new Date())
@@ -351,6 +358,7 @@ function CalendarPage() {
                 key={day.toISOString()}
               >
                 <div className="calendar-day-number">{day.getDate()}</div>
+                {holidayOf(day) && <div className="calendar-holiday">{holidayOf(day)}</div>}
                 {(eventsByDay.get(day.toDateString()) ?? []).map((event) => (
                   <EventButton key={eventKey(event)} event={event} onOpen={setOpened} />
                 ))}
@@ -362,6 +370,7 @@ function CalendarPage() {
             {days.map((day) => (
               <div key={day.toISOString()}>
                 <strong>{day.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' })}</strong>
+                {holidayOf(day) && <span className="calendar-holiday"> Feriado: {holidayOf(day)}</span>}
                 {(eventsByDay.get(day.toDateString()) ?? []).map((event) => (
                   <EventButton key={eventKey(event)} event={event} withDetails onOpen={setOpened} />
                 ))}

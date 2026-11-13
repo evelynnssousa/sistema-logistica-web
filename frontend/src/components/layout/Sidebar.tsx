@@ -3,6 +3,7 @@ import logoJucesp from '../../assets/logoJucespNovo.png'
 import { getNavigationForUser, navigationGroups } from '../../app/navigation'
 import { roleLabels } from '../../app/roleLabels'
 import { useDemandContext } from '../../app/useDemandContext'
+import { disabledModulePaths, useSystemInfo } from '../../app/useSystemInfo'
 import { useAuthenticatedUser } from '../../auth/UserContext'
 import Icon from '../ui/Icon'
 
@@ -15,7 +16,14 @@ function Sidebar({ open, onClose }: SidebarProps) {
   const { pathname } = useLocation()
   const user = useAuthenticatedUser()
   const { context: demandContext } = useDemandContext()
-  const visibleItems = user ? getNavigationForUser(user, demandContext?.hasAccess === true || import.meta.env.DEV, demandContext?.canConfigure === true) : []
+  const systemInfo = useSystemInfo()
+  // Módulo desligado em Configurações sai do menu; os registros continuam acessíveis pelo endereço.
+  const hidden = disabledModulePaths(systemInfo)
+  const visibleItems = user
+    ? getNavigationForUser(user, demandContext?.hasAccess === true || import.meta.env.DEV, demandContext?.canConfigure === true).filter(
+        (item) => !hidden.includes(item.path),
+      )
+    : []
   const currentPath = pathname.replace(/\/+$/, '') || '/'
 
   return (

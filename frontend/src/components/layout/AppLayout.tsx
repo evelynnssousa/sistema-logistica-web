@@ -2,7 +2,8 @@ import { Suspense, useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
-import { Loading } from '../ui/Feedback'
+import { Alert, Loading } from '../ui/Feedback'
+import { useSystemInfo } from '../../app/useSystemInfo'
 
 type AppLayoutProps = {
   apiOnline: boolean | null
@@ -10,6 +11,7 @@ type AppLayoutProps = {
 
 function AppLayout({ apiOnline }: AppLayoutProps) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const { announcement } = useSystemInfo()
 
   useEffect(() => {
     if (!menuOpen) return
@@ -35,6 +37,11 @@ function AppLayout({ apiOnline }: AppLayoutProps) {
       <main className="main-content">
         <Topbar apiOnline={apiOnline} onOpenMenu={() => setMenuOpen(true)} />
         <div className="page-content" id="conteudo-principal" tabIndex={-1}>
+          {announcement && (
+            <Alert tone={announcement.tone === 'warning' ? 'warning' : 'info'} className="system-announcement">
+              {announcement.text}
+            </Alert>
+          )}
           {/* As telas chegam sob demanda (App.tsx): o menu e o topo ficam visíveis enquanto isso. */}
           <Suspense fallback={<Loading label="Carregando a tela..." />}>
             <Outlet />
