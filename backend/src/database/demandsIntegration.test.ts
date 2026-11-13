@@ -1248,7 +1248,18 @@ test('alertas de prazo chegam uma vez, respeitam o lembrete e voltam se o prazo 
     ).rows[0].total
 
   await publishDeadlineAlerts()
-  await publishDeadlineAlerts()
+  // A segunda rodada (como a do worker, a cada hora) não pode falhar no acontecimento já gravado.
+  const warnings: string[] = []
+  const originalWarn = console.warn
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args.map(String).join(' '))
+  }
+  try {
+    await publishDeadlineAlerts()
+  } finally {
+    console.warn = originalWarn
+  }
+  assert.deepEqual(warnings.filter((line) => line.includes('demand_notification_failed')), [], 'sem falha na repetição')
   assert.equal(await count(soon.id), 1, 'não repete')
   assert.equal(await count(distant.id), 0, 'ainda longe')
   assert.equal(await count(custom.id), 1, 'lembrete configurado na demanda')
