@@ -40,14 +40,26 @@ export type MovementFinance = {
   commitment?: string | null
   supplier?: string | null
   agreementId?: string | null
+  /** Item de ata ou contrato do Controle de Demandas (022): a entrada também baixa o saldo dele. */
+  instrumentItemId?: string | null
 }
 
 const hasFinance = (finance: MovementFinance | undefined) =>
   Boolean(
     finance &&
       (finance.paid !== null && finance.paid !== undefined ||
-        finance.invoice || finance.commitment || finance.supplier || finance.agreementId),
+        finance.invoice || finance.commitment || finance.supplier || finance.agreementId || finance.instrumentItemId),
   )
+
+async function linkSchemaExists(client: Client) {
+  const { rows } = await client.query<{ present: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+                     AND table_name = 'stock_movements' AND column_name = 'instrumento_item_id') AS present`,
+  )
+  return rows[0].present
+}
+
+const brasiliaDay = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
 
 /**
  * Registra uma entrada ou saída, com o valor quando a 020 existe. Quem chama já conferiu o saldo
@@ -98,17 +110,46 @@ export async function recordStockMovement(
     if (!agreement.rows[0].ativo) throw conflict('Esta ata está encerrada. Escolha uma ata ativa.')
   }
 
+  // Item de ata ou contrato: confere vigência e saldo do item, sob bloqueio, antes de gravar.
+  let instrumentItem: { instrument_id: string; valor_unitario: string } | null = null
+  if (finance.instrumentItemId) {
+    if (input.type !== 'entrada') throw new ModuleError('Só a entrada pode indicar item de ata ou contrato.', 400)
+    if (!(await linkSchemaExists(client))) {
+      throw new ModuleError('A ligação com atas e contratos depende da migração 022, ainda não aplicada neste banco.', 409)
+    }
+    const item = await client.query<{
+      instrument_id: string; valor_unitario: string; ativo: boolean; encerrado: boolean; quantidade_registrada: string; usado: string | null
+    }>(
+      `SELECT it.instrument_id::text AS instrument_id, it.valor_unitario, it.ativo, i.encerrado, it.quantidade_registrada,
+              (SELECT sum(u.quantidade) FROM public.contract_instrument_usages u WHERE u.item_id = it.id) AS usado
+         FROM public.contract_instrument_items it JOIN public.contract_instruments i ON i.id = it.instrument_id
+        WHERE it.id = $1 FOR UPDATE OF it`,
+      [finance.instrumentItemId],
+    )
+    const row = item.rows[0]
+    if (!row) throw new ModuleError('Item da ata ou do contrato não encontrado.', 400)
+    if (row.encerrado || !row.ativo) throw conflict('Esta ata ou contrato (ou o item) está encerrado.')
+    const balance = Number(row.quantidade_registrada) - Number(row.usado ?? 0)
+    if (input.quantity > balance + 1e-9) {
+      throw conflict(`A quantidade é maior que o saldo do item da ata (${balance.toLocaleString('pt-BR')}).`)
+    }
+    instrumentItem = row
+  }
+
+  // Sem valor digitado, a entrada pela ata vale o preço registrado nela.
+  const paid = finance.paid ?? (instrumentItem ? cents(input.quantity * Number(instrumentItem.valor_unitario)) : null)
   const valued =
     input.type === 'entrada'
-      ? entryValue(stock, input.quantity, finance.paid ?? null)
+      ? entryValue(stock, input.quantity, paid)
       : { value: exitCost(stock, input.quantity), informed: false }
   const newValue = Math.max(0, cents(stock.value + (input.type === 'entrada' ? valued.value : -valued.value)))
 
-  await client.query(
+  // A movimentação é permanente: o vínculo com o item entra no próprio INSERT (coluna da 022).
+  const inserted = await client.query<{ id: string }>(
     `INSERT INTO public.stock_movements
        (material_id, tipo, quantidade, motivo, usuario_id, material_request_id,
-        valor_total, valor_informado, nota_fiscal, empenho, fornecedor, ata_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+        valor_total, valor_informado, nota_fiscal, empenho, fornecedor, ata_id${instrumentItem ? ', instrumento_item_id' : ''})
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12${instrumentItem ? ', $13' : ''}) RETURNING id::text AS id`,
     [
       input.materialId,
       input.type,
@@ -122,9 +163,24 @@ export async function recordStockMovement(
       input.type === 'entrada' ? finance.commitment ?? null : null,
       input.type === 'entrada' ? finance.supplier ?? null : null,
       input.type === 'entrada' ? finance.agreementId ?? null : null,
+      ...(instrumentItem ? [finance.instrumentItemId] : []),
     ],
   )
   await client.query(`UPDATE public.materials SET valor_estoque = $2 WHERE id = $1`, [input.materialId, newValue])
+  if (instrumentItem) {
+    const movementId = inserted.rows[0].id
+    const document = [finance.invoice && `NF ${finance.invoice}`, finance.commitment && `Empenho ${finance.commitment}`].filter(Boolean).join(' · ')
+    await client.query(
+      `INSERT INTO public.contract_instrument_usages
+         (instrument_id, item_id, quantidade, valor_total, data_utilizacao, documento, observacao, registrado_por, stock_movement_id)
+       VALUES ($1, $2, $3, $4, $5, $6, 'Entrada registrada no Almoxarifado.', $7, $8)`,
+      [
+        instrumentItem.instrument_id, finance.instrumentItemId, input.quantity,
+        cents(input.quantity * Number(instrumentItem.valor_unitario)), brasiliaDay(), document || null, input.userId, movementId,
+      ],
+    )
+    await client.query(`UPDATE public.contract_instruments SET updated_at = now() WHERE id = $1`, [instrumentItem.instrument_id])
+  }
   return { value: valued.value }
 }
 
@@ -318,6 +374,60 @@ export class WarehouseFinanceRepository {
     })
   }
 
+  /**
+   * Atas e contratos de materiais do Controle de Demandas (021), para a entrada no estoque e o painel.
+   * Quem tem warehouse:finance os vê todos, de qualquer setor: são a fonte de compra do Almoxarifado.
+   */
+  async materialInstruments() {
+    const pool = this.poolProvider()
+    const { rows: present } = await pool.query<{ ok: boolean }>(`SELECT to_regclass('public.contract_instruments') IS NOT NULL AS ok`)
+    if (!present[0].ok) return []
+    const { rows } = await pool.query<{
+      id: string; tipo: string; numero: string; objeto: string; fornecedor: string | null; valor_total: string
+      vigencia_fim: string | null; gasto: string | null; setor: string
+      itens: { id: string; descricao: string; unidade: string; valor_unitario: number; saldo: number }[] | null
+    }>(
+      `SELECT i.id::text AS id, i.tipo, i.numero, i.objeto, i.fornecedor, i.valor_total,
+              to_char(i.vigencia_fim, 'YYYY-MM-DD') AS vigencia_fim, s.nome AS setor,
+              (SELECT sum(u.valor_total) FROM public.contract_instrument_usages u WHERE u.instrument_id = i.id) AS gasto,
+              (SELECT json_agg(json_build_object(
+                        'id', it.id::text, 'descricao', it.descricao, 'unidade', it.unidade,
+                        'valor_unitario', it.valor_unitario,
+                        'saldo', it.quantidade_registrada - coalesce((SELECT sum(u.quantidade) FROM public.contract_instrument_usages u WHERE u.item_id = it.id), 0)
+                      ) ORDER BY it.numero_item NULLS LAST, it.descricao)
+                 FROM public.contract_instrument_items it WHERE it.instrument_id = i.id AND it.ativo) AS itens
+         FROM public.contract_instruments i JOIN public.demand_sectors s ON s.id = i.setor_responsavel_id
+        WHERE NOT i.encerrado AND i.categoria = 'material'
+        ORDER BY i.vigencia_fim NULLS LAST, lower(i.numero)`,
+    )
+    const today = brasiliaDay()
+    return rows.map((row) => {
+      const total = Number(row.valor_total)
+      const spent = Number(row.gasto ?? 0)
+      return {
+        id: row.id,
+        type: row.tipo,
+        number: row.numero,
+        subject: row.objeto,
+        supplier: row.fornecedor,
+        sector: row.setor,
+        total,
+        spent: cents(spent),
+        balance: cents(total - spent),
+        usedPercent: total > 0 ? Math.round((spent / total) * 1000) / 10 : null,
+        validUntil: row.vigencia_fim,
+        expired: Boolean(row.vigencia_fim && row.vigencia_fim < today),
+        items: (row.itens ?? []).map((item) => ({
+          id: item.id,
+          description: item.descricao,
+          unit: item.unidade,
+          unitPrice: Number(item.valor_unitario),
+          balance: Number(item.saldo),
+        })),
+      }
+    })
+  }
+
   /** Painel financeiro: período para compras, consumo e rankings; o valor do estoque é o de agora. */
   async summary(period: { from: Date; to: Date }) {
     const pool = this.poolProvider()
@@ -375,6 +485,8 @@ export class WarehouseFinanceRepository {
       ),
     ])
 
+    const instruments = await this.materialInstruments()
+    const activeInstruments = instruments.filter((item) => !item.expired)
     const purchases = monthly.rows.reduce((total, row) => total + Number(row.compras ?? 0), 0)
     const consumption = monthly.rows.reduce((total, row) => total + Number(row.consumo ?? 0), 0)
     const current = agreements.filter((agreement) => agreement.situation === 'vigente')
@@ -397,9 +509,11 @@ export class WarehouseFinanceRepository {
       materialsWithoutValue: stock.rows[0].sem_valor,
       purchases: cents(purchases),
       consumption: cents(consumption),
-      agreementsTotal: cents(current.reduce((total, agreement) => total + agreement.total, 0)),
-      agreementsSpent: cents(current.reduce((total, agreement) => total + agreement.spent, 0)),
-      agreementsBalance: cents(current.reduce((total, agreement) => total + agreement.balance, 0)),
+      // Atas do Almoxarifado e atas e contratos de materiais do Controle de Demandas, vigentes.
+      agreementsTotal: cents(current.reduce((total, agreement) => total + agreement.total, 0) + activeInstruments.reduce((total, item) => total + item.total, 0)),
+      agreementsSpent: cents(current.reduce((total, agreement) => total + agreement.spent, 0) + activeInstruments.reduce((total, item) => total + item.spent, 0)),
+      agreementsBalance: cents(current.reduce((total, agreement) => total + agreement.balance, 0) + activeInstruments.reduce((total, item) => total + item.balance, 0)),
+      instruments,
       monthly: monthly.rows.map((row) => ({
         month: row.mes,
         purchases: cents(Number(row.compras ?? 0)),

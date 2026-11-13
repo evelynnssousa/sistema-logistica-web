@@ -182,7 +182,7 @@ export function WarehouseFinanceTab() {
 
           <section className="ui-card ui-stacked" aria-labelledby="finance-agreements">
             <div className="ui-card-heading">
-              <h2 id="finance-agreements">Atas de registro de preços</h2>
+              <h2 id="finance-agreements">Atas cadastradas no Almoxarifado</h2>
               <button type="button" className="maintenance-secondary-button" onClick={() => edit(null)}>
                 <Icon name="add" size={18} />
                 Nova ata
@@ -241,6 +241,49 @@ export function WarehouseFinanceTab() {
               </div>
             )}
           </section>
+
+          {summary.instruments && summary.instruments.length > 0 && (
+            <section className="ui-card ui-stacked" aria-labelledby="finance-instruments">
+              <h2 id="finance-instruments">Atas e contratos de materiais (Controle de Demandas)</h2>
+              <p className="demand-muted">
+                Cadastrados pelos setores no Controle de Demandas. Ao registrar uma entrada no Estoque interno, escolha a ata e o
+                item: o saldo do item baixa automaticamente.
+              </p>
+              <div className="data-table-wrapper">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Ata ou contrato</th>
+                      <th>Vigência até</th>
+                      <th>Valor</th>
+                      <th>Utilizado</th>
+                      <th>Saldo</th>
+                      <th>Usado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary.instruments.map((item) => (
+                      <tr key={item.id}>
+                        <td>
+                          {item.type === 'ata' ? 'Ata' : 'Contrato'} {item.number}
+                          <small className="central-subtext">{item.subject}</small>
+                          <small className="central-subtext">{item.supplier ? `${item.supplier} · ` : ''}{item.sector}</small>
+                        </td>
+                        <td>
+                          {day(item.validUntil)}
+                          {item.expired && <span className="central-flag central-flag-late">Vencida</span>}
+                        </td>
+                        <td>{formatMoney(item.total)}</td>
+                        <td>{formatMoney(item.spent)}</td>
+                        <td>{formatMoney(item.balance)}</td>
+                        <td>{item.usedPercent === null ? '—' : `${item.usedPercent.toLocaleString('pt-BR')}%`}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
 
           <section className="ui-card ui-stacked" aria-labelledby="finance-monthly">
             <h2 id="finance-monthly">Compras e consumo por mês</h2>

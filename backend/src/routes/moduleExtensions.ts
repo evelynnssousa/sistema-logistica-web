@@ -449,6 +449,7 @@ function readMovementFinance(body: Record<string, unknown>, type: unknown) {
     commitment: optionalText(body.empenho, 'Empenho', 60),
     supplier: optionalText(body.fornecedor, 'Fornecedor', 200),
     agreementId: optionalUuid(body.ataId, 'a ata'),
+    instrumentItemId: optionalUuid(body.itemAtaId, 'o item da ata ou do contrato'),
   }
   const any = Object.values(finance).some((value) => value !== null)
   if (!any) return null
@@ -492,6 +493,14 @@ router.get(
   ...warehouseFinance,
   guarded(async (request, response) => {
     response.json({ success: true, summary: await finance.summary(financePeriod(asBody(request.query))) })
+  }),
+)
+
+router.get(
+  '/warehouse/finance/instruments',
+  ...warehouseFinance,
+  guarded(async (_request, response) => {
+    response.json({ success: true, instruments: await finance.materialInstruments() })
   }),
 )
 

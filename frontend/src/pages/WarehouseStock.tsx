@@ -4,6 +4,7 @@ import { errorMessage, formatDateTime } from '../api/modulesApi'
 import {
   addStockMovement,
   formatMoney,
+  listMaterialInstruments,
   listPriceAgreements,
   listStock,
   listStockMovements,
@@ -11,7 +12,7 @@ import {
   setStockReserved,
   setStockValue,
 } from '../api/operationsApi'
-import type { PriceAgreement, StockItem, StockMovement } from '../api/operationsApi'
+import type { MaterialInstrument, PriceAgreement, StockItem, StockMovement } from '../api/operationsApi'
 import { useHasPermission } from '../auth/UserContext'
 import { Alert, EmptyState, Loading } from '../components/ui/Feedback'
 import { FilterBar, FilterSelect, SearchField } from '../components/ui/Filters'
@@ -60,6 +61,8 @@ export function StockTab() {
   const [commitment, setCommitment] = useState('')
   const [supplier, setSupplier] = useState('')
   const [agreementId, setAgreementId] = useState('')
+  const [instruments, setInstruments] = useState<MaterialInstrument[]>([])
+  const [instrumentItemId, setInstrumentItemId] = useState('')
   const [valueFor, setValueFor] = useState<StockItem | null>(null)
   const [stockValue, setStockValueInput] = useState('')
   const [valueReason, setValueReason] = useState('')
@@ -73,6 +76,12 @@ export function StockTab() {
         if (active) setAgreements(result.agreements.filter((agreement) => agreement.active))
       })
       // Sem a migração 020 não há atas: o formulário segue sem a lista.
+      .catch(() => undefined)
+    // Atas e contratos de materiais do Controle de Demandas (021).
+    listMaterialInstruments()
+      .then((result) => {
+        if (active) setInstruments(result.instruments.filter((item) => !item.expired && item.items.length > 0))
+      })
       .catch(() => undefined)
     return () => {
       active = false
@@ -125,7 +134,8 @@ export function StockTab() {
               notaFiscal: invoice || undefined,
               empenho: commitment || undefined,
               fornecedor: supplier || undefined,
-              ataId: agreementId || undefined,
+              ataId: agreementId.startsWith('instrumento:') ? undefined : agreementId || undefined,
+              itemAtaId: agreementId.startsWith('instrumento:') ? instrumentItemId || undefined : undefined,
             }
           : {}),
       })
@@ -136,6 +146,7 @@ export function StockTab() {
       setCommitment('')
       setSupplier('')
       setAgreementId('')
+      setInstrumentItemId('')
       setNotice('Movimentação registrada.')
       await load()
     } catch (err) {
@@ -371,19 +382,55 @@ export function StockTab() {
                 </label>
                 <label className="maintenance-form-field">
                   <span>Ata de registro de preços</span>
-                  <select value={agreementId} onChange={(event) => setAgreementId(event.target.value)}>
+                  <select
+                    value={agreementId}
+                    onChange={(event) => {
+                      setAgreementId(event.target.value)
+                      const instrument = instruments.find((item) => `instrumento:${item.id}` === event.target.value)
+                      setInstrumentItemId(instrument?.items[0]?.id ?? '')
+                    }}
+                  >
                     <option value="">Sem ata</option>
-                    {agreements.map((agreement) => (
-                      <option key={agreement.id} value={agreement.id}>
-                        {agreement.number}
-                        {agreement.supplier ? ` (${agreement.supplier})` : ''}
-                      </option>
-                    ))}
+                    {instruments.length > 0 && (
+                      <optgroup label="Atas e contratos (Controle de Demandas)">
+                        {instruments.map((item) => (
+                          <option key={item.id} value={`instrumento:${item.id}`}>
+                            {item.type === 'ata' ? 'Ata' : 'Contrato'} {item.number}
+                            {item.supplier ? ` (${item.supplier})` : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {agreements.length > 0 && (
+                      <optgroup label="Atas cadastradas no Almoxarifado">
+                        {agreements.map((agreement) => (
+                          <option key={agreement.id} value={agreement.id}>
+                            {agreement.number}
+                            {agreement.supplier ? ` (${agreement.supplier})` : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                 </label>
+                {agreementId.startsWith('instrumento:') && (
+                  <label className="maintenance-form-field">
+                    <span>Item da ata ou do contrato *</span>
+                    <select required value={instrumentItemId} onChange={(event) => setInstrumentItemId(event.target.value)}>
+                      {instruments
+                        .find((item) => `instrumento:${item.id}` === agreementId)
+                        ?.items.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.description} ({formatMoney(item.unitPrice)}/{item.unit}, saldo {item.balance.toLocaleString('pt-BR')})
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                )}
                 <p id="stock-paid-hint" className="central-subtext form-grid-wide">
-                  Valor total pago: o valor de toda a quantidade da entrada. Em branco (por exemplo, numa devolução), a entrada
-                  vale o custo médio atual.
+                  Valor total pago: o valor de toda a quantidade da entrada. Em branco, a entrada vale o preço do item da ata (se
+                  escolhida) ou o custo médio atual (por exemplo, numa devolução). Com item de ata ou contrato, o saldo dele baixa
+                  automaticamente.
                 </p>
               </>
             )}

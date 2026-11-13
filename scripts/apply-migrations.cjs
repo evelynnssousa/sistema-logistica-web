@@ -91,8 +91,19 @@ async function sequenceAccess(client) {
   return access
 }
 
-const exists = async (client, table) =>
-  (await client.query(`SELECT to_regclass($1) IS NOT NULL AS present`, [`public.${table}`])).rows[0].present
+// Marcador "tabela" ou, para migração que só acrescenta colunas, "tabela.coluna".
+const exists = async (client, marker) => {
+  const [table, column] = marker.split('.')
+  if (!column) {
+    return (await client.query(`SELECT to_regclass($1) IS NOT NULL AS present`, [`public.${table}`])).rows[0].present
+  }
+  const { rows } = await client.query(
+    `SELECT EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2) AS present`,
+    [table, column],
+  )
+  return rows[0].present
+}
 
 /**
  * Tudo em public que anon, authenticated, service_role ou PUBLIC alcançam: tabelas, sequências e

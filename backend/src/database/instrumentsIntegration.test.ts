@@ -129,7 +129,7 @@ before(async () => {
     '009_module_extensions.sql', '010_monitoring.sql', '011_delivery_forecast.sql', '012_operational_transparency.sql',
     '013_communications.sql', '014_demands.sql', '015_organizational_structure.sql', '016_driver_portal.sql',
     '017_driver_portal_settings.sql', '018_public_api_privileges.sql', '019_email_quota.sql', '020_warehouse_finance.sql',
-    '021_contract_instruments.sql',
+    '021_contract_instruments.sql', '022_forms_and_links.sql',
   ]) {
     await pool.query(schema(file))
   }
@@ -299,6 +299,37 @@ test('dashboard: taxas de desempenho presentes, sem base dão porcentagem nula',
   assert.equal(summary.body.rates.onTime.percent, null)
   assert.equal(summary.body.rates.cancelled.eligible, 0)
   assert.ok(summary.body.rates.warehouseComplete)
+})
+
+test('ligação com o Almoxarifado: a entrada pelo item da ata baixa o saldo dele e aparece em Valores', async () => {
+  const unit = await post('/settings/catalog/measurementUnits', admin, { label: 'Resma' })
+  assert.equal(unit.status, 201, unit.text)
+  const material = await post('/warehouse/materials', admin, { name: 'Papel Ligado', unitId: unit.body.option.id })
+  assert.equal(material.status, 201, material.text)
+  const options = (await get('/warehouse/finance/instruments', admin)).body.instruments
+  const ata = options.find((item: { id: string }) => item.id === ataId)
+  assert.ok(ata, 'a ata de materiais aparece para o Almoxarifado')
+  const before = ata.items[0].balance
+
+  assert.equal((await post('/warehouse/stock-movements', admin, {
+    materialId: material.body.id, tipo: 'entrada', quantidade: before + 1, justificativa: 'Acima do saldo', itemAtaId: itemId,
+  })).status, 409)
+  const entry = await post('/warehouse/stock-movements', admin, {
+    materialId: material.body.id, tipo: 'entrada', quantidade: 20, justificativa: 'Compra pela ata', notaFiscal: '555', itemAtaId: itemId,
+  })
+  assert.equal(entry.status, 201, entry.text)
+
+  const detail = (await get(`/demand-instruments/${ataId}`, memberA)).body.instrument
+  assert.equal(detail.items[0].balance, before - 20)
+  const usage = detail.usages.find((item: { document: string | null }) => item.document === 'NF 555')
+  assert.ok(usage)
+  assert.equal(usage.value, 510)
+  const stock = (await get('/warehouse/stock', admin)).body.items.find((item: { id: string }) => item.id === material.body.id)
+  assert.equal(stock.stockValue, 510, 'sem valor digitado, vale o preço da ata')
+  const movements = (await get('/warehouse/stock-movements', admin)).body.movements
+  assert.equal(movements.find((item: { reason: string }) => item.reason === 'Compra pela ata').agreement, 'Ata 12/2026')
+  const summary = (await get('/warehouse/finance', admin)).body.summary
+  assert.ok(summary.instruments.some((item: { id: string }) => item.id === ataId))
 })
 
 test('a 021 não se desfaz com atas cadastradas', async () => {

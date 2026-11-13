@@ -243,6 +243,7 @@ export const routeAccessMap: readonly RouteAccess[] = [
   { method: 'POST', path: '/warehouse/stock-movements', access: 'permission', requires: ['warehouse:manage'] },
   { method: 'GET', path: '/warehouse/finance', access: 'permission', requires: ['warehouse:manage', 'warehouse:finance'] },
   { method: 'GET', path: '/warehouse/finance/agreements', access: 'permission', requires: ['warehouse:manage', 'warehouse:finance'] },
+  { method: 'GET', path: '/warehouse/finance/instruments', access: 'permission', requires: ['warehouse:manage', 'warehouse:finance'] },
   { method: 'POST', path: '/warehouse/finance/agreements', access: 'permission', requires: ['warehouse:manage', 'warehouse:finance'] },
   { method: 'PUT', path: '/warehouse/finance/agreements/:agreementId', access: 'permission', requires: ['warehouse:manage', 'warehouse:finance'] },
   { method: 'PUT', path: '/warehouse/stock/:materialId/value', access: 'permission', requires: ['warehouse:manage', 'warehouse:finance'] },

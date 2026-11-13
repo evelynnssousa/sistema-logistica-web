@@ -121,7 +121,8 @@ async function inspect(client) {
 /** Marcadoras das migrações 002 em diante, sem repetição (a 018 não cria tabela). */
 function migrationMarkers() {
   const { migrations } = require('./migration-list.cjs')
-  return [...new Set(migrations.map((item) => item.marker))]
+  // Marcadores de coluna (tabela.coluna) não aparecem na lista de tabelas.
+  return [...new Set(migrations.map((item) => item.marker).filter((marker) => !marker.includes('.')))]
 }
 
 /**
@@ -217,7 +218,7 @@ async function applyInitialStructure(target, args) {
   await client.connect()
   try {
     await applyStructureWith(client)
-    console.log('Estrutura inicial aplicada: 11 tabelas, sem dados. Próximo passo: as migrações 002 a 021.')
+    console.log('Estrutura inicial aplicada: 11 tabelas, sem dados. Próximo passo: as migrações 002 a 022.')
   } finally {
     await client.end().catch(() => undefined)
   }

@@ -443,6 +443,7 @@ export const addStockMovement = (body: {
   empenho?: string
   fornecedor?: string
   ataId?: string
+  itemAtaId?: string
 }) => send<Envelope>('/warehouse/stock-movements', 'POST', body)
 
 // ---------------------------------------------------------------------------
@@ -463,6 +464,26 @@ export type PriceAgreement = {
   active: boolean
   situation: 'vigente' | 'futura' | 'vencida' | 'encerrada'
 }
+
+/** Ata ou contrato de materiais do Controle de Demandas, com o saldo de cada item. */
+export type MaterialInstrument = {
+  id: string
+  type: string
+  number: string
+  subject: string
+  supplier: string | null
+  sector: string
+  total: number
+  spent: number
+  balance: number
+  usedPercent: number | null
+  validUntil: string | null
+  expired: boolean
+  items: { id: string; description: string; unit: string; unitPrice: number; balance: number }[]
+}
+
+export const listMaterialInstruments = () =>
+  apiRequest<Envelope & { instruments: MaterialInstrument[] }>('/warehouse/finance/instruments')
 
 export type FinanceMaterial = {
   id: string
@@ -491,6 +512,7 @@ export type WarehouseFinanceSummary = {
   topSpend: { name: string; unit: string; quantity: number; value: number }[]
   bySector: { sector: string; value: number; requests: number }[]
   agreements: PriceAgreement[]
+  instruments?: MaterialInstrument[]
   withoutValue: { id: string; code: string | null; name: string; unit: string; quantity: number }[]
 }
 

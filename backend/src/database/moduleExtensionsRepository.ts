@@ -637,10 +637,23 @@ export class ModuleExtensionsRepository {
     if (filters.materialId) parameters.push(filters.materialId)
     const pool = this.poolProvider()
     // Sem a 020 a tabela de atas não existe e a consulta não pode citá-la.
-    const agreementSql =
-      filters.withValues && (await financeSchemaExists(pool))
-        ? `(SELECT a.numero FROM public.warehouse_price_agreements a WHERE a.id = s.ata_id)`
-        : 'NULL::text'
+    const withAgreements = filters.withValues && (await financeSchemaExists(pool))
+    const linked = withAgreements
+      ? (await pool.query<{ ok: boolean }>(
+          `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+                           AND table_name = 'stock_movements' AND column_name = 'instrumento_item_id') AS ok`,
+        )).rows[0].ok
+      : false
+    // Ata do Almoxarifado (020) ou item de ata ou contrato do Controle de Demandas (022).
+    const agreementSql = withAgreements
+      ? `COALESCE((SELECT a.numero FROM public.warehouse_price_agreements a WHERE a.id = s.ata_id)${
+          linked
+            ? `, (SELECT CASE i.tipo WHEN 'ata' THEN 'Ata ' ELSE 'Contrato ' END || i.numero
+                    FROM public.contract_instrument_items it JOIN public.contract_instruments i ON i.id = it.instrument_id
+                   WHERE it.id = s.instrumento_item_id)`
+            : ''
+        })`
+      : 'NULL::text'
     const [rows, total] = await Promise.all([
       pool.query<{
         id: string
