@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import type { FormEvent } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   createOption,
   errorMessage,
@@ -327,6 +328,7 @@ function FullSettingsPage() {
   const canReadForms = useHasPermission('forms:read')
   const [catalog, setCatalog] = useState<Catalog | null>(null)
   const [error, setError] = useState('')
+  const [searchParams] = useSearchParams()
 
   const reload = useCallback(async () => {
     try {
@@ -374,61 +376,91 @@ function FullSettingsPage() {
     },
   ]
 
+  // Abas (13/11/2026): a página tinha de 7 a 11 telas de rolagem. A aba fica no endereço
+  // (?aba=...), para um link abrir direto nela; aba sem permissão volta para a primeira.
+  const tabs: { key: string; label: string; icon: IconName; show: boolean }[] = [
+    { key: 'listas', label: 'Listas', icon: 'lists', show: true },
+    { key: 'sistema', label: 'Sistema', icon: 'settings', show: true },
+    { key: 'prazos', label: 'Prazos, anexos e agenda', icon: 'calendar', show: true },
+    { key: 'motorista', label: 'Portal do Motorista', icon: 'vehicle', show: true },
+    { key: 'demandas', label: 'Controle de Demandas', icon: 'demands', show: canConfigureDemands },
+    { key: 'emails', label: 'Modelos de e-mail', icon: 'mail', show: canReadTemplates },
+    { key: 'formularios', label: 'Formulários', icon: 'customize', show: canReadForms },
+    { key: 'testes', label: 'Dados de teste', icon: 'clear', show: isAdministrator && canManage },
+  ]
+  const visibleTabs = tabs.filter((tab) => tab.show)
+  const requested = searchParams.get('aba')
+  const current = visibleTabs.find((tab) => tab.key === requested)?.key ?? visibleTabs[0].key
+
   return (
     <div className="admin-module-page settings-page">
       <PageHeader
         title="Configurações"
-        description="Listas padronizadas e personalização dos formulários do sistema."
+        description="Listas padronizadas, regras do sistema e personalização dos formulários."
       />
 
-      <Alert tone="info">
-        As listas ficam no servidor e valem para todos os usuários. Ao desativar uma opção, ela deixa
-        de aparecer em novos formulários, e os registros antigos mantêm o valor usado.
-      </Alert>
-
-      {error && <Alert tone="error">{error}</Alert>}
       {!canManage && <Alert tone="warning">Seu acesso a esta página é somente de consulta.</Alert>}
-      {canManage && <LocalCatalogImport onChanged={reload} />}
 
-      {groups.map((group) => (
-        <section className="settings-group" key={group.key} aria-labelledby={`settings-${group.key}`}>
-          <header>
-            <span>
-              <Icon name={group.icon} size={22} weight="duotone" />
-            </span>
-            <div>
-              <h2 id={`settings-${group.key}`}>{group.title}</h2>
-              <p>{group.description}</p>
-            </div>
-          </header>
-          <div className="settings-grid">
-            {group.sections.map((section) => (
-              <CatalogSection
-                key={section.category}
-                category={section.category}
-                title={section.title}
-                description={section.description}
-                options={catalog?.[section.category] ?? []}
-                disabled={!canManage || !catalog}
-                onChanged={reload}
-              />
-            ))}
-          </div>
-        </section>
-      ))}
+      <nav className="module-tabs" aria-label="Partes das Configurações">
+        {visibleTabs.map((tab) => (
+          <Link
+            key={tab.key}
+            to={`?aba=${tab.key}`}
+            replace
+            className={tab.key === current ? 'active' : undefined}
+            aria-current={tab.key === current ? 'page' : undefined}
+          >
+            <Icon name={tab.icon} size={18} />
+            {tab.label}
+          </Link>
+        ))}
+      </nav>
 
-      <AdminSettingsSection canManage={canManage} />
+      {current === 'listas' && (
+        <>
+          <Alert tone="info">
+            As listas ficam no servidor e valem para todos os usuários. Ao desativar uma opção, ela deixa
+            de aparecer em novos formulários, e os registros antigos mantêm o valor usado.
+          </Alert>
+          {error && <Alert tone="error">{error}</Alert>}
+          {canManage && <LocalCatalogImport onChanged={reload} />}
 
-      <ParametersSection canManage={canManage} />
+          {groups.map((group) => (
+            <section className="settings-group" key={group.key} aria-labelledby={`settings-${group.key}`}>
+              <header>
+                <span>
+                  <Icon name={group.icon} size={22} weight="duotone" />
+                </span>
+                <div>
+                  <h2 id={`settings-${group.key}`}>{group.title}</h2>
+                  <p>{group.description}</p>
+                </div>
+              </header>
+              <div className="settings-grid">
+                {group.sections.map((section) => (
+                  <CatalogSection
+                    key={section.category}
+                    category={section.category}
+                    title={section.title}
+                    description={section.description}
+                    options={catalog?.[section.category] ?? []}
+                    disabled={!canManage || !catalog}
+                    onChanged={reload}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+        </>
+      )}
 
-      <DriverPortalSettingsSection canManage={canManage} />
-
-      {canConfigureDemands && <DemandSettingsSection />}
-
-      {canReadTemplates && <EmailTemplatesManager />}
-      {canReadForms && <FormManager />}
-
-      {isAdministrator && canManage && <TestDataSection />}
+      {current === 'sistema' && <AdminSettingsSection canManage={canManage} />}
+      {current === 'prazos' && <ParametersSection canManage={canManage} />}
+      {current === 'motorista' && <DriverPortalSettingsSection canManage={canManage} />}
+      {current === 'demandas' && <DemandSettingsSection />}
+      {current === 'emails' && <EmailTemplatesManager />}
+      {current === 'formularios' && <FormManager />}
+      {current === 'testes' && <TestDataSection />}
     </div>
   )
 }

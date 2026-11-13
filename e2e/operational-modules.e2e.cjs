@@ -126,7 +126,7 @@ async function run({ playwright, baseUrl, runId, password }) {
     let maintenanceUrl
 
     await step('administradora cadastra as listas padronizadas em Configurações', async () => {
-      await admin.goto('/configuracoes')
+      await admin.goto('/configuracoes?aba=listas')
       await admin.waitForSelector('.settings-grid')
       await addOption(admin, 'Setores', 'Protocolo')
       await addOption(admin, 'Andares', '1º andar')
@@ -430,7 +430,7 @@ async function run({ playwright, baseUrl, runId, password }) {
     })
 
     await step('formulários: o campo criado vale em outro navegador', async () => {
-      await admin.goto('/configuracoes')
+      await admin.goto('/configuracoes?aba=formularios')
       await admin.locator('summary', { hasText: 'Abrir gerenciador de formulários' }).click()
       const customize = admin.locator('[data-testid=form-editor]')
       await customize.waitFor()

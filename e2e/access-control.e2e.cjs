@@ -87,6 +87,8 @@ async function run({ playwright, baseUrl, runId, password }) {
       await page.goto('/')
       await page.waitForSelector('.public-hero h1')
       assert.match(await page.textContent('.public-hero h1'), /Logística e Manutenção/)
+      // As perguntas vêm do servidor, depois do título: espera a lista antes de contar.
+      await page.waitForSelector('.public-faq details')
       assert.ok((await page.locator('.public-faq details').count()) >= 3, 'perguntas frequentes do rascunho')
       await page.click('.public-hero-actions .public-button')
       await page.waitForSelector('#login-identifier')
