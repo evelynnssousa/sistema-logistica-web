@@ -117,6 +117,7 @@ async function prepareDatabase(url, passwordHash) {
     '020_warehouse_finance.sql',
     '021_contract_instruments.sql',
     '022_forms_and_links.sql',
+    '023_patrimony.sql',
     // E2E_REAL_ENV reproduz o desenvolvimento: só as migrações presentes no banco real e a tela do Vite.
   ].filter((file) => !process.env.E2E_REAL_ENV || /^00[12]_/.test(file))) {
     const client = new Client({ connectionString: url })

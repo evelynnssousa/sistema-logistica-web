@@ -36,6 +36,7 @@ const migrations = [
   '020_warehouse_finance.sql',
   '021_contract_instruments.sql',
   '022_forms_and_links.sql',
+  '023_patrimony.sql',
 ]
 
 function run(script, args, environment) {
