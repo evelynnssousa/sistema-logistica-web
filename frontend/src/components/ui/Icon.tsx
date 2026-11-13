@@ -25,6 +25,7 @@ import {
   EnvelopeSimpleIcon,
   EraserIcon,
   EyeIcon,
+  EyeSlashIcon,
   FunnelIcon,
   GearSixIcon,
   HourglassMediumIcon,
@@ -117,6 +118,7 @@ const icons = {
   money: CoinsIcon,
   robot: RobotIcon,
   barcode: BarcodeIcon,
+  hide: EyeSlashIcon,
 } satisfies Record<string, PhosphorIcon>
 
 export type IconName = keyof typeof icons

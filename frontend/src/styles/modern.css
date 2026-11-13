@@ -538,3 +538,135 @@ a.ui-card:hover,
     display: none;
   }
 }
+
+/* ------------------------------------- Acesso: painel ao lado e senha visível */
+/* 13/11/2026: em telas largas, a apresentação do sistema à esquerda e o formulário à direita. */
+.login-page.auth-split {
+  gap: clamp(32px, 6vw, 96px);
+}
+
+.auth-brand {
+  display: none;
+  max-width: 460px;
+  color: var(--white);
+}
+
+@media (min-width: 1024px) {
+  .auth-brand {
+    display: block;
+  }
+}
+
+.auth-brand-kicker {
+  margin: 0 0 14px;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.auth-brand h2 {
+  margin: 0 0 14px;
+  color: var(--white);
+  font-size: clamp(1.9rem, 2.6vw, 2.5rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.auth-brand-lead {
+  margin: 0 0 30px;
+  color: rgb(255 255 255 / 82%);
+  font-size: 1.05rem;
+  line-height: 1.55;
+}
+
+.auth-brand ul {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.auth-brand li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 7%);
+  backdrop-filter: blur(6px);
+}
+
+.auth-brand li strong {
+  display: block;
+  color: var(--white);
+  font-size: 0.98rem;
+}
+
+.auth-brand li span:last-child {
+  color: rgb(255 255 255 / 75%);
+  font-size: 0.9rem;
+}
+
+.auth-brand-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: rgb(251 185 0 / 16%);
+  color: var(--accent);
+}
+
+.login-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.login-label-row .recovery-link {
+  font-size: 0.88rem;
+}
+
+.password-field {
+  position: relative;
+  display: flex;
+}
+
+.password-field input {
+  flex: 1;
+  width: 100%;
+  padding-right: 52px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.password-toggle:hover:not(:disabled) {
+  background: var(--institutional-soft, #eef4fb);
+  color: var(--institutional);
+}
+
+.password-toggle:focus-visible {
+  outline: 3px solid var(--institutional);
+  outline-offset: 1px;
+}

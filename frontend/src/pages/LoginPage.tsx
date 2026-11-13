@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { getPublicScreen } from '../api/configApi'
 import { login } from '../auth/auth'
 import logoJucesp from '../assets/logoJucespNovo.png'
+import AuthBrand from '../components/AuthBrand'
+import PasswordField from '../components/PasswordField'
 import '../App.css'
 
 type LoginPageProps = {
@@ -54,7 +56,8 @@ function LoginPage({ notice = '', onLogin, onRegister, onRecoverPassword, onBack
   }
 
   return (
-    <main className="login-page">
+    <main className="login-page auth-split">
+      <AuthBrand />
       <section className="login-card">
         <img
           className="login-logo"
@@ -91,7 +94,8 @@ function LoginPage({ notice = '', onLogin, onRegister, onRecoverPassword, onBack
             disabled={loading}
           />
 
-          <div className="recovery-link-row">
+          <div className="login-label-row">
+            <label htmlFor="login-password">Senha</label>
             <button
               className="recovery-link"
               type="button"
@@ -101,11 +105,8 @@ function LoginPage({ notice = '', onLogin, onRegister, onRecoverPassword, onBack
               Esqueci minha senha
             </button>
           </div>
-
-          <label htmlFor="login-password">Senha</label>
-          <input
+          <PasswordField
             id="login-password"
-            type="password"
             autoComplete="current-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
