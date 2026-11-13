@@ -1,4 +1,5 @@
 import { createPrivateKey, createSign, randomUUID } from 'node:crypto'
+import { StorageProviderError } from './providerError.js'
 
 /**
  * Autenticação do SLM no Microsoft Graph como aplicativo (fluxo client credentials), sem conta
@@ -27,13 +28,9 @@ export type GraphCredentials =
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
 /** Erro do armazenamento no SharePoint. A mensagem e o código nunca carregam segredo nem URL. */
-export class GraphStorageError extends Error {
-  constructor(
-    readonly code: string,
-    readonly retryable: boolean,
-    readonly status: number | null = null,
-  ) {
-    super(`Falha no armazenamento SharePoint (${code}).`)
+export class GraphStorageError extends StorageProviderError {
+  constructor(code: string, retryable: boolean, status: number | null = null) {
+    super(code, retryable, status, `Falha no armazenamento SharePoint (${code}).`)
     this.name = 'GraphStorageError'
   }
 }

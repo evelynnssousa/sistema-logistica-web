@@ -97,7 +97,15 @@ abrem de qualquer computador.
 - **Por quê é sério:** essa chave protege os CPFs. **Se ela se perder, os CPFs gravados não podem
   mais ser lidos.** Por isso a cópia no cofre é obrigatória antes de cadastrar passageiros.
 
-## Etapa 8 — Anexos de arquivos (SharePoint)
+## Etapa 8 — Anexos de arquivos
+
+**Caminho rápido (você, cerca de 10 minutos): Supabase Storage.** Crie um bucket **privado**
+chamado `slm-anexos` no projeto do Supabase e coloque no Render `ATTACHMENTS_STORAGE=supabase`,
+`SUPABASE_URL` e `SUPABASE_SECRET_KEY`. O passo a passo, com o que conferir no fim, está em
+`docs/ARMAZENAMENTO_SUPABASE.md`. O plano gratuito não faz backup dos arquivos: faça a cópia
+semanal descrita no mesmo guia.
+
+**Caminho institucional (TI): SharePoint.** Pode substituir o Supabase depois.
 
 - **Quem:** **a TI** (exige acesso de administrador ao Microsoft 365 da instituição).
 - **Mensagem pronta para a TI:**

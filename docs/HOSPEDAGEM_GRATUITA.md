@@ -9,7 +9,7 @@ conectada, e nada foi publicado. O desenvolvimento local e a homologação não 
 | `/api/*` | Pages Function (`frontend/functions/api/[[path]].ts`) | Free (Workers) |
 | API | Render (`render.yaml`) | Free |
 | Banco | Supabase PostgreSQL | Free |
-| Anexos | SharePoint (`ATTACHMENTS_STORAGE=sharepoint`), depois da autorização | — |
+| Anexos | Supabase Storage, bucket privado (`ATTACHMENTS_STORAGE=supabase`, `docs/ARMAZENAMENTO_SUPABASE.md`); SharePoint depois da autorização | Free |
 
 **Os planos gratuitos não são adequados para a operação institucional definitiva.** Eles servem
 para a homologação e para uma avaliação inicial. O próprio Render recomenda não usar o plano
@@ -151,8 +151,9 @@ Localmente continua 3000. `autoDeploy: false`: cada publicação é feita à mã
 
 Variáveis no painel: `DATABASE_URL`, `FRONTEND_URL` (endereço do Pages do mesmo ambiente),
 `APP_PUBLIC_URL`, `PROXY_SHARED_SECRET`, `PASSENGER_DATA_KEY`, `PASSWORD_RESET_PEPPER`,
-`INSTITUTIONAL_EMAIL_DOMAINS` e, depois da autorização, as do SharePoint
-(`docs/ARMAZENAMENTO_SHAREPOINT.md`). Todas estão marcadas `sync: false` no `render.yaml`:
+`INSTITUTIONAL_EMAIL_DOMAINS`, as dos anexos no Supabase Storage (`SUPABASE_URL`, `SUPABASE_SECRET_KEY`,
+`SUPABASE_STORAGE_BUCKET`, ver `docs/ARMAZENAMENTO_SUPABASE.md`) e, depois da autorização, as do
+SharePoint (`docs/ARMAZENAMENTO_SHAREPOINT.md`). Todas estão marcadas `sync: false` no `render.yaml`:
 os valores são digitados no painel, nunca no repositório. `TRUST_PROXY` fica sem valor.
 `npm run config:check` confere o que falta sem mostrar valores. No Render, ele acusa erro se
 `ATTACHMENTS_DIR` apontar para o disco local, que não é persistente.
@@ -176,8 +177,9 @@ Limitações no plano Free:
   O agendamento `.github/workflows/manter-api-acordada.yml` acessa `/api/health` a cada 10 minutos,
   de segunda a sexta, das 7h às 19h de Brasília (cerca de 290 horas por mês). Ele só funciona
   depois do merge na `main` e com a variável de repositório `SLM_API_HEALTH_URL`; sem ela, não faz nada.
-- O disco não é persistente: anexos de mensagens manuais e o bilhete de passagem só funcionam
-  com armazenamento persistente autorizado. Sem ele, a mensagem com anexo falha
+- O disco não é persistente: os anexos (inclusive os de mensagens manuais e o bilhete de passagem)
+  só funcionam com `ATTACHMENTS_STORAGE=supabase` (`docs/ARMAZENAMENTO_SUPABASE.md`) ou com o
+  SharePoint autorizado. Sem nenhum dos dois, a mensagem com anexo falha
   (`ATTACHMENT_STORAGE_MISSING`). O SharePoint não deve ser presumido autorizado nem configurado.
 - O limite diário e mensal do plano gratuito do Resend precisa ser conferido antes de ligar os
   avisos de segurança e de Demandas, e informado em `EMAIL_DAILY_LIMIT`. O sistema controla só o
@@ -354,6 +356,7 @@ São três cópias diferentes. Uma não substitui a outra.
 |---|---|---|---|
 | Banco (PostgreSQL) | Estrutura e dados do schema `public`: contas, solicitações, históricos, configurações. Não contém o conteúdo dos anexos | `npm run backup:database` e `npm run backup:verify` (ver "Backup e restauração") | Disponível e testado |
 | Anexos no SharePoint | Os arquivos enviados, guardados na biblioteca do SharePoint | Retenção, lixeira e cópias da própria biblioteca, a definir com a TI (`docs/ARMAZENAMENTO_SHAREPOINT.md`, item 5) | **Não existe.** O SharePoint depende de autorização institucional e ainda não foi conectado; foi testado só com simulação |
+| Anexos no Supabase Storage | Os arquivos do bucket privado `slm-anexos` | `npm run backup:attachments:supabase -- --out <pasta>` e depois `npm run backup:attachments` com `ATTACHMENTS_DIR=<pasta>` (`docs/ARMAZENAMENTO_SUPABASE.md`) | Disponível. O plano Free do Supabase **não** faz backup dos arquivos: a cópia é manual |
 | Anexos em disco local | Os arquivos da pasta `ATTACHMENTS_DIR` | `npm run backup:attachments` e `npm run backup:attachments:verify` | Disponível, mas só para o disco local. No Render não há disco local: os anexos ficam indisponíveis (503) |
 | Código-fonte | O sistema em si | Repositório privado no GitHub | Parcial: há muitas alterações só no Codespace, sem commit (ver abaixo) |
 
@@ -397,7 +400,8 @@ Ressalvas da verificação de 2026-11-07, para ajuste separado, que não foi fei
    as variáveis de cada um, com segredos gerados só para a homologação.
 3. Decidir o destino institucional das cópias do banco de homologação (ver
    `docs/PLANO_HOMOLOGACAO.md`).
-4. Anexos: ficam indisponíveis (503) até o SharePoint ser autorizado.
+4. Anexos: ficam indisponíveis (503) até o bucket do Supabase Storage ser criado e configurado
+   (`docs/ARMAZENAMENTO_SUPABASE.md`), ou até o SharePoint ser autorizado.
 5. Validar em homologação real os itens de "Segurança", item 3.
 6. Produção: depende das migrações do banco real, de autorização própria e da escolha da
    hospedagem definitiva.

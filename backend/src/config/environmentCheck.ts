@@ -1,5 +1,6 @@
 import { accessSync, constants, statSync } from 'node:fs'
 import { graphStorageSettings } from '../attachments/graphDriveStorage.js'
+import { supabaseStorageSettings } from '../attachments/supabaseStorage.js'
 import { proxySecretProblem } from '../security/trustedProxy.js'
 import { passwordResetPepperProblem } from '../auth/passwordRecovery.js'
 import { quotaSettings, quotaSettingsProblems } from '../integrations/emailQuota.js'
@@ -54,15 +55,16 @@ export function passengerKeyProblem(raw: string | undefined): string | null {
 }
 
 /**
- * ATTACHMENTS_STORAGE escolhe onde ficam os anexos. "sharepoint" mal configurado é erro e nunca
- * cai para o disco local: os arquivos iriam para um lugar que ninguém aprovou.
+ * ATTACHMENTS_STORAGE escolhe onde ficam os anexos. "sharepoint" ou "supabase" mal configurados
+ * são erro e nunca caem para o disco local: os arquivos iriam para um lugar que ninguém aprovou.
  */
 function checkAttachmentStorage(environment: Environment, root: string): EnvironmentFinding[] {
   const driver = storageDriver(environment)
   if (driver === null) {
-    return [{ variable: 'ATTACHMENTS_STORAGE', level: 'erro', message: 'Valor desconhecido: use "local" ou "sharepoint". Anexos ficam indisponíveis.' }]
+    return [{ variable: 'ATTACHMENTS_STORAGE', level: 'erro', message: 'Valor desconhecido: use "local", "supabase" ou "sharepoint". Anexos ficam indisponíveis.' }]
   }
   if (driver === 'local') return [checkAttachments(environment, root)]
+  if (driver === 'supabase') return checkSupabaseStorage(environment)
 
   const settings = graphStorageSettings(environment)
   if (!settings.ok) {
@@ -88,6 +90,28 @@ function checkAttachmentStorage(environment: Environment, root: string): Environ
   }
   if (value(environment, 'ATTACHMENTS_DIR')) {
     findings.push({ variable: 'ATTACHMENTS_DIR', level: 'aviso', message: 'Ignorada: o armazenamento escolhido é o SharePoint.' })
+  }
+  return findings
+}
+
+function checkSupabaseStorage(environment: Environment): EnvironmentFinding[] {
+  const settings = supabaseStorageSettings(environment)
+  if (!settings.ok) {
+    return settings.problems.map((problem) => ({
+      variable: problem.variable,
+      level: 'erro' as const,
+      message: `${problem.message} Com ATTACHMENTS_STORAGE=supabase, anexos ficam indisponíveis.`,
+    }))
+  }
+  const findings: EnvironmentFinding[] = [
+    {
+      variable: 'ATTACHMENTS_STORAGE',
+      level: 'ok',
+      message: `Supabase Storage, bucket "${settings.value.bucket}". Que ele existe e é privado só é conferido na conexão (/api/health).`,
+    },
+  ]
+  if (value(environment, 'ATTACHMENTS_DIR')) {
+    findings.push({ variable: 'ATTACHMENTS_DIR', level: 'aviso', message: 'Ignorada: o armazenamento escolhido é o Supabase Storage.' })
   }
   return findings
 }

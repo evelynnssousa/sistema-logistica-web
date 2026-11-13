@@ -75,6 +75,14 @@ services:
       # NOTIFICATION_EMAILS_ENABLED fica de fora de propósito: liberar os demais e-mails exige
       # autorização expressa e é feito à mão no painel (docs/INTEGRACOES_E_AUTOMACOES.md).
       # O disco do Render Free não é persistente: sem ATTACHMENTS_DIR. Os anexos ficam
-      # indisponíveis (503) até ATTACHMENTS_STORAGE=sharepoint ser autorizado e configurado.
+      # indisponíveis (503) até ATTACHMENTS_STORAGE=supabase (docs/ARMAZENAMENTO_SUPABASE.md) ou
+      # =sharepoint (depois da autorização da TI) ser configurado.
       - key: ATTACHMENTS_STORAGE
+        sync: false
+      # Somente com ATTACHMENTS_STORAGE=supabase: bucket privado no projeto do Supabase.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
         sync: false
