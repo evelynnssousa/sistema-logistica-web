@@ -7,6 +7,7 @@ import type { Request, Response } from 'express'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
 import { requireAuth } from '../auth/sessionRuntime.js'
 import { refreshAdminSettings } from '../database/adminSettingsRuntime.js'
+import { prunePublicPagePhotos } from './publicPage.js'
 import { activeAnnouncement } from '../requests/adminSettingsRules.js'
 import { CatalogRepository, isCatalogCategory } from '../database/catalogRepository.js'
 import type { CatalogCategory } from '../database/catalogRepository.js'
@@ -278,6 +279,9 @@ router.put('/settings/parameters/:section', requirePermission('settings:manage')
     await parameters.save(response.locals.authenticatedUser as AuthenticatedIdentity, section, value)
     // Permissões padrão valem já na próxima requisição de cada pessoa.
     if (section === 'profileDefaults') await refreshAdminSettings()
+    if (section === 'publicPage') {
+      await prunePublicPagePhotos((value as { team: { photoId: string | null }[] }).team.map((member) => member.photoId).filter((id): id is string => Boolean(id)))
+    }
     response.json({ success: true, value })
   } catch (error) {
     sendModuleError(response, error)

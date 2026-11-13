@@ -73,8 +73,12 @@ test('as rotas públicas são só as de entrada, recuperação, saúde e textos 
     '/auth/register',
     '/health',
     '/public/forms/registration',
+    // Página inicial (13/11/2026): textos, perguntas, equipe e contato definidos em Configurações.
+    '/public/home',
     // Mensagem da tela de entrada e aviso geral (Configurações, 13/11/2026): só textos, nenhum dado.
     '/public/screen',
+    // Fotos da equipe publicadas na página inicial.
+    '/public/team-photos/:photoId',
   ])
 })
 

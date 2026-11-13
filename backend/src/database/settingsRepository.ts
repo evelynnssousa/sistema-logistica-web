@@ -20,7 +20,8 @@ export async function readSystemSettings(queryable: Queryable): Promise<SystemSe
   if (!present.rows[0]?.present) return structuredClone(defaultSettings)
 
   const result = await queryable.query<{ secao: string; valor: unknown }>(
-    `SELECT secao, valor FROM public.system_settings`,
+    // As fotos da página inicial ficam na mesma tabela, mas só são lidas pela rota da foto.
+    `SELECT secao, valor FROM public.system_settings WHERE secao NOT LIKE 'foto\\_equipe:%'`,
   )
   return mergeSettings(result.rows)
 }

@@ -20,11 +20,14 @@ import robotRouter from './robot.js'
 import searchRouter from './search.js'
 import settingsRouter from './settings.js'
 import slmRouter from './slm.js'
+import testDataRouter from './testData.js'
+import publicPageRouter from './publicPage.js'
 import warehouseRouter from './warehouse.js'
 
 const apiRouter = Router()
 
 apiRouter.use(healthRouter)
+apiRouter.use(publicPageRouter)
 apiRouter.use(authRouter)
 apiRouter.use(adminRegistrationsRouter)
 apiRouter.use(adminUsersRouter)
@@ -47,5 +50,6 @@ apiRouter.use(integrationsRouter)
 apiRouter.use(demandsRouter)
 apiRouter.use(instrumentsRouter)
 apiRouter.use(patrimonyRouter)
+apiRouter.use(testDataRouter)
 
 export default apiRouter

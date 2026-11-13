@@ -237,3 +237,53 @@ test('cadastro de equipamento: campo novo gravado; opção fora da lista é recu
   await publishWithExtra('equipment', { type: 'singleSelect', options: ['A', 'B'], required: false })
   assert.equal((await post('/maintenance/equipments', admin, { nome: 'Elevador 2', customFields: { 'custom-extra': 'C' } })).status, 400)
 })
+
+test('página inicial: rascunho público, fotos só de imagem, e foto sem uso sai depois', async () => {
+  const home = await fetch(`${baseUrl}/api/public/home`)
+  assert.equal(home.status, 200)
+  const draft = (await home.json()) as { page: { heroTitle: string; faq: unknown[]; team: unknown[]; contactEmail: string } }
+  assert.match(draft.page.heroTitle, /Logística e Manutenção/)
+  assert.ok(draft.page.faq.length >= 3)
+
+  const upload = async (session: Session, content: Buffer) => {
+    const cookie = session.cookie
+    const response = await fetch(`${baseUrl}/api/settings/public-page/photos`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/octet-stream', cookie, 'x-csrf-token': csrfTokens.get(cookie) ?? '' },
+      body: new Uint8Array(content),
+    })
+    return { status: response.status, body: (await response.json()) as Record<string, string> }
+  }
+  const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex')
+  assert.equal((await upload(requester, png)).status, 403)
+  assert.equal((await upload(admin, Buffer.from('<svg onload="x">'))).status, 400)
+  const first = await upload(admin, png)
+  assert.equal(first.status, 201)
+  const unused = await upload(admin, png)
+
+  const saved = await put('/settings/parameters/publicPage', admin, {
+    ...draft.page,
+    contactEmail: 'slm@example.gov.br',
+    team: [{ name: 'Pessoa da Equipe', role: 'Coordenação', photoId: first.body.photoId }],
+    news: [{ date: '2026-11-13', title: 'Sistema em testes', text: 'Primeira versão.' }],
+  })
+  assert.equal(saved.status, 200, saved.text)
+  assert.equal((await put('/settings/parameters/publicPage', admin, { ...draft.page, contactEmail: 'não-é-email' })).status, 400)
+  assert.equal((await put('/settings/parameters/publicPage', admin, { ...draft.page, heroTitle: '<script>' })).status, 400)
+
+  const published = (await (await fetch(`${baseUrl}/api/public/home`)).json()) as { page: { team: { name: string; photoUrl: string }[]; contactEmail: string } }
+  assert.equal(published.page.contactEmail, 'slm@example.gov.br')
+  assert.deepEqual(published.page.team.map((member) => member.name), ['Pessoa da Equipe'])
+  assert.equal('photoId' in published.page.team[0], false)
+  const photo = await fetch(`${baseUrl}${published.page.team[0].photoUrl}`)
+  assert.equal(photo.status, 200)
+  assert.equal(photo.headers.get('content-type'), 'image/png')
+  assert.equal((await fetch(`${baseUrl}/api/public/team-photos/${'0'.repeat(32)}`)).status, 404)
+
+  // Foto enviada e não usada: sai na próxima gravação, passado um dia.
+  // O gatilho de updated_at refaria a data: desligado só para envelhecer as fotos no teste.
+  await pool.query(`SET session_replication_role = replica; UPDATE public.system_settings SET updated_at = now() - interval '2 days' WHERE secao LIKE 'foto%'; SET session_replication_role = origin;`)
+  await put('/settings/parameters/publicPage', admin, { ...draft.page, team: [{ name: 'Pessoa da Equipe', role: 'Coordenação', photoId: first.body.photoId }] })
+  assert.equal((await fetch(`${baseUrl}/api/public/team-photos/${unused.body.photoId}`)).status, 404)
+  assert.equal((await fetch(`${baseUrl}/api/public/team-photos/${first.body.photoId}`)).status, 200)
+})

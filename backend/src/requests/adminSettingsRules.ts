@@ -34,6 +34,28 @@ export const defaultAdminSettings = {
   modules: { maintenance: true, fleet: true, flights: true, warehouse: true, demands: true } as Record<SystemModule, boolean>,
   contracts: { defaultNoticeDays: 90, lowBalancePercent: 20 },
   texts: { loginMessage: '', homeMessage: '' },
+  // Página inicial pública e Ajuda (13/11/2026). Textos em rascunho, para a equipe revisar.
+  publicPage: {
+    heroTitle: 'Serviços de Logística e Manutenção',
+    heroText:
+      'Peça manutenção, veículos, passagens aéreas e materiais em um só lugar, e acompanhe cada pedido até o fim.',
+    aboutOrgan:
+      'A Junta Comercial do Estado de São Paulo (JUCESP) é o órgão responsável pelo registro público de empresas no Estado de São Paulo.',
+    aboutSlm:
+      'A equipe de Serviços de Logística e Manutenção (SLM) cuida da parte administrativa que mantém o prédio funcionando: manutenção predial, frota, passagens aéreas, almoxarifado e patrimônio.',
+    serviceHours: 'Segunda a sexta-feira, em horário de expediente.',
+    location: '',
+    contactEmail: '',
+    faq: [
+      { question: 'Como faço para ter acesso ao sistema?', answer: 'Clique em "Criar conta", preencha seus dados com o e-mail institucional e aguarde a aprovação da equipe. Você recebe o acesso assim que o cadastro for aprovado.' },
+      { question: 'Esqueci minha senha. O que faço?', answer: 'Na tela de entrada, clique em "Esqueci minha senha" e siga as instruções enviadas ao seu e-mail institucional.' },
+      { question: 'Minha conta ainda não foi aprovada.', answer: 'A aprovação é feita pela equipe da SLM. Se demorar, escreva para o e-mail de contato desta página.' },
+      { question: 'Como acompanho o meu pedido?', answer: 'Depois de entrar, abra o módulo do pedido (Manutenção, Frota, Passagens ou Almoxarifado). Cada pedido tem um número de protocolo e mostra a situação e o histórico.' },
+      { question: 'Quem vê os meus dados?', answer: 'Só a equipe responsável pelo atendimento e as pessoas com permissão para isso. Dados pessoais, como o CPF de passageiros, ficam protegidos e mascarados.' },
+    ] as { question: string; answer: string }[],
+    team: [] as { name: string; role: string; photoId: string | null }[],
+    news: [] as { date: string; title: string; text: string }[],
+  },
   profileDefaults: {
     requester: { add: [], remove: [] },
     slm_operator: { add: [], remove: [] },
@@ -126,6 +148,45 @@ export function validateAdminSettings(section: AdminSettingsSection, body: Recor
     return {
       defaultNoticeDays: integer(body.defaultNoticeDays, 'O aviso padrão de vencimento', 0, 365),
       lowBalancePercent: integer(body.lowBalancePercent, 'O percentual de saldo baixo', 0, 100),
+    }
+  }
+
+  if (section === 'publicPage') {
+    const list = (value: unknown, max: number, label: string) => {
+      const items = Array.isArray(value) ? value : []
+      if (items.length > max) fail(`${label}: no máximo ${max}.`)
+      return items.map((raw) => (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>)
+    }
+    const contactEmail = text(body.contactEmail, 'O e-mail de contato', 160).toLowerCase()
+    if (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) fail('O e-mail de contato não é válido.')
+    return {
+      heroTitle: text(body.heroTitle, 'O título da página inicial', 120),
+      heroText: text(body.heroText, 'A frase de abertura', 400),
+      aboutOrgan: text(body.aboutOrgan, 'O texto sobre o órgão', 2000),
+      aboutSlm: text(body.aboutSlm, 'O texto sobre a SLM', 2000),
+      serviceHours: text(body.serviceHours, 'O horário de atendimento', 200),
+      location: text(body.location, 'A localização', 300),
+      contactEmail,
+      faq: list(body.faq, 40, 'Perguntas frequentes').map((item) => {
+        const question = text(item.question, 'A pergunta', 200)
+        const answer = text(item.answer, 'A resposta', 2000)
+        if (!question || !answer) fail('Preencha a pergunta e a resposta de cada item.')
+        return { question, answer }
+      }),
+      team: list(body.team, 40, 'Integrantes da equipe').map((item) => {
+        const name = text(item.name, 'O nome do integrante', 120)
+        if (!name) fail('Informe o nome de cada integrante.')
+        const photoId = item.photoId === null || item.photoId === undefined || item.photoId === '' ? null : String(item.photoId)
+        if (photoId !== null && !/^[0-9a-f]{32}$/.test(photoId)) fail('Foto inválida.')
+        return { name, role: text(item.role, 'A função do integrante', 120), photoId }
+      }),
+      news: list(body.news, 30, 'Novidades')
+        .map((item) => {
+          const title = text(item.title, 'O título da novidade', 160)
+          if (!title) fail('Informe o título de cada novidade.')
+          return { date: day(item.date, 'A data da novidade'), title, text: text(item.text, 'O texto da novidade', 1500) }
+        })
+        .sort((a, b) => b.date.localeCompare(a.date)),
     }
   }
 
