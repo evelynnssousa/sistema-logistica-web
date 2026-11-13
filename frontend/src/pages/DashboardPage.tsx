@@ -12,7 +12,7 @@ import { formatMoney, getWarehouseFinance } from '../api/operationsApi'
 import { usePeriodFilter } from '../app/period'
 import { useAuthenticatedUser } from '../auth/UserContext'
 import StatCard from '../components/StatCard'
-import { BarChart, MonthlyChart } from '../components/ui/Charts'
+import { BarChart, LineChart, MonthlyChart } from '../components/ui/Charts'
 import { Alert, EmptyState, Loading } from '../components/ui/Feedback'
 import { FilterBar, FilterSelect, PeriodFields } from '../components/ui/Filters'
 import PageHeader from '../components/ui/PageHeader'
@@ -273,7 +273,21 @@ function DashboardPage() {
               {data.byPeriod.length > 0 && (
                 <section className="ui-card" aria-labelledby="chart-period">
                   <h2 id="chart-period">Solicitações por mês</h2>
-                  <MonthlyChart rows={data.byPeriod} />
+                  {data.byPeriod.length > 1 && data.byPeriod[0].byModule ? (
+                    <LineChart
+                      months={data.byPeriod.map((row) => row.month)}
+                      series={[
+                        { key: 'maintenance', label: 'Manutenção', color: '#2a78d6' },
+                        { key: 'fleet', label: 'Frota', color: '#eb6834' },
+                        { key: 'flights', label: 'Passagens', color: '#1baf7a' },
+                      ]
+                        .map((line) => ({ ...line, values: data.byPeriod.map((row) => row.byModule?.[line.key] ?? 0) }))
+                        // Módulo sem nenhum registro no período não ganha linha zerada.
+                        .filter((line) => line.values.some((value) => value > 0))}
+                    />
+                  ) : (
+                    <MonthlyChart rows={data.byPeriod} />
+                  )}
                 </section>
               )}
               <section className="ui-card" aria-labelledby="chart-module">
