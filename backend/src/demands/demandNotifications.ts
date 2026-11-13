@@ -153,24 +153,24 @@ export async function notifyDemand(client: Client, notice: DemandNotice) {
   await client.query('SAVEPOINT demand_notification')
   try {
     const recipients = await keepThoseWithAccess(client, notice.demand.id, candidates)
-    // DO UPDATE só para devolver o id: outras pessoas podem ter de receber o mesmo acontecimento.
+    // O acontecimento é permanente (o gatilho recusa qualquer UPDATE, inclusive o de um upsert):
+    // se já existe, por exemplo no lembrete de prazo repetido a cada hora, reaproveita o id, e
+    // outras pessoas ainda podem receber o mesmo acontecimento.
     // O conteúdo que vai para a fila: em demanda restrita, nem o título.
     const payload = notice.demand.restricted
       ? { restricted: true }
       : { restricted: false, title: notice.demand.title }
-    const event = await client.query<{ id: string }>(
+    const eventKey = `demand:${notice.key}`.slice(0, 200)
+    const inserted = await client.query<{ id: string }>(
       `INSERT INTO public.integration_events (event_key, event_type, module, resource_id, protocol, payload)
        VALUES ($1, $2, 'demands', $3, $4, $5::jsonb)
-       ON CONFLICT (event_key) DO UPDATE SET event_key = EXCLUDED.event_key
+       ON CONFLICT (event_key) DO NOTHING
        RETURNING id::text AS id`,
-      [
-        `demand:${notice.key}`.slice(0, 200),
-        `demand_${notice.kind}`,
-        notice.demand.id,
-        notice.demand.number,
-        JSON.stringify(payload),
-      ],
+      [eventKey, `demand_${notice.kind}`, notice.demand.id, notice.demand.number, JSON.stringify(payload)],
     )
+    const event = inserted.rows[0]
+      ? inserted
+      : await client.query<{ id: string }>(`SELECT id::text AS id FROM public.integration_events WHERE event_key = $1`, [eventKey])
     const base = messages[notice.kind]
     const message = notice.demand.restricted ? base : `${base} ${notice.demand.title}`
     await client.query(

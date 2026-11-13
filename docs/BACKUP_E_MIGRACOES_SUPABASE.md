@@ -364,7 +364,7 @@ Criada em 13/11/2026. Aplique depois da 021, com backup e autorização. Não cr
 
 ### Migração 024: atas unificadas
 
-Criada em 13/11/2026, **não aplicada em nenhum banco remoto**. Aplique depois da 023, com backup e autorização; o script já a inclui (marcador `warehouse_price_agreements.instrumento_id`). Pedido: nem toda ata é só de materiais do Almoxarifado, então as atas passam a ficar todas em Controle de Demandas → Atas e contratos, que aceita material, serviço, curso ou outro e tem o botão "Registrar utilização".
+Criada e **aplicada em 13/11/2026 na homologação**. Falta o banco real, que deve recebê-la depois da 023, com backup e autorização; o script já a inclui (marcador `warehouse_price_agreements.instrumento_id`). Pedido: nem toda ata é só de materiais do Almoxarifado, então as atas passam a ficar todas em Controle de Demandas → Atas e contratos, que aceita material, serviço, curso ou outro e tem o botão "Registrar utilização".
 
 - Acrescenta `instrumento_id` em `warehouse_price_agreements`.
 - Cada ata do Almoxarifado vira uma ata (categoria material) do setor do Controle de Demandas cujo nome contém "Almoxarifado". Sem esse setor, cria o setor "Almoxarifado". Quem cadastrou as atas antigas entra nele como colaborador.
