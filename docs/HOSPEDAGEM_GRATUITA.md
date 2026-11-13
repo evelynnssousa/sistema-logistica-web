@@ -249,7 +249,7 @@ antes e autorização expressa:
    delas.
 
 O procedimento completo está em `scripts/apply-migrations.cjs` e em
-`docs/BACKUP_E_MIGRACOES_SUPABASE.md`. A homologação e o banco real têm 002 a 020 desde 12/11/2026.
+`docs/BACKUP_E_MIGRACOES_SUPABASE.md`. A homologação e o banco real têm 002 a 022 desde 13/11/2026.
 Migração nova, no banco real, continua dependendo de autorização própria.
 
 ### Backup e restauração
