@@ -134,3 +134,12 @@ Autenticação, cadastros, perfis, permissões, CPF, solicitações, agendamento
 - Gerenciador de formulários: além dos cinco anteriores, pedido de materiais, pedido externo, registro de entrega, material, demanda, ata ou contrato, veículo, motorista, ocorrência do motorista, equipamento, execução da manutenção e cotação de passagem. Nesses doze, os campos existentes podem ser renomeados, e os campos novos aparecem no fim, validados no servidor e gravados com o nome usado.
 - Pesquisa geral: inclui demandas e atas e contratos, com a mesma visibilidade do Controle de Demandas (setor, compartilhamento, restrição e rascunho).
 - Almoxarifado: localização de cada material (só a equipe vê), inventário e estoque ordenáveis pela localização, e entrada no estoque pelo item de uma ata ou contrato do Controle de Demandas, que baixa o saldo do item.
+
+### Robô do Almoxarifado, sem inteligência artificial (13/11/2026)
+
+Decisão da responsável: só funções sem IA, sem custo de API. Aba **Almoxarifado → Robô**, para quem administra o Almoxarifado. O robô prepara, e a equipe confere e confirma.
+
+- **Inventário pela planilha do governo:** aceita .xlsx, .csv (inclusive o do Excel em português), .ods e o .xls em HTML que os sistemas do governo exportam. O .xls binário antigo pede para salvar como .xlsx. Limites: 5 MB, 5.000 linhas e 60 colunas. O robô acha o cabeçalho e as colunas (código, descrição, quantidade, unidade), e a pessoa pode trocá-las. Liga cada linha a um material, por código, por nome igual ou por nome parecido (só com a confirmação da pessoa). Mostra as quantidades iguais, as diferentes, as que faltam cadastrar e o que só existe no sistema, e baixa o relatório de divergências em CSV. A conferência é criada pela rota de sempre, com as quantidades do governo preenchidas e na ordem dos armários. A planilha não fica guardada.
+- **Sugestão de reposição:** consumo médio de 12 meses e estoque disponível (físico menos reservado), para durar 1 a 12 meses, nunca abaixo do mínimo. Para quem vê valores (`warehouse:finance`), indica itens de atas e contratos vigentes com saldo e nome parecido. Lista de compras em CSV.
+- **Resumo semanal:** abaixo do mínimo, a repor (3 meses), pedidos aguardando e conferências abertas. Na segunda-feira a partir das 7h, uma vez por semana, à equipe do Almoxarifado (e-mail e central de notificações), só com contagens. Começa desligado e liga em Configurações → Notificações.
+- Não exige migração.
