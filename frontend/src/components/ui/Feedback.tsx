@@ -57,11 +57,30 @@ export function EmptyState({
   )
 }
 
-export function Loading({ label = 'Carregando...' }: { label?: string }) {
+/**
+ * Carregamento em "esqueleto" (13/11/2026): blocos cinza no formato do conteúdo que vai chegar,
+ * no lugar do texto solto. O texto continua lá para leitores de tela. "compact" mantém o
+ * indicador pequeno, para espaços estreitos.
+ */
+export function Loading({ label = 'Carregando...', compact = false, rows = 4 }: { label?: string; compact?: boolean; rows?: number }) {
+  if (compact) {
+    return (
+      <div className="ui-loading" role="status">
+        <span className="ui-spinner" aria-hidden="true" />
+        <span>{label}</span>
+      </div>
+    )
+  }
   return (
-    <div className="ui-loading" role="status">
-      <span className="ui-spinner" aria-hidden="true" />
-      <span>{label}</span>
+    <div className="ui-loading ui-skeleton" role="status" aria-live="polite">
+      <span className="visually-hidden">{label}</span>
+      <span className="ui-skeleton-line ui-skeleton-title" aria-hidden="true" />
+      {Array.from({ length: rows }, (_, index) => (
+        <span key={index} className="ui-skeleton-row" aria-hidden="true">
+          <span className="ui-skeleton-line ui-skeleton-avatar" />
+          <span className="ui-skeleton-line" style={{ width: `${88 - ((index * 17) % 40)}%` }} />
+        </span>
+      ))}
     </div>
   )
 }

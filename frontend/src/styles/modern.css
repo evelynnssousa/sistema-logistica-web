@@ -670,3 +670,53 @@ a.ui-card:hover,
   outline: 3px solid var(--institutional);
   outline-offset: 1px;
 }
+
+/* ------------------------------------------------- Carregamento em esqueleto */
+.ui-loading.ui-skeleton {
+  display: grid;
+  gap: 14px;
+  padding: 18px 2px;
+}
+
+.ui-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ui-skeleton-line {
+  display: block;
+  height: 14px;
+  border-radius: 7px;
+  background: linear-gradient(90deg, #e6ebf2 0%, #f3f6fa 45%, #e6ebf2 90%);
+  background-size: 300% 100%;
+  animation: ui-skeleton-shine 1.4s ease-in-out infinite;
+}
+
+.ui-skeleton-title {
+  width: 38%;
+  height: 22px;
+  border-radius: 8px;
+}
+
+.ui-skeleton-avatar {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+
+@keyframes ui-skeleton-shine {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-skeleton-line {
+    animation: none;
+  }
+}
