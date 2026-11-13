@@ -101,7 +101,7 @@ async function scenarios({ browser, baseUrl, runId, password, screenshotDirector
   await anonymous.close()
 
   await step('o administrador configura setores e integrantes em Configurações', async () => {
-    await admin.goto('/configuracoes')
+    await admin.goto('/configuracoes?aba=demandas')
     await admin.waitForSelector('#settings-demands')
     await admin.fill('input[placeholder="Nome do novo setor"]', 'Setor E2E Alfa')
     await admin.click('button:has-text("Cadastrar setor")')
@@ -508,7 +508,7 @@ async function scenarios({ browser, baseUrl, runId, password, screenshotDirector
     await itemDialog.getByLabel('Valor unitário (R$) *').fill('25')
     await itemDialog.getByRole('button', { name: 'Salvar' }).click()
     await lead.waitForSelector('text=Item salvo.')
-    await lead.getByRole('button', { name: 'Registrar utilização' }).click()
+    await lead.getByRole('region', { name: 'Utilizações' }).getByRole('button', { name: 'Registrar utilização' }).click()
     const usageDialog = lead.locator('.ui-modal')
     await usageDialog.getByLabel('Quantidade *').fill('10')
     await usageDialog.getByLabel('Documento (empenho, pedido, ordem de serviço)').fill('2026NE0001')

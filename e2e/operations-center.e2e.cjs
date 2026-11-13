@@ -365,7 +365,7 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
     })
 
     await step('parâmetros: administrados pela tela, com efeito na Central', async () => {
-      await admin.goto('/configuracoes')
+      await admin.goto('/configuracoes?aba=prazos')
       const form = admin.locator('form', { has: admin.locator('h3', { hasText: 'Prazos e alertas' }) })
       await form.waitFor()
       await form.getByLabel('Dias sem movimentação para alertar').fill('12')

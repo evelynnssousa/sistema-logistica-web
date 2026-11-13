@@ -178,7 +178,7 @@ async function scenarios({ browser, baseUrl, runId, password }) {
   })
 
   await step('modelos de e-mail: edição, validação, prévia e publicação pela tela', async () => {
-    await admin.goto('/configuracoes')
+    await admin.goto('/configuracoes?aba=emails')
     await admin.locator('summary', { hasText: 'Abrir modelos de e-mail' }).click()
     const editor = admin.locator('[data-testid=template-editor]')
     await editor.waitFor()
@@ -209,7 +209,7 @@ async function scenarios({ browser, baseUrl, runId, password }) {
   })
 
   await step('formulários: rascunho não muda nada, e publicar vale de verdade no formulário', async () => {
-    await admin.goto('/configuracoes')
+    await admin.goto('/configuracoes?aba=formularios')
     await admin.locator('summary', { hasText: 'Abrir gerenciador de formulários' }).click()
     const editor = admin.locator('[data-testid=form-editor]')
     await editor.waitFor()

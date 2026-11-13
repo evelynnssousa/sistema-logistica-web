@@ -201,13 +201,14 @@ async function scenarios({ browser, baseUrl, runId, password }) {
   })
 
   await step('configurações: limites da comunicação e criação de modelo próprio', async () => {
-    await admin.goto('/configuracoes')
+    await admin.goto('/configuracoes?aba=prazos')
     const block = admin.locator('form', { has: admin.locator('h3', { hasText: 'Central de comunicação' }) })
     await block.waitFor()
     await block.getByLabel('Destinatários por mensagem').fill('5')
     await block.getByRole('button', { name: 'Salvar' }).click()
     await block.locator('.ui-alert-success').waitFor()
 
+    await admin.locator('.module-tabs a', { hasText: 'Modelos de e-mail' }).click()
     await admin.locator('summary', { hasText: 'Abrir modelos de e-mail' }).click()
     const creator = admin.locator('[data-testid=new-template]')
     await creator.waitFor()

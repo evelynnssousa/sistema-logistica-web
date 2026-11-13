@@ -92,7 +92,7 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
     const tripOld = await newTrip('Destino Antigo')
 
     await step('padrão: a tela abre com as 07h às 19h, e o portal usa', async () => {
-      await admin.goto('/configuracoes')
+      await admin.goto('/configuracoes?aba=motorista')
       const form = block('Jornada de trabalho')
       await form.waitFor()
       assert.equal(await form.getByLabel('Início da jornada').inputValue(), '07:00')
@@ -178,7 +178,7 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
       await admin.goto(`/frota/${trip}`)
       await admin.getByTestId('trip-execution-record').getByText('hodômetro 12345').waitFor()
       assert.equal((await api(driver, 'POST', `/driver/trips/${trip}/finish`, {})).status, 200)
-      await admin.goto('/configuracoes')
+      await admin.goto('/configuracoes?aba=motorista')
       await block('Execução das viagens').getByRole('group', { name: 'Obrigatório para iniciar' }).getByLabel('Hodômetro').uncheck()
       await saveBlock('Execução das viagens')
     })
@@ -288,7 +288,7 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
     await step('persistência: sair e entrar mantém tudo, e o histórico mostra autor e valores', async () => {
       await admin.getByRole('button', { name: /Sair/ }).first().click().catch(() => undefined)
       const again = await login(adminEmail, '.topbar-logout')
-      await again.goto('/configuracoes')
+      await again.goto('/configuracoes?aba=motorista')
       await again.getByRole('form', { name: 'Jornada de trabalho' }).waitFor()
       assert.equal(await again.getByRole('form', { name: 'Jornada de trabalho' }).getByLabel('Início da jornada').inputValue(), '00:00')
       assert.equal(await again.getByRole('form', { name: 'Visualização' }).getByLabel('Aviso 1').inputValue(), 'Use o crachá em todas as viagens')
