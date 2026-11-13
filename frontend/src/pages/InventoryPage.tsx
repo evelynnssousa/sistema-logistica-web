@@ -681,6 +681,7 @@ const warehouseTabs: { to: string; label: string; icon: IconName; permission?: s
   { to: '/almoxarifado/valores', label: 'Valores', icon: 'money', permission: 'warehouse:finance' },
   { to: '/almoxarifado/controle', label: 'Controle interno', icon: 'lists', permission: 'warehouse:manage' },
   { to: '/almoxarifado/inventario', label: 'Inventário', icon: 'inventory', permission: 'warehouse:manage' },
+  { to: '/almoxarifado/robo', label: 'Robô', icon: 'robot', permission: 'warehouse:manage' },
   { to: '/almoxarifado/relatorios', label: 'Relatórios', icon: 'reports', permission: 'reports:read' },
 ]
 

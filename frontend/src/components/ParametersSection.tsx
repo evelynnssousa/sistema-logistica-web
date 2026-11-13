@@ -124,6 +124,7 @@ function NotificationsBlock({
 }) {
   const [disabled, setDisabled] = useState(value.disabled)
   const [reminderDays, setReminderDays] = useState(String(value.pendingReminderDays ?? ''))
+  const [weeklySummary, setWeeklySummary] = useState(value.warehouseWeeklySummary === true)
   const [security, setSecurity] = useState<SecurityEmails>(
     value.securityEmails ?? { newLogin: false, lockout: true, sessionsRevoked: true, adminAlerts: true },
   )
@@ -143,7 +144,7 @@ function NotificationsBlock({
       title="Notificações por perfil"
       description="Define o que cada perfil recebe. Ninguém passa a ver o que suas permissões não permitem."
       canManage={canManage}
-      onSave={() => saveParameters('notifications', { disabled, pendingReminderDays: reminderDays, securityEmails: security })}
+      onSave={() => saveParameters('notifications', { disabled, pendingReminderDays: reminderDays, warehouseWeeklySummary: weeklySummary, securityEmails: security })}
     >
       <label className="maintenance-form-field">
         <span>Avisar a equipe sobre solicitações paradas há (dias)</span>
@@ -157,6 +158,16 @@ function NotificationsBlock({
           value={reminderDays}
           onChange={(event) => setReminderDays(event.target.value)}
         />
+      </label>
+      <label className="parameter-check">
+        <input
+          type="checkbox"
+          disabled={!canManage}
+          checked={weeklySummary}
+          onChange={(event) => setWeeklySummary(event.target.checked)}
+        />{' '}
+        Enviar à equipe do Almoxarifado o resumo semanal do robô (segunda-feira, a partir das 7h): só
+        contagens, sem valores
       </label>
       <fieldset className="driver-settings-fieldset parameter-check-list">
         <legend>E-mails de segurança</legend>

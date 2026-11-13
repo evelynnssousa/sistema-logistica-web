@@ -35,6 +35,7 @@ const VehicleDetailPage = named(() => import('./pages/VehiclesPage'), 'VehicleDe
 const EquipmentsPage = lazy(() => import('./pages/EquipmentsPage'))
 const StockTab = named(() => import('./pages/WarehouseStock'), 'StockTab')
 const WarehouseFinanceTab = named(() => import('./pages/WarehouseFinance'), 'WarehouseFinanceTab')
+const WarehouseRobotTab = named(() => import('./pages/WarehouseRobot'), 'WarehouseRobotTab')
 const ControlTab = named(() => import('./pages/WarehouseControl'), 'ControlTab')
 const CalendarPage = lazy(() => import('./pages/CalendarPage'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
@@ -158,6 +159,7 @@ function App() {
             <Route path="valores" element={guarded(['warehouse:finance'], <WarehouseFinanceTab />)} />
             <Route path="controle" element={guarded(['warehouse:manage'], <ControlTab />)} />
             <Route path="inventario" element={guarded(['warehouse:manage'], <ChecksTab />)} />
+            <Route path="robo" element={guarded(['warehouse:manage'], <WarehouseRobotTab />)} />
             <Route path="relatorios" element={guarded(['reports:read'], <WarehouseReportsTab />)} />
             <Route path="pedidos/:requestId" element={<WarehouseRequestPage />} />
             <Route path="conferencias/:checkId" element={guarded(['warehouse:manage'], <InventoryCheckPage />)} />

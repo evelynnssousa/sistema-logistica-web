@@ -677,6 +677,8 @@ export type SystemSettings = {
   notifications: {
     disabled: Record<string, string[]>
     pendingReminderDays: number | null
+    /** Resumo semanal do Almoxarifado (robô). Ausente em respostas antigas: desligado. */
+    warehouseWeeklySummary?: boolean
     /** E-mails de segurança. Ausente em respostas antigas: valem os padrões do servidor. */
     securityEmails?: SecurityEmails
   }
@@ -746,3 +748,93 @@ export const getAttachmentCapacity = () =>
   apiRequest<Envelope & { configured: boolean; usedBytes: number; files: number; maxTotalBytes: number }>(
     '/attachments/capacity',
   )
+
+// ---------------------------------------------------------------------------
+// Robô do Almoxarifado (sem inteligência artificial)
+// ---------------------------------------------------------------------------
+export type RobotColumns = {
+  headerRow: number
+  code: number | null
+  description: number | null
+  quantity: number | null
+  unit: number | null
+}
+
+export type RobotLine = {
+  line: number
+  code: string
+  description: string
+  unit: string
+  quantity: number | null
+  match: {
+    status: 'code' | 'name' | 'suggested' | 'none'
+    materialId: string | null
+    suggestions: { id: string; name: string; score: number }[]
+  }
+}
+
+export type RobotCatalogEntry = {
+  id: string
+  code: string | null
+  name: string
+  unit: string
+  location: string | null
+  current: number
+}
+
+export type RobotSheet = {
+  fileName: string
+  kind: 'xlsx' | 'ods' | 'csv' | 'html'
+  rowCount: number
+  preview: string[][]
+  columns: RobotColumns
+  guessed: RobotColumns
+  lines: RobotLine[]
+  catalog: RobotCatalogEntry[]
+}
+
+const columnParameter = (value: number | null | undefined) =>
+  value === undefined ? undefined : value === null ? 'none' : value
+
+/** Envia a planilha; com columns, usa as colunas escolhidas na tela em vez do palpite. */
+export const readRobotSheet = (file: File, columns?: RobotColumns) =>
+  apiRequest<Envelope & RobotSheet>(
+    `/warehouse/robot/sheet${queryString({
+      header: columns?.headerRow,
+      code: columnParameter(columns?.code),
+      description: columnParameter(columns?.description),
+      quantity: columnParameter(columns?.quantity),
+      unit: columnParameter(columns?.unit),
+    })}`,
+    {
+      method: 'POST',
+      body: file,
+      headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) },
+    },
+  )
+
+export type RestockSuggestion = {
+  materialId: string
+  code: string | null
+  name: string
+  unit: string
+  location: string | null
+  available: number
+  minimum: number
+  monthlyAverage: number | null
+  coverageMonths: number | null
+  target: number
+  suggested: number
+  reason: 'below_minimum' | 'short_coverage'
+  instruments: { instrumentId: string; number: string; type: string; validUntil: string | null; itemId: string; description: string; unit: string; balance: number }[]
+}
+
+export const getRestock = (months: number) =>
+  apiRequest<Envelope & { months: number; withInstruments: boolean; suggestions: RestockSuggestion[] }>(
+    `/warehouse/robot/restock${queryString({ months })}`,
+  )
+
+export type WeeklySummary = { belowMinimum: number; restockCount: number; pendingCount: number; openChecks: number }
+
+export const getWeeklySummary = () =>
+  apiRequest<Envelope & { enabled: boolean; emailConfigured: boolean; summary: WeeklySummary }>('/warehouse/robot/weekly-summary')
