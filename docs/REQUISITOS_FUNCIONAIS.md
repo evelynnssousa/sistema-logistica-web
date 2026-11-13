@@ -127,3 +127,10 @@ Autenticação, cadastros, perfis, permissões, CPF, solicitações, agendamento
 ### Dashboard (12/11/2026)
 
 - Porcentagem do total nos cartões e nas barras; comparação com o período anterior do mesmo tamanho; taxas de concluídas no prazo, canceladas e pedidos do Almoxarifado atendidos por completo; percentual usado das atas do Almoxarifado (só para quem vê valores).
+
+### Administração do sistema (13/11/2026)
+
+- Em Configurações: domínios aceitos no cadastro (sem lista, vale `INSTITUTIONAL_EMAIL_DOMAINS`), feriados (calendário, carga horária dos motoristas e prazo que cair em feriado), aviso geral com data final (topo das telas e tela de entrada), módulos ligados (desligado sai do menu e não recebe pedidos novos; nada é apagado), padrões de atas e contratos, mensagens da tela de entrada e da página inicial, e permissões padrão de Solicitante e Operador SLM, só entre as permissões comuns de cada módulo.
+- Gerenciador de formulários: além dos cinco anteriores, pedido de materiais, pedido externo, registro de entrega, material, demanda, ata ou contrato, veículo, motorista, ocorrência do motorista, equipamento, execução da manutenção e cotação de passagem. Nesses doze, os campos existentes podem ser renomeados, e os campos novos aparecem no fim, validados no servidor e gravados com o nome usado.
+- Pesquisa geral: inclui demandas e atas e contratos, com a mesma visibilidade do Controle de Demandas (setor, compartilhamento, restrição e rascunho).
+- Almoxarifado: localização de cada material (só a equipe vê), inventário e estoque ordenáveis pela localização, e entrada no estoque pelo item de uma ata ou contrato do Controle de Demandas, que baixa o saldo do item.

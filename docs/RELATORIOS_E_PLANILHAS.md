@@ -22,7 +22,7 @@ Escolha o período ("De" e "Até", até cerca de 13 meses) e clique em **Baixar 
 | Aba | Conteúdo |
 |---|---|
 | Sobre | Período, quem gerou, quando, e como cada número é calculado |
-| Estoque | Situação **de agora**: código, material, unidade, estoque físico, reservado, disponível, mínimo, se está abaixo do mínimo, **consumo médio por mês**, base do consumo (meses), entregue nos últimos 12 meses, total fornecido e última movimentação |
+| Estoque | Situação **de agora**: código, material, **localização**, unidade, estoque físico, reservado, disponível, mínimo, se está abaixo do mínimo, **consumo médio por mês**, base do consumo (meses), entregue nos últimos 12 meses, total fornecido e última movimentação |
 | Pedidos | Pedidos abertos no período: protocolo, data, situação, origem (interna ou governamental), setor, solicitante, itens, quantidades solicitadas e atendidas, data da entrega |
 | Itens entregues | Cada material entregue no período, com o pedido, o setor e as quantidades |
 | Movimentações | Entradas e saídas do estoque interno registradas no período, inclusive as baixas automáticas das entregas |
