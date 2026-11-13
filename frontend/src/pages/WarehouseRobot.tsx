@@ -246,7 +246,7 @@ function InventoryFromSheet() {
             }}
           />
         </label>
-        {busy && <Loading label="O robô está lendo a planilha..." />}
+        {busy && <Loading compact label="O robô está lendo a planilha..." />}
         {error && <Alert tone="error">{error}</Alert>}
       </section>
 
