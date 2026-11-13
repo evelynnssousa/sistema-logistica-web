@@ -165,3 +165,32 @@ Menu **Serviços → Patrimônio**. Só para o Administrador e o Operador SLM da
   - as linhas com problema (sem número, número repetido, sem descrição).
   
   Só os bens novos são cadastrados: os existentes não mudam pela planilha.
+
+### Página inicial, Ajuda e limpeza dos dados de teste (13/11/2026)
+
+- **Página inicial pública:** é a primeira tela no endereço principal do site, antes de entrar. Tem:
+  - abertura com os botões Entrar e Criar conta;
+  - o que dá para pedir (só os módulos ligados);
+  - como funciona;
+  - perguntas frequentes;
+  - quem somos (JUCESP e SLM);
+  - equipe com foto;
+  - novidades;
+  - contato por e-mail.
+  
+  Endereços diretos de telas internas continuam levando ao login. `/entrar` e `/cadastro` abrem os formulários. O conteúdo é editado em **Configurações → Página inicial e Ajuda** e é público. Fotos: só JPEG, PNG ou WebP, reduzidas no navegador para até 400×400, com no máximo 400 KB, guardadas no banco e servidas em `/api/public/team-photos/<id>`. Uma foto que deixa de ser usada sai na gravação seguinte, depois de um dia.
+- **Ajuda (menu Conta):** para quem entrou, com as mesmas perguntas, novidades, equipe e contato.
+- **Limpar dados de teste:** em Configurações, só para o Administrador com `settings:manage`. A pessoa:
+  1. escolhe os módulos;
+  2. vê quantos registros saem;
+  3. baixa a cópia em JSON;
+  4. digita a frase. No banco principal, a frase é outra e mais forte.
+  
+  Se os dados mudaram depois da cópia, nada é apagado. Na limpeza:
+  - tudo acontece numa transação só, e qualquer erro desfaz tudo;
+  - só os gatilhos de proteção das tabelas tocadas são desligados, e são religados dentro da mesma transação;
+  - os protocolos são recalculados: um módulo vazio volta a 00001, e um número que sobrou nunca se repete;
+  - os anexos saem do armazenamento;
+  - a Auditoria registra a limpeza e nunca é apagada.
+  
+  Cadastros (usuários, setores, materiais, veículos, atas) e configurações ficam.
