@@ -5,6 +5,8 @@ import { isAbsolute, resolve, sep } from 'node:path'
 import { Transform } from 'node:stream'
 import type { Readable } from 'node:stream'
 import { GraphDriveStorage, graphStorageSettings } from './graphDriveStorage.js'
+import { StorageProviderError } from './providerError.js'
+import { SupabaseStorage, supabaseStorageSettings } from './supabaseStorage.js'
 
 /**
  * Armazenamento dos anexos. Trocar o disco local por um serviço aprovado pela TI significa
@@ -81,18 +83,23 @@ export function attachmentDirectoryProblem(directory: string | undefined, root =
   return null
 }
 
-export type StorageDriver = 'local' | 'sharepoint'
+export type StorageDriver = 'local' | 'sharepoint' | 'supabase'
 
-/** ATTACHMENTS_STORAGE: "local" (padrão, desenvolvimento e homologação) ou "sharepoint". */
+/**
+ * ATTACHMENTS_STORAGE: "local" (padrão, desenvolvimento), "supabase" (bucket privado do Supabase
+ * Storage, para o Render) ou "sharepoint" (biblioteca institucional, depois da autorização da TI).
+ */
 export function storageDriver(environment: NodeJS.ProcessEnv = process.env): StorageDriver | null {
   const raw = environment.ATTACHMENTS_STORAGE?.trim().toLowerCase()
   if (!raw || raw === 'local') return 'local'
   if (raw === 'sharepoint') return 'sharepoint'
+  if (raw === 'supabase') return 'supabase'
   return null
 }
 
 let testStorage: AttachmentStorage | null | undefined
 let cachedGraph: { fingerprint: string; storage: GraphDriveStorage } | null = null
+let cachedSupabase: { fingerprint: string; storage: SupabaseStorage } | null = null
 
 /** Só para testes: substitui o armazenamento escolhido pelo ambiente. undefined restaura. */
 export function setAttachmentStorageForTests(storage: AttachmentStorage | null | undefined) {
@@ -101,7 +108,7 @@ export function setAttachmentStorageForTests(storage: AttachmentStorage | null |
 
 /**
  * Sem configuração válida não há armazenamento: nada é gravado em uma pasta improvisada, nem
- * no banco, e o SharePoint mal configurado nunca cai para o disco local. A pasta local precisa
+ * no banco, e o SharePoint ou o Supabase mal configurados nunca caem para o disco local. A pasta local precisa
  * ser absoluta e ficar fora do código publicado.
  */
 export function resolveAttachmentStorage(environment: NodeJS.ProcessEnv = process.env): AttachmentStorage | null {
@@ -117,16 +124,26 @@ export function resolveAttachmentStorage(environment: NodeJS.ProcessEnv = proces
     }
     return cachedGraph.storage
   }
+  if (driver === 'supabase') {
+    const settings = supabaseStorageSettings(environment)
+    if (!settings.ok) return null
+    // Uma instância por configuração: a conferência de bucket privado é reaproveitada.
+    const fingerprint = createHash('sha256').update(JSON.stringify(settings.value)).digest('hex')
+    if (cachedSupabase?.fingerprint !== fingerprint) {
+      cachedSupabase = { fingerprint, storage: new SupabaseStorage(settings.value) }
+    }
+    return cachedSupabase.storage
+  }
   if (driver !== 'local') return null
   const directory = environment.ATTACHMENTS_DIR?.trim()
   if (!directory || attachmentDirectoryProblem(directory) !== null) return null
   return new LocalDiskStorage(directory)
 }
 
-/** Falha do armazenamento (disco ou SharePoint) que a equipe técnica precisa ver. */
+/** Falha do armazenamento (disco, SharePoint ou Supabase) que a equipe técnica precisa ver. */
 export function isStorageFailure(error: unknown) {
   const code = (error as { code?: unknown } | null)?.code
-  return code === 'EACCES' || code === 'ENOSPC' || (error as Error | null)?.name === 'GraphStorageError'
+  return code === 'EACCES' || code === 'ENOSPC' || error instanceof StorageProviderError
 }
 
 export class AttachmentIntegrityError extends Error {

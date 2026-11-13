@@ -4,7 +4,7 @@ import { RequestValidationError } from '../requests/validation.js'
 import { recordTechnicalEvent } from '../monitoring/technicalEvents.js'
 import { logSecurityEvent } from '../security/logger.js'
 import { DomainError } from './withTransaction.js'
-import { GraphStorageError } from '../attachments/graphAuth.js'
+import { StorageProviderError } from '../attachments/providerError.js'
 
 /** Regra de negócio com status HTTP próprio. Atravessa a transação com a mensagem intacta. */
 export class ModuleError extends DomainError {
@@ -71,7 +71,7 @@ export function sendModuleError(response: Response, error: unknown) {
     response.status(error.status).json({ success: false, message: error.message, ...(error.code ? { code: error.code } : {}) })
     return
   }
-  if (error instanceof GraphStorageError) {
+  if (error instanceof StorageProviderError) {
     // Sem detalhe do provedor: o código técnico fica só no registro interno.
     response.status(503).json({
       success: false,
