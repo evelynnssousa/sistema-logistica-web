@@ -300,7 +300,7 @@ async function main() {
 
     // E2E_ONLY roda cenários escolhidos, separados por vírgula, durante uma investigação.
     const selected = process.env.E2E_ONLY?.split(',')
-    for (const scenario of selected ?? ['session-persistence', 'access-control', 'operational-modules', 'integrations', 'operations-center', 'transparency', 'communications', 'demands', 'demand-permissions', 'driver-portal', 'driver-portal-settings', 'visual-review']) {
+    for (const scenario of selected ?? ['session-persistence', 'access-control', 'operational-modules', 'integrations', 'operations-center', 'transparency', 'communications', 'demands', 'demand-permissions', 'driver-portal', 'driver-portal-settings', 'form-attachment', 'visual-review']) {
       await require(`../e2e/${scenario}.e2e.cjs`).run({
         playwright,
         baseUrl: frontendUrl,

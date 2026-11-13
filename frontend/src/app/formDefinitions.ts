@@ -17,6 +17,7 @@ export const fieldTypes = [
   'boolean',
   'phone',
   'checkbox',
+  'attachment',
 ] as const
 export type FormFieldType = (typeof fieldTypes)[number]
 

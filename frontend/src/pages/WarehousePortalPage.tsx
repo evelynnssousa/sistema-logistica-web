@@ -13,6 +13,7 @@ import FormNotices from '../components/FormNotices'
 import { Alert, EmptyState, Loading } from '../components/ui/Feedback'
 import { FilterBar, FilterSelect, SearchField } from '../components/ui/Filters'
 import Icon from '../components/ui/Icon'
+import { uploadPendingFiles, warnFailedUploads } from '../app/formFiles'
 
 /** Nova solicitação interna, a partir do catálogo real de materiais ativos. */
 function WarehousePortalPage() {
@@ -69,6 +70,7 @@ function WarehousePortalPage() {
         avisoPrivacidade: privacyNotices.warehouse.version,
         items: chosen.map((item) => ({ materialId: item.id, requested: quantities[item.id] })),
       })
+      warnFailedUploads(await uploadPendingFiles('material_request', created.id, extra, Object.fromEntries(form.extraFields.map((field) => [field.id, field.label]))))
       navigate(`/almoxarifado/pedidos/${created.id}`)
     } catch (err) {
       setSubmitError(errorMessage(err, 'Não foi possível enviar a solicitação.'))

@@ -13,6 +13,7 @@ import PageHeader from '../components/ui/PageHeader'
 import { sectionTitle } from '../app/formDefinitions'
 import { customFieldsOf, isManagedFieldVisible, useCanActOnBehalf } from '../app/requestForm'
 import { RequestField } from '../components/RequestFields'
+import { uploadPendingFiles, warnFailedUploads } from '../app/formFiles'
 
 const knownFields = [
   'requester',
@@ -76,6 +77,7 @@ function FleetRequestPage() {
         return
       }
       const created = await createRequest('fleet', { ...body, duplicidadeAvisada: acknowledged })
+      warnFailedUploads(await uploadPendingFiles('service_request', created.id, body.customFields, Object.fromEntries(visibleFields.map((field) => [field.id, field.label]))))
       navigate(`/frota/${created.id}`)
     } catch (err) {
       setSubmitError(errorMessage(err, 'Não foi possível enviar a solicitação.'))

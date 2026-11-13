@@ -36,6 +36,7 @@ import type { IconName } from '../components/ui/Icon'
 import PageHeader from '../components/ui/PageHeader'
 import Pagination from '../components/ui/Pagination'
 import StatusBadge from '../components/ui/StatusBadge'
+import { uploadPendingFiles, warnFailedUploads } from '../app/formFiles'
 
 const notIntegratedNotice =
   'O JUCESP não está integrado ao sistema governamental. Os pedidos dessa origem são cópias digitadas aqui: editá-las não altera o pedido original.'
@@ -307,6 +308,7 @@ export function ExternalRequestTab() {
         items,
         customFields: extra,
       })
+      warnFailedUploads(await uploadPendingFiles('material_request', created.id, extra, Object.fromEntries(form.extraFields.map((field) => [field.id, field.label]))))
       navigate(`/almoxarifado/pedidos/${created.id}`)
     } catch (err) {
       setError(errorMessage(err, 'Não foi possível registrar o pedido.'))

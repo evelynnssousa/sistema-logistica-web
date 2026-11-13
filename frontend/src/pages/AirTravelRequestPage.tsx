@@ -13,6 +13,7 @@ import DuplicateWarning from '../components/DuplicateWarning'
 import FormNotices from '../components/FormNotices'
 import { Alert } from '../components/ui/Feedback'
 import PageHeader from '../components/ui/PageHeader'
+import { uploadPendingFiles, warnFailedUploads } from '../app/formFiles'
 
 type Passenger = {
   id: number
@@ -216,6 +217,7 @@ function AirTravelRequestPage() {
         return
       }
       const created = await createRequest('flights', { ...body, duplicidadeAvisada: acknowledged })
+      warnFailedUploads(await uploadPendingFiles('service_request', created.id, body.customFields, Object.fromEntries(visibleFields.map((field) => [field.id, field.label]))))
       navigate(`/passagens-aereas/${created.id}`)
     } catch (err) {
       setSubmitError(errorMessage(err, 'Não foi possível enviar a solicitação.'))
