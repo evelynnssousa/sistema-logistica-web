@@ -178,3 +178,62 @@ test('permissões padrão: o ajuste vale para as contas do perfil, e nada admini
   assert.equal((await save('profileDefaults', {})).status, 200)
   assert.equal((await permissions()).includes('reports:read'), false)
 })
+
+// ---------------------------------------------------------------------------
+// Formulários de leiaute fixo: nomes e campos novos (13/11/2026).
+// ---------------------------------------------------------------------------
+async function publishWithExtra(key: string, extra: Record<string, unknown>, rename?: { id: string; label: string }) {
+  const library = await get(`/config/forms/${key}`, admin)
+  assert.equal(library.status, 200, library.text)
+  const base = library.body.default as { sections: unknown[]; fields: { id: string; label: string }[] }
+  const fields = base.fields.map((field) => (rename && field.id === rename.id ? { ...field, label: rename.label } : field))
+  const published = await post(`/config/forms/${key}/publish`, admin, {
+    conteudo: {
+      sections: base.sections,
+      fields: [...fields, { id: 'custom-extra', label: 'Campo extra', type: 'shortText', required: true, active: true, section: 'adicionais', options: [], ...extra }],
+    },
+    observacao: 'Teste',
+  })
+  assert.equal(published.status, 200, published.text)
+}
+
+test('formulários novos: listados no gerenciador e sem campo protegido removível', async () => {
+  const library = await get('/config/forms', admin)
+  const keys = library.body.forms.map((form: { key: string }) => form.key)
+  for (const key of ['warehouseRequest', 'warehouseExternal', 'warehouseDelivery', 'material', 'demand', 'contractInstrument', 'vehicle', 'driver', 'driverOccurrence', 'equipment', 'maintenanceExecution', 'flightQuote']) {
+    assert.ok(keys.includes(key), `faltou ${key}`)
+  }
+  assert.equal(library.body.forms.find((form: { key: string }) => form.key === 'demand').fixedLayout, true)
+  const base = (await get('/config/forms/vehicle', admin)).body.default
+  const withoutPlate = base.fields.filter((field: { id: string }) => field.id !== 'plate')
+  assert.equal((await post('/config/forms/vehicle/publish', admin, { conteudo: { ...base, fields: withoutPlate } })).status, 400)
+})
+
+test('campo novo obrigatório: exigido, gravado com o nome usado e devolvido na consulta', async () => {
+  await publishWithExtra('vehicle', {}, { id: 'model', label: 'Modelo do veículo' })
+  const managed = await get('/forms/managed/vehicle', requester)
+  assert.equal(managed.status, 200)
+  assert.equal(managed.body.content.fields.find((field: { id: string }) => field.id === 'model').label, 'Modelo do veículo')
+
+  const body = { placa: 'ABC1D23', modelo: 'Van', situacao: 'disponivel', kmAtual: 10 }
+  assert.equal((await post('/fleet/vehicles', admin, body)).status, 400, 'sem o campo obrigatório')
+  const created = await post('/fleet/vehicles', admin, { ...body, customFields: { 'custom-extra': 'Patrimônio 123' } })
+  assert.equal(created.status, 201, created.text)
+  const vehicle = (await get('/fleet/vehicles', admin)).body.vehicles.find((item: { id: string }) => item.id === created.body.id)
+  assert.deepEqual(vehicle.customFields, [{ id: 'custom-extra', label: 'Campo extra', value: 'Patrimônio 123' }])
+  // Alterar sem enviar os campos novos não os apaga.
+  assert.equal((await call(`/fleet/vehicles/${created.body.id}`, { method: 'PATCH', session: admin, body: { ...body, modelo: 'Van 2' } })).status, 200)
+  const after = (await get('/fleet/vehicles', admin)).body.vehicles.find((item: { id: string }) => item.id === created.body.id)
+  assert.equal(after.customFields[0].value, 'Patrimônio 123')
+})
+
+test('cadastro de equipamento: campo novo gravado; opção fora da lista é recusada', async () => {
+  await publishWithExtra('equipment', { required: false })
+  const equipment = await post('/maintenance/equipments', admin, { nome: 'Elevador 1', customFields: { 'custom-extra': 'Contrato 9' } })
+  assert.equal(equipment.status, 201, equipment.text)
+  const listed = (await get('/maintenance/equipments', admin)).body.equipments.find((item: { id: string }) => item.id === equipment.body.id)
+  assert.equal(listed.customFields[0].value, 'Contrato 9')
+  // Campo de lista com opção inválida é recusado no servidor.
+  await publishWithExtra('equipment', { type: 'singleSelect', options: ['A', 'B'], required: false })
+  assert.equal((await post('/maintenance/equipments', admin, { nome: 'Elevador 2', customFields: { 'custom-extra': 'C' } })).status, 400)
+})

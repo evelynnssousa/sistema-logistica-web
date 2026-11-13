@@ -1,3 +1,4 @@
+import { presentCustomFields, readCustomForm, saveCustomFields } from '../database/customFormValues.js'
 import express, { Router } from 'express'
 import type { Request, Response } from 'express'
 import { AttachmentRejectedError, contentTypes, inlineKinds, validateAttachment } from '../attachments/fileValidation.js'
@@ -206,9 +207,13 @@ router.get(
   guarded(async (request, response) => {
     const { context, id, access } = await loadWith(response, request, 'read')
     const settings = await readSystemSettings(getDatabasePool())
+    const extra = await getDatabasePool().query<{ campos: unknown }>(
+      `SELECT to_jsonb(i)->'campos_personalizados' AS campos FROM public.contract_instruments i WHERE i.id = $1`,
+      [id],
+    )
     response.json({
       success: true,
-      instrument: await instruments.detail(id, viewerOf(context)),
+      instrument: { ...(await instruments.detail(id, viewerOf(context))), customFields: presentCustomFields(extra.rows[0]?.campos) },
       access,
       attachmentLimits: { maxFileMb: settings.attachments.maxFileMb, allowedKinds: settings.attachments.allowedKinds },
       storageConfigured: resolveAttachmentStorage() !== null,
@@ -225,7 +230,9 @@ router.post(
     const context = await requireContext(response)
     const input = readInstrument(asBody(request.body))
     if (!canCreateInstrumentFor(context, input.responsibleSectorId)) throw forbidden()
+    const custom = await readCustomForm('contractInstrument', asBody(request.body).customFields)
     const id = await instruments.create(identityOf(response), input)
+    await saveCustomFields('contract_instruments', id, custom)
     response.status(201).json({ success: true, id })
   }),
 )
@@ -240,7 +247,10 @@ router.put(
     if (current && current.responsibleSectorId !== input.responsibleSectorId && !canCreateInstrumentFor(context, input.responsibleSectorId)) {
       throw forbidden()
     }
+    const body = asBody(request.body)
+    const custom = 'customFields' in body ? await readCustomForm('contractInstrument', body.customFields) : null
     await instruments.update(identity, id, input)
+    if (custom) await saveCustomFields('contract_instruments', id, custom)
     response.json({ success: true })
   }),
 )

@@ -102,12 +102,16 @@ export type ManagedField = {
 
 export type FormContent = { sections: { id: string; title: string }[]; fields: ManagedField[] }
 
+/** Formulário publicado (ou o padrão) de um formulário administrável, para quem o preenche. */
+export const getManagedFormContent = (key: string) =>
+  apiRequest<Envelope & { content: FormContent; version: number | null; fixedLayout: boolean }>(`/forms/managed/${key}`)
+
 const forms = '/config/forms'
 
 export const getFormLibrary = () =>
   apiRequest<
     Envelope & {
-      forms: { key: string; label: string; published: number | null; hasDraft: boolean }[]
+      forms: { key: string; label: string; published: number | null; hasDraft: boolean; fixedLayout?: boolean }[]
       fieldTypes: string[]
       catalogs: string[]
     }

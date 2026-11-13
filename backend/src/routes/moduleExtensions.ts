@@ -1,3 +1,4 @@
+import { readCustomForm, saveCustomFields } from '../database/customFormValues.js'
 import { Router } from 'express'
 import type { Request, Response } from 'express'
 import { holdsPermission } from '../auth/permissions.js'
@@ -132,7 +133,9 @@ router.post(
   '/fleet/vehicles',
   ...fleetManage,
   guarded(async (request, response) => {
+    const custom = await readCustomForm('vehicle', asBody(request.body).customFields)
     const id = await extensions.createVehicle(identityOf(response), readVehicle(request.body))
+    await saveCustomFields('vehicles', id, custom)
     response.status(201).json({ success: true, id })
   }),
 )
@@ -154,7 +157,11 @@ router.patch(
   '/fleet/vehicles/:vehicleId',
   ...fleetManage,
   guarded(async (request, response) => {
-    await extensions.updateVehicle(identityOf(response), idParam(request, 'vehicleId'), readVehicle(request.body))
+    const body = asBody(request.body)
+    const custom = 'customFields' in body ? await readCustomForm('vehicle', body.customFields) : null
+    const id = idParam(request, 'vehicleId')
+    await extensions.updateVehicle(identityOf(response), id, readVehicle(request.body))
+    if (custom) await saveCustomFields('vehicles', id, custom)
     response.json({ success: true })
   }),
 )
@@ -221,7 +228,9 @@ router.post(
   '/maintenance/equipments',
   ...maintenanceManage,
   guarded(async (request, response) => {
+    const custom = await readCustomForm('equipment', asBody(request.body).customFields)
     const id = await extensions.saveEquipment(identityOf(response), null, readEquipment(request.body))
+    await saveCustomFields('equipments', id, custom)
     response.status(201).json({ success: true, id })
   }),
 )
@@ -230,7 +239,11 @@ router.patch(
   '/maintenance/equipments/:equipmentId',
   ...maintenanceManage,
   guarded(async (request, response) => {
-    await extensions.saveEquipment(identityOf(response), idParam(request, 'equipmentId'), readEquipment(request.body))
+    const body = asBody(request.body)
+    const custom = 'customFields' in body ? await readCustomForm('equipment', body.customFields) : null
+    const id = idParam(request, 'equipmentId')
+    await extensions.saveEquipment(identityOf(response), id, readEquipment(request.body))
+    if (custom) await saveCustomFields('equipments', id, custom)
     response.json({ success: true })
   }),
 )
@@ -274,6 +287,7 @@ router.post(
       executedAt: requiredDateTime(body.executadoEm, 'a data da execução'),
       service: requiredText(body.servico, 'o serviço realizado', { min: 3, max: 4000 }),
       pending: optionalText(body.pendencias, 'Pendências'),
+      custom: await readCustomForm('maintenanceExecution', body.customFields),
     })
     response.status(201).json({ success: true })
   }),
@@ -307,6 +321,7 @@ router.post(
       value,
       conditions: optionalText(body.condicoes, 'Condições'),
       validUntil: optionalDateTime(body.validade, 'a validade'),
+      custom: await readCustomForm('flightQuote', body.customFields),
     })
     response.status(201).json({ success: true, id })
   }),

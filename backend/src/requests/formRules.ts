@@ -12,7 +12,29 @@ export const managedForms = {
   fleet: 'Frota',
   airTravel: 'Passagens aéreas',
   warehouseControl: 'Controle interno do Almoxarifado',
+  // 13/11/2026: os campos existentes podem ser renomeados; campos novos são gravados junto do registro.
+  warehouseRequest: 'Pedido de materiais (Almoxarifado)',
+  warehouseExternal: 'Pedido externo (Almoxarifado)',
+  warehouseDelivery: 'Registro de entrega (Almoxarifado)',
+  material: 'Cadastro de material (Almoxarifado)',
+  demand: 'Nova demanda (Controle de Demandas)',
+  contractInstrument: 'Ata ou contrato (Controle de Demandas)',
+  vehicle: 'Cadastro de veículo (Frota)',
+  driver: 'Cadastro de motorista (Frota)',
+  driverOccurrence: 'Ocorrência do motorista (Portal do Motorista)',
+  equipment: 'Cadastro de equipamento (Manutenção)',
+  maintenanceExecution: 'Registro de execução (Manutenção)',
+  flightQuote: 'Cotação de passagem (Passagens aéreas)',
 } as const
+
+/**
+ * Formulários em que só os campos novos e os nomes mudam: a ordem e o tipo dos campos existentes
+ * seguem a tela, e os campos novos aparecem ao final, em "Informações adicionais".
+ */
+export const fixedLayoutForms: readonly ManagedForm[] = [
+  'warehouseRequest', 'warehouseExternal', 'warehouseDelivery', 'material', 'demand', 'contractInstrument',
+  'vehicle', 'driver', 'driverOccurrence', 'equipment', 'maintenanceExecution', 'flightQuote',
+]
 
 export type ManagedForm = keyof typeof managedForms
 
@@ -79,6 +101,13 @@ function free(id: string, label: string, type: ManagedFieldType, extra: Partial<
 }
 
 const principal = [{ id: 'principal', title: 'Dados da solicitação' }]
+
+/** Campo existente de um formulário de leiaute fixo: renomeável, nunca removido nem alterado. */
+function standard(id: string, label: string, type: ManagedFieldType, required = false, extra: Partial<ManagedField> = {}): ManagedField {
+  return { ...blank, id, label, type, required, protected: true, ...extra }
+}
+
+const fixedSections = [{ id: 'principal', title: 'Dados' }, { id: 'adicionais', title: 'Informações adicionais' }]
 
 /** Campos padrão, na mesma ordem de frontend/src/app/formDefinitions.ts. */
 export const defaultForms: Record<ManagedForm, ManagedFormContent> = {
@@ -169,6 +198,135 @@ export const defaultForms: Record<ManagedForm, ManagedFormContent> = {
       free('divergenceJustification', 'Justificativa de divergências', 'longText', { section: 'registro', maxLength: 2000 }),
     ],
   },
+  warehouseRequest: {
+    sections: fixedSections,
+    fields: [
+      standard('items', 'Materiais e quantidades', 'longText', true),
+      standard('note', 'Observação', 'longText'),
+    ],
+  },
+  warehouseExternal: {
+    sections: fixedSections,
+    fields: [
+      standard('externalReference', 'Número de referência no sistema governamental', 'shortText'),
+      standard('externalRequester', 'Solicitante informado no pedido', 'shortText'),
+      standard('externalRequesterEmail', 'E-mail institucional do solicitante', 'email'),
+      standard('sector', 'Setor', 'singleSelect', true, { catalog: 'sectors' }),
+      standard('note', 'Observação', 'longText'),
+      standard('items', 'Materiais e quantidades', 'longText', true),
+    ],
+  },
+  warehouseDelivery: {
+    sections: fixedSections,
+    fields: [
+      standard('receivedBy', 'Recebido por', 'shortText', true),
+      standard('deliveredDate', 'Data da entrega', 'date'),
+      standard('deliveryNote', 'Observação interna da entrega', 'longText'),
+    ],
+  },
+  material: {
+    sections: fixedSections,
+    fields: [
+      standard('name', 'Nome', 'shortText', true),
+      standard('code', 'Código', 'shortText'),
+      standard('unit', 'Unidade de medida', 'singleSelect', true, { catalog: 'measurementUnits' }),
+      standard('category', 'Categoria', 'singleSelect', false, { catalog: 'warehouseCategories' }),
+      standard('description', 'Descrição', 'longText'),
+    ],
+  },
+  demand: {
+    sections: fixedSections,
+    fields: [
+      standard('title', 'Título', 'shortText', true),
+      standard('description', 'Descrição detalhada', 'longText', true),
+      standard('category', 'Categoria', 'singleSelect', true),
+      standard('originSector', 'Setor de origem', 'singleSelect', true),
+      standard('responsibleSector', 'Setor responsável', 'singleSelect', true),
+      standard('followUpManager', 'Diretor responsável pelo acompanhamento', 'singleSelect'),
+      standard('requester', 'Solicitante', 'singleSelect'),
+      standard('responsible', 'Responsável principal', 'singleSelect'),
+      standard('startDate', 'Início previsto', 'date'),
+      standard('dueDate', 'Prazo para conclusão', 'date'),
+      standard('priority', 'Prioridade', 'singleSelect', true),
+      standard('notes', 'Observações', 'longText'),
+      standard('references', 'Referências ou documentos relacionados', 'longText'),
+    ],
+  },
+  contractInstrument: {
+    sections: fixedSections,
+    fields: [
+      standard('type', 'Tipo', 'singleSelect', true),
+      standard('number', 'Número', 'shortText', true),
+      standard('category', 'Categoria', 'singleSelect', true),
+      standard('process', 'Processo', 'shortText'),
+      standard('subject', 'Objeto', 'longText', true),
+      standard('supplier', 'Fornecedor', 'shortText'),
+      standard('total', 'Valor total (R$)', 'number', true),
+      standard('validFrom', 'Início da vigência', 'date'),
+      standard('validUntil', 'Fim da vigência', 'date'),
+      standard('responsibleSector', 'Setor responsável', 'singleSelect', true),
+      standard('manager', 'Gestor ou fiscal', 'singleSelect'),
+      standard('noticeDays', 'Avisar quantos dias antes do fim', 'number', true),
+      standard('notes', 'Observações', 'longText'),
+    ],
+  },
+  vehicle: {
+    sections: fixedSections,
+    fields: [
+      standard('plate', 'Placa', 'shortText', true),
+      standard('model', 'Modelo', 'shortText', true),
+      standard('internalId', 'Identificação interna', 'shortText'),
+      standard('status', 'Situação', 'singleSelect'),
+      standard('mileage', 'Quilometragem atual', 'number'),
+      standard('nextReviewKm', 'Próxima revisão (km)', 'number'),
+      standard('nextReviewDate', 'Próxima revisão (data)', 'date'),
+    ],
+  },
+  driver: {
+    sections: fixedSections,
+    fields: [
+      standard('name', 'Nome', 'shortText', true),
+      standard('registration', 'Matrícula (opcional)', 'shortText'),
+      standard('account', 'Conta de acesso', 'singleSelect'),
+    ],
+  },
+  driverOccurrence: {
+    sections: fixedSections,
+    fields: [
+      standard('category', 'O que aconteceu?', 'singleSelect', true),
+      standard('delay', 'Atraso, em minutos', 'number'),
+      standard('description', 'Descrição', 'longText', true),
+      standard('justification', 'Justificativa', 'longText'),
+    ],
+  },
+  equipment: {
+    sections: fixedSections,
+    fields: [
+      standard('name', 'Nome', 'shortText', true),
+      standard('identification', 'Identificação', 'shortText'),
+      standard('location', 'Local', 'shortText'),
+    ],
+  },
+  maintenanceExecution: {
+    sections: fixedSections,
+    fields: [
+      standard('executedBy', 'Quem realizou', 'shortText', true),
+      standard('executedAt', 'Data e horário', 'dateTime', true),
+      standard('equipment', 'Equipamento (opcional)', 'singleSelect'),
+      standard('service', 'Serviço realizado', 'longText', true),
+      standard('pending', 'Pendências', 'longText'),
+    ],
+  },
+  flightQuote: {
+    sections: fixedSections,
+    fields: [
+      standard('company', 'Companhia', 'shortText', true),
+      standard('flights', 'Voos', 'longText', true),
+      standard('value', 'Valor (R$)', 'number', true),
+      standard('validUntil', 'Validade', 'dateTime'),
+      standard('conditions', 'Condições', 'longText'),
+    ],
+  },
 }
 
 const centralLists: { pattern: RegExp; source: string }[] = [
@@ -221,11 +379,12 @@ function readField(raw: unknown, known: Map<string, ManagedField>, sections: rea
 
   const source = standard ? standard.catalog : ((field.catalog ?? null) as CatalogSource | null)
   if (source !== null && !catalogSources.includes(source)) fail(`O campo "${label}" usa uma lista inválida.`)
-  const options = source || (standard?.protected && standard.options.length) ? (standard?.options ?? []) : field.options ?? []
+  // Campo protegido: as opções são as da tela (ou de um cadastro do módulo) e nunca vêm do editor.
+  const options = source || standard?.protected ? (standard?.options ?? []) : field.options ?? []
   if (!Array.isArray(options) || options.length > 100) fail(`O campo "${label}" tem opções inválidas.`)
   const cleanOptions = options.map((option) => plain(option, `Uma opção de "${label}"`, 120))
 
-  if (['singleSelect', 'multiSelect'].includes(type)) {
+  if (['singleSelect', 'multiSelect'].includes(type) && !standard?.protected) {
     if (!source) {
       if (cleanOptions.length === 0 || cleanOptions.some((option) => !option)) {
         fail(`Informe as opções do campo "${label}".`)
@@ -238,7 +397,7 @@ function readField(raw: unknown, known: Map<string, ManagedField>, sections: rea
         fail(`"${label}" já tem cadastro central. Use a lista de ${central.source} em vez de criar outra.`)
       }
     }
-  } else if (cleanOptions.length > 0) {
+  } else if (cleanOptions.length > 0 && !['singleSelect', 'multiSelect'].includes(type)) {
     fail(`O campo "${label}" não usa lista de opções.`)
   }
 

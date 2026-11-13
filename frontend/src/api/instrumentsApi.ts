@@ -108,6 +108,7 @@ export type InstrumentDetail = InstrumentSummary & {
   }[]
   attachments: { id: string; name: string; kind: string; sizeBytes: number; uploadedBy: string; at: string; amendmentId: string | null }[]
   demands: { id: string; number: string; title: string; status: string; dueDate: string | null }[]
+  customFields?: { id: string; label: string; value: string }[]
 }
 
 export type InstrumentInput = {
@@ -126,6 +127,7 @@ export type InstrumentInput = {
   noticeDays: string
   closed: boolean
   notes: string
+  customFields?: Record<string, string>
 }
 
 export const listInstruments = (filters: { search?: string; type?: string; category?: string; situation?: string; sectorId?: string }) =>

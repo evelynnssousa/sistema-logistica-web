@@ -1,3 +1,5 @@
+import { useManagedForm } from '../app/useManagedForm'
+import { ExtraFields } from '../components/ExtraFields'
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
@@ -47,6 +49,10 @@ function VehicleForm({ vehicle, onSaved }: { vehicle?: Vehicle; onSaved: () => P
   const [km, setKm] = useState(String(vehicle?.currentKm ?? 0))
   const [reviewKm, setReviewKm] = useState(vehicle?.nextReviewKm === null || vehicle?.nextReviewKm === undefined ? '' : String(vehicle.nextReviewKm))
   const [reviewDate, setReviewDate] = useState(vehicle?.nextReviewDate ?? '')
+  const vehicleForm = useManagedForm('vehicle')
+  const [extra, setExtra] = useState<Record<string, string>>(
+    Object.fromEntries((vehicle?.customFields ?? []).map((item) => [item.id, item.value])),
+  )
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
@@ -62,6 +68,7 @@ function VehicleForm({ vehicle, onSaved }: { vehicle?: Vehicle; onSaved: () => P
       kmAtual: km,
       proximaRevisaoKm: reviewKm,
       proximaRevisaoData: reviewDate,
+      customFields: extra,
     }
     try {
       if (vehicle) await updateVehicle(vehicle.id, body)
@@ -83,16 +90,16 @@ function VehicleForm({ vehicle, onSaved }: { vehicle?: Vehicle; onSaved: () => P
 
   return (
     <form className="form-grid" onSubmit={(event) => void submit(event)}>
-      <Field label="Placa *">
+      <Field label={`${vehicleForm.label('plate', 'Placa')} *`}>
         <input required maxLength={10} value={plate} onChange={(event) => setPlate(event.target.value.toUpperCase())} />
       </Field>
-      <Field label="Modelo *">
+      <Field label={`${vehicleForm.label('model', 'Modelo')} *`}>
         <input required maxLength={120} value={model} onChange={(event) => setModel(event.target.value)} />
       </Field>
-      <Field label="Identificação interna">
+      <Field label={`${vehicleForm.label('internalId', 'Identificação interna')}`}>
         <input maxLength={120} value={identification} onChange={(event) => setIdentification(event.target.value)} />
       </Field>
-      <Field label="Situação">
+      <Field label={`${vehicleForm.label('status', 'Situação')}`}>
         <select value={status} onChange={(event) => setStatus(event.target.value)}>
           {Object.entries(vehicleStatusLabels).map(([value, label]) => (
             <option key={value} value={value}>
@@ -101,15 +108,16 @@ function VehicleForm({ vehicle, onSaved }: { vehicle?: Vehicle; onSaved: () => P
           ))}
         </select>
       </Field>
-      <Field label="Quilometragem atual">
+      <Field label={`${vehicleForm.label('mileage', 'Quilometragem atual')}`}>
         <input type="number" min="0" value={km} onChange={(event) => setKm(event.target.value)} />
       </Field>
-      <Field label="Próxima revisão (km)">
+      <Field label={`${vehicleForm.label('nextReviewKm', 'Próxima revisão (km)')}`}>
         <input type="number" min="0" value={reviewKm} onChange={(event) => setReviewKm(event.target.value)} />
       </Field>
-      <Field label="Próxima revisão (data)">
+      <Field label={`${vehicleForm.label('nextReviewDate', 'Próxima revisão (data)')}`}>
         <input type="date" value={reviewDate} onChange={(event) => setReviewDate(event.target.value)} />
       </Field>
+      <ExtraFields fields={vehicleForm.extraFields} values={extra} onChange={setExtra} />
       <button type="submit" className="maintenance-primary-button">
         {vehicle ? 'Salvar veículo' : 'Cadastrar veículo'}
       </button>

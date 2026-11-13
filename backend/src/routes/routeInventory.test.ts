@@ -58,7 +58,7 @@ test('toda rota da API está classificada no mapa de acesso, e o mapa não tem r
   assert.deepEqual(registeredRoutes(), mapped)
 })
 
-test('as rotas públicas são só as de entrada, recuperação, saúde e textos do cadastro', () => {
+test('as rotas públicas são só as de entrada, recuperação, saúde e textos do cadastro e da tela de entrada', () => {
   const publicRoutes = routeAccessMap
     .filter((route) => route.access === 'public')
     .map((route) => route.path)
@@ -73,6 +73,8 @@ test('as rotas públicas são só as de entrada, recuperação, saúde e textos 
     '/auth/register',
     '/health',
     '/public/forms/registration',
+    // Mensagem da tela de entrada e aviso geral (Configurações, 13/11/2026): só textos, nenhum dado.
+    '/public/screen',
   ])
 })
 

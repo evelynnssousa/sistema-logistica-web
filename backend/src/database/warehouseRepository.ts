@@ -1,3 +1,4 @@
+import { presentCustomFields } from './customFormValues.js'
 import { createHash } from 'node:crypto'
 import type { Pool, PoolClient } from 'pg'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
@@ -175,6 +176,8 @@ type RequestRow = {
   total_itens: number
   created_at: Date
   updated_at: Date
+  campos_personalizados: unknown
+  campos_entrega: unknown
 }
 
 const requestSelect = `
@@ -191,7 +194,9 @@ const requestSelect = `
          ${optionalColumnSql('r', 'solicitante_email')} AS solicitante_email,
          (SELECT count(*)::int FROM public.material_request_items i
            WHERE i.material_request_id = r.id) AS total_itens,
-         r.created_at, r.updated_at
+         r.created_at, r.updated_at,
+         to_jsonb(r)->'campos_personalizados' AS campos_personalizados,
+         to_jsonb(r)->'campos_entrega' AS campos_entrega
     FROM public.material_requests r
     JOIN public.auth_users solicitante ON solicitante.id = r.solicitante_id
     LEFT JOIN public.auth_users registrou ON registrou.id = r.registrado_por
@@ -223,6 +228,9 @@ function toRequest(row: RequestRow) {
     itemCount: row.total_itens,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    // Campos novos do Gerenciador de formulários (022): do pedido e, internos, da entrega.
+    customFields: presentCustomFields(row.campos_personalizados),
+    deliveryFields: presentCustomFields(row.campos_entrega),
   }
 }
 
@@ -280,6 +288,7 @@ export class WarehouseRepository {
   async listMaterials(filters: {
     search?: string
     includeInactive: boolean
+    withCustom?: boolean
   }) {
     const parameters: unknown[] = []
     const conditions: string[] = []
@@ -300,7 +309,8 @@ export class WarehouseRepository {
       ativo: boolean
     }>(
       `SELECT id::text AS id, codigo, nome, descricao, unidade,
-              categoria_id::text AS categoria_id, categoria_nome, ativo
+              categoria_id::text AS categoria_id, categoria_nome, ativo,
+              to_jsonb(materials)->'campos_personalizados' AS campos_personalizados
          FROM public.materials
          ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
         ORDER BY lower(nome)
@@ -317,6 +327,8 @@ export class WarehouseRepository {
       categoryId: row.categoria_id,
       category: row.categoria_nome,
       active: row.ativo,
+      // Campos novos do cadastro: só para quem administra o Almoxarifado.
+      ...(filters.withCustom ? { customFields: presentCustomFields((row as { campos_personalizados?: unknown }).campos_personalizados) } : {}),
     }))
   }
 

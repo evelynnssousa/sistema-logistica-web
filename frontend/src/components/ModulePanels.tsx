@@ -1,3 +1,5 @@
+import { useManagedForm } from '../app/useManagedForm'
+import { ExtraFields } from './ExtraFields'
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { errorMessage, formatDateTime, fromLocalInput } from '../api/modulesApi'
@@ -30,6 +32,8 @@ export function ExecutionPanel({ detail, onDone }: { detail: RequestDetail; onDo
   const [pending, setPending] = useState('')
   const [equipmentId, setEquipmentId] = useState('')
   const [error, setError] = useState('')
+  const executionForm = useManagedForm('maintenanceExecution')
+  const [executionExtra, setExecutionExtra] = useState<Record<string, string>>({})
 
   const load = useCallback(() => {
     return listExecutions(requestId).then((data) => setExecutions(data.executions))
@@ -69,7 +73,9 @@ export function ExecutionPanel({ detail, onDone }: { detail: RequestDetail; onDo
         executadoEm: fromLocalInput(executedAt),
         servico: service,
         pendencias: pending,
+        customFields: executionExtra,
       })
+      setExecutionExtra({})
       setService('')
       setPending('')
       setExecutedBy('')
@@ -97,6 +103,11 @@ export function ExecutionPanel({ detail, onDone }: { detail: RequestDetail; onDo
               {item.equipment && <span>Equipamento: {item.equipment}</span>}
               <span>{item.service}</span>
               {item.pending && <span>Pendências: {item.pending}</span>}
+              {(item.customFields ?? []).map((field) => (
+                <span key={field.id}>
+                  {field.label}: {field.value === 'true' ? 'Sim' : field.value.replace(/\|/g, ', ')}
+                </span>
+              ))}
               <small>Registrado por {item.registeredBy}</small>
             </li>
           ))}
@@ -104,13 +115,13 @@ export function ExecutionPanel({ detail, onDone }: { detail: RequestDetail; onDo
       )}
       {canRecord && (
         <form className="form-grid" onSubmit={(event) => void submit(event)}>
-          <Field label="Quem realizou *">
+          <Field label={`${executionForm.label('executedBy', 'Quem realizou')} *`}>
             <input required maxLength={160} value={executedBy} onChange={(event) => setExecutedBy(event.target.value)} />
           </Field>
-          <Field label="Data e horário *">
+          <Field label={`${executionForm.label('executedAt', 'Data e horário')} *`}>
             <input type="datetime-local" required value={executedAt} onChange={(event) => setExecutedAt(event.target.value)} />
           </Field>
-          <Field label="Equipamento (opcional)">
+          <Field label={`${executionForm.label('equipment', 'Equipamento (opcional)')}`}>
             <select value={equipmentId} onChange={(event) => setEquipmentId(event.target.value)}>
               <option value="">Não se aplica</option>
               {equipments.map((equipment) => (
@@ -121,13 +132,14 @@ export function ExecutionPanel({ detail, onDone }: { detail: RequestDetail; onDo
               ))}
             </select>
           </Field>
-          <Field label="Serviço realizado *" wide>
+          <Field label={`${executionForm.label('service', 'Serviço realizado')} *`} wide>
             <textarea required rows={2} maxLength={4000} value={service} onChange={(event) => setService(event.target.value)} />
           </Field>
-          <Field label="Pendências" wide>
+          <Field label={executionForm.label('pending', 'Pendências')} wide>
             <textarea rows={2} maxLength={2000} value={pending} onChange={(event) => setPending(event.target.value)} />
           </Field>
           {error && <Alert tone="error" className="form-grid-wide">{error}</Alert>}
+          <ExtraFields fields={executionForm.extraFields} values={executionExtra} onChange={setExecutionExtra} />
           <button type="submit" className="maintenance-secondary-button">
             Registrar execução
           </button>
@@ -147,6 +159,8 @@ export function QuotesPanel({ requestId, onDone }: { requestId: string; onDone: 
   const [value, setValue] = useState('')
   const [conditions, setConditions] = useState('')
   const [validUntil, setValidUntil] = useState('')
+  const quoteForm = useManagedForm('flightQuote')
+  const [quoteExtra, setQuoteExtra] = useState<Record<string, string>>({})
   const [choosing, setChoosing] = useState<FlightQuote | null>(null)
   const [reason, setReason] = useState('')
   const [error, setError] = useState('')
@@ -181,7 +195,9 @@ export function QuotesPanel({ requestId, onDone }: { requestId: string; onDone: 
         valor: value,
         condicoes: conditions,
         validade: fromLocalInput(validUntil),
+        customFields: quoteExtra,
       })
+      setQuoteExtra({})
       setCompany('')
       setFlights('')
       setValue('')
@@ -235,7 +251,14 @@ export function QuotesPanel({ requestId, onDone }: { requestId: string; onDone: 
                   <td>{quote.company}</td>
                   <td>{quote.flights}</td>
                   <td>{money.format(quote.value)}</td>
-                  <td>{quote.conditions ?? '—'}</td>
+                  <td>
+                    {quote.conditions ?? '—'}
+                    {(quote.customFields ?? []).map((field) => (
+                      <small key={field.id} className="central-subtext">
+                        {field.label}: {field.value === 'true' ? 'Sim' : field.value.replace(/\|/g, ', ')}
+                      </small>
+                    ))}
+                  </td>
                   <td>{formatDateTime(quote.validUntil)}</td>
                   <td>
                     {quote.registeredBy}
@@ -257,22 +280,23 @@ export function QuotesPanel({ requestId, onDone }: { requestId: string; onDone: 
         </div>
       )}
       <form className="form-grid" onSubmit={(event) => void submit(event)}>
-        <Field label="Companhia *">
+        <Field label={`${quoteForm.label('company', 'Companhia')} *`}>
           <input required maxLength={120} value={company} onChange={(event) => setCompany(event.target.value)} />
         </Field>
-        <Field label="Voos *">
+        <Field label={`${quoteForm.label('flights', 'Voos')} *`}>
           <input required maxLength={500} value={flights} onChange={(event) => setFlights(event.target.value)} />
         </Field>
-        <Field label="Valor (R$) *">
+        <Field label={`${quoteForm.label('value', 'Valor (R$)')} *`}>
           <input required inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} />
         </Field>
-        <Field label="Validade">
+        <Field label={`${quoteForm.label('validUntil', 'Validade')}`}>
           <input type="datetime-local" value={validUntil} onChange={(event) => setValidUntil(event.target.value)} />
         </Field>
-        <Field label="Condições" wide>
+        <Field label={quoteForm.label('conditions', 'Condições')} wide>
           <textarea rows={2} value={conditions} onChange={(event) => setConditions(event.target.value)} />
         </Field>
         {error && <Alert tone="error" className="form-grid-wide">{error}</Alert>}
+        <ExtraFields fields={quoteForm.extraFields} values={quoteExtra} onChange={setQuoteExtra} />
         <button type="submit" className="maintenance-secondary-button">
           Registrar cotação
         </button>

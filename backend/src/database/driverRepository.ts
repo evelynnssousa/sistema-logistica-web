@@ -1,3 +1,5 @@
+import { customInsertColumns, presentCustomFields } from './customFormValues.js'
+import type { CustomFormResult } from './customFormValues.js'
 import type { Pool, PoolClient } from 'pg'
 import { effectiveMinutes, exceedsJourney, isOutsideJourney, journeyOfRecord } from '../auth/driverPolicy.js'
 import type { TripGroup } from '../auth/driverPolicy.js'
@@ -219,6 +221,7 @@ export class DriverRepository {
       anexos: { id: string; name: string }[]
     }>(
       `SELECT o.id::text AS id, o.categoria, o.categoria_nome, o.justificativa, o.descricao, o.atraso_minutos, o.created_at,
+              to_jsonb(o)->'campos_personalizados' AS campos_personalizados,
               COALESCE((SELECT jsonb_agg(jsonb_build_object('id', f.id::text, 'name', f.nome_original) ORDER BY f.created_at)
                           FROM public.request_occurrence_attachments l
                           JOIN public.request_attachments f ON f.id = l.attachment_id
@@ -237,6 +240,7 @@ export class DriverRepository {
       delayMinutes: row.atraso_minutos,
       at: row.created_at,
       attachments: row.anexos,
+      customFields: presentCustomFields((row as { campos_personalizados?: unknown }).campos_personalizados),
     }))
   }
 
@@ -436,7 +440,7 @@ export class DriverRepository {
     actor: AuthenticatedIdentity,
     driver: CurrentDriver,
     tripId: string,
-    input: { type: OccurrenceType; description: string; justification: string | null; delayMinutes: number | null },
+    input: { type: OccurrenceType; description: string; justification: string | null; delayMinutes: number | null; custom?: CustomFormResult },
   ) {
     return withTransaction(this.poolProvider(), async (client) => {
       const current = await this.findTrip(client, driver.id, tripId, true)
@@ -446,10 +450,11 @@ export class DriverRepository {
       }
       const description = redactValidCpf(input.description)
       const justification = input.justification ? redactValidCpf(input.justification) : null
+      const extra = await customInsertColumns(client, 'request_occurrences', input.custom, 10)
       const created = await client.query<{ id: string }>(
         `INSERT INTO public.request_occurrences
-          (request_id, tipo, categoria, categoria_nome, justificativa, descricao, atraso_minutos, registrado_por, motorista_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          (request_id, tipo, categoria, categoria_nome, justificativa, descricao, atraso_minutos, registrado_por, motorista_id${extra.columns})
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9${extra.placeholders})
          RETURNING id::text AS id`,
         [
           tripId,
@@ -461,6 +466,7 @@ export class DriverRepository {
           input.delayMinutes,
           actor.userId,
           driver.id,
+          ...extra.values,
         ],
       )
       const occurrenceId = created.rows[0].id
@@ -536,6 +542,7 @@ export class DriverRepository {
       viagens_abertas: number
     }>(
       `SELECT d.id::text AS id, d.nome, d.matricula, d.ativo, d.user_id::text AS user_id,
+              to_jsonb(d)->'campos_personalizados' AS campos_personalizados,
               u.full_name AS conta_nome, u.email AS conta_email, (${validDriverSql}) AS valido,
               (SELECT count(*)::int FROM public.service_requests r
                 WHERE r.motorista_id = d.id AND ${normalizedStatusSql('r')} = ANY('{agendado,reagendado,em_andamento}'::text[])) AS viagens_abertas
@@ -553,6 +560,7 @@ export class DriverRepository {
       accountEmail: row.conta_email,
       canReceiveTrips: row.valido,
       openTrips: row.viagens_abertas,
+      customFields: presentCustomFields((row as { campos_personalizados?: unknown }).campos_personalizados),
     }))
   }
 
@@ -839,6 +847,7 @@ export class DriverRepository {
         anexos: { id: string; name: string }[]
       }>(
         `SELECT o.id::text AS id, o.categoria, o.categoria_nome, o.justificativa, o.descricao, o.atraso_minutos, o.created_at, d.nome AS motorista,
+                to_jsonb(o)->'campos_personalizados' AS campos_personalizados,
                 COALESCE((SELECT jsonb_agg(jsonb_build_object('id', f.id::text, 'name', f.nome_original) ORDER BY f.created_at)
                             FROM public.request_occurrence_attachments l
                             JOIN public.request_attachments f ON f.id = l.attachment_id
@@ -889,6 +898,7 @@ export class DriverRepository {
         at: item.created_at,
         driver: item.motorista,
         attachments: item.anexos,
+        customFields: presentCustomFields((item as { campos_personalizados?: unknown }).campos_personalizados),
       })),
       corrections: corrections.rows.map((item) => ({
         id: item.id,

@@ -1,3 +1,4 @@
+import { ExtraFieldsView } from '../../components/ExtraFields'
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -1148,6 +1149,7 @@ function DemandDetail() {
           {demand.reopenings > 0 && <div><dt>Reaberturas</dt><dd>{demand.reopenings}</dd></div>}
           {demand.notes && <div className="demand-fact-wide"><dt>Observações</dt><dd>{demand.notes}</dd></div>}
           {demand.references && <div className="demand-fact-wide"><dt>Referências</dt><dd>{demand.references}</dd></div>}
+          <ExtraFieldsView items={data.customFields} />
           {data.instrument && (
             <div className="demand-fact-wide">
               <dt>Ata ou contrato</dt>

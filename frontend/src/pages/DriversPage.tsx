@@ -1,3 +1,5 @@
+import { useManagedForm } from '../app/useManagedForm'
+import { ExtraFields } from '../components/ExtraFields'
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
@@ -26,6 +28,10 @@ function DriverDialog({
   const [registration, setRegistration] = useState(driver?.registration ?? '')
   const [userId, setUserId] = useState(driver?.userId ?? '')
   const [active, setActive] = useState(driver?.active ?? true)
+  const driverForm = useManagedForm('driver')
+  const [extra, setExtra] = useState<Record<string, string>>(
+    Object.fromEntries((driver?.customFields ?? []).map((item) => [item.id, item.value])),
+  )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -33,7 +39,7 @@ function DriverDialog({
     event.preventDefault()
     setBusy(true)
     setError('')
-    const body = { name, registration: registration || null, active, userId: userId || null }
+    const body = { name, registration: registration || null, active, userId: userId || null, customFields: extra }
     try {
       if (driver) await updateFleetDriver(driver.id, body)
       else await createFleetDriver(body)
@@ -50,15 +56,15 @@ function DriverDialog({
       <form className="demand-dialog-form" onSubmit={(event) => void submit(event)}>
         {error && <Alert tone="error">{error}</Alert>}
         <label className="maintenance-form-field">
-          <span>Nome</span>
+          <span>{driverForm.label('name', 'Nome')}</span>
           <input required minLength={3} maxLength={160} value={name} onChange={(event) => setName(event.target.value)} />
         </label>
         <label className="maintenance-form-field">
-          <span>Matrícula (opcional)</span>
+          <span>{driverForm.label('registration', 'Matrícula (opcional)')}</span>
           <input maxLength={40} value={registration} onChange={(event) => setRegistration(event.target.value)} />
         </label>
         <label className="maintenance-form-field">
-          <span>Conta de acesso</span>
+          <span>{driverForm.label('account', 'Conta de acesso')}</span>
           <select value={userId} onChange={(event) => setUserId(event.target.value)}>
             <option value="">Sem conta vinculada</option>
             {driver?.userId && (
@@ -77,6 +83,7 @@ function DriverDialog({
             <Link to="/usuarios">Usuários</Link> ou ao aprovar o cadastro.
           </small>
         </label>
+        <ExtraFields fields={driverForm.extraFields} values={extra} onChange={setExtra} />
         <label className="demand-check">
           <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} />
           Motorista ativo

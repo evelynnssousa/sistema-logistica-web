@@ -1,3 +1,5 @@
+import { useManagedForm } from '../app/useManagedForm'
+import { ExtraFields } from '../components/ExtraFields'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -21,6 +23,8 @@ function WarehousePortalPage() {
   const [category, setCategory] = useState('')
   const [quantities, setQuantities] = useState<Record<string, string>>({})
   const [note, setNote] = useState('')
+  const form = useManagedForm('warehouseRequest')
+  const [extra, setExtra] = useState<Record<string, string>>({})
   const [submitError, setSubmitError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -61,6 +65,7 @@ function WarehousePortalPage() {
     try {
       const created = await createInternalWarehouseRequest({
         note,
+        customFields: extra,
         avisoPrivacidade: privacyNotices.warehouse.version,
         items: chosen.map((item) => ({ materialId: item.id, requested: quantities[item.id] })),
       })
@@ -150,9 +155,15 @@ function WarehousePortalPage() {
 
       {submitError && <Alert tone="error" className="ui-stacked">{submitError}</Alert>}
 
+      {form.extraFields.length > 0 && (
+        <div className="ui-card ui-stacked">
+          <ExtraFields fields={form.extraFields} values={extra} onChange={setExtra} staff={false} />
+        </div>
+      )}
+
       <div className="warehouse-request-summary">
         <label>
-          <span>Observação</span>
+          <span>{form.label('note', 'Observação')}</span>
           <input value={note} maxLength={2000} onChange={(event) => setNote(event.target.value)} />
         </label>
         <button

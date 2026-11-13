@@ -274,6 +274,7 @@ export const vehicleLogLabels: Record<string, string> = {
 }
 
 export type Vehicle = {
+  customFields?: { id: string; label: string; value: string }[]
   id: string
   plate: string
   model: string
@@ -326,6 +327,7 @@ export const addVehicleLog = (id: string, body: unknown) => send<Envelope>(`/fle
 // Manutenção
 // ---------------------------------------------------------------------------
 export type Equipment = {
+  customFields?: { id: string; label: string; value: string }[]
   id: string
   name: string
   identification: string | null
@@ -337,6 +339,7 @@ export type Equipment = {
 
 export type Execution = {
   id: string
+  customFields?: { id: string; label: string; value: string }[]
   requestId: string
   protocol: string
   equipment: string | null
@@ -365,6 +368,7 @@ export const addExecution = (requestId: string, body: unknown) =>
 // ---------------------------------------------------------------------------
 export type FlightQuote = {
   id: string
+  customFields?: { id: string; label: string; value: string }[]
   company: string
   flights: string
   value: number

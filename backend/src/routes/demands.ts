@@ -1,3 +1,4 @@
+import { presentCustomFields, readCustomForm, saveCustomFields } from '../database/customFormValues.js'
 import { assertModuleEnabled } from '../database/moduleSwitch.js'
 import express, { Router } from 'express'
 import type { Request, RequestHandler, Response } from 'express'
@@ -580,7 +581,9 @@ router.post(
     // A autorização vem antes da validação: quem não pode cadastrar não recebe dicas sobre os dados.
     if (!canCreateDemands(context)) throw forbidden()
     await assertModuleEnabled('demands')
+    const custom = await readCustomForm('demand', asBody(request.body).customFields)
     const created = await demands.create(identityOf(response), context, readDemandInput(asBody(request.body)))
+    await saveCustomFields('demands', created.id, custom)
     response.status(201).json({ success: true, ...created })
   }),
 )
@@ -593,8 +596,17 @@ router.get(
     if (detail.access.administrativeRead) {
       await demands.recordAdministrativeAccess(identityOf(response), detail.demand.id, 'Demanda restrita consultada')
     }
-    // Ata ou contrato vinculado (021). Sem a migração, nulo.
-    response.json({ success: true, ...detail, instrument: await instrumentLinks.linkedInstrument(detail.demand.id) })
+    // Ata ou contrato vinculado (021) e campos novos do formulário (022). Sem as migrações, vazios.
+    const extra = await getDatabasePool().query<{ campos: unknown }>(
+      `SELECT to_jsonb(d)->'campos_personalizados' AS campos FROM public.demands d WHERE d.id = $1`,
+      [detail.demand.id],
+    )
+    response.json({
+      success: true,
+      ...detail,
+      instrument: await instrumentLinks.linkedInstrument(detail.demand.id),
+      customFields: presentCustomFields(extra.rows[0]?.campos),
+    })
   }),
 )
 
@@ -618,6 +630,7 @@ router.patch(
   guarded(async (request, response) => {
     const { context, id, access, identity } = await loadWith(response, request, 'edit')
     const body = asBody(request.body)
+    const custom = 'customFields' in body ? await readCustomForm('demand', body.customFields) : null
     const collaboration =
       'collaborators' in body || 'collaboratorSectorIds' in body || 'authorizedUserIds' in body
         ? readCollaboration(body)
@@ -640,6 +653,7 @@ router.patch(
       access,
       context,
     )
+    if (custom) await saveCustomFields('demands', id, custom)
     response.json({ success: true })
   }),
 )

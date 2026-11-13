@@ -1,3 +1,4 @@
+import { ExtraFieldsView } from '../../components/ExtraFields'
 import { useSystemInfo } from '../../app/useSystemInfo'
 import { useCallback, useEffect, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
@@ -186,6 +187,7 @@ export function InstrumentDetail() {
           </div>
           <div><dt>Gestor ou fiscal</dt><dd>{instrument.manager?.name ?? '—'}</dd></div>
           <div><dt>Aviso de vencimento</dt><dd>{instrument.noticeDays} dias antes</dd></div>
+          <ExtraFieldsView items={instrument.customFields} />
         </dl>
         {instrument.notes && <p className="demand-muted">{instrument.notes}</p>}
       </section>

@@ -1,3 +1,5 @@
+import { useManagedForm } from '../app/useManagedForm'
+import { ExtraFields } from '../components/ExtraFields'
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
@@ -18,6 +20,8 @@ function EquipmentsPage() {
   const [name, setName] = useState('')
   const [identification, setIdentification] = useState('')
   const [location, setLocation] = useState('')
+  const equipmentForm = useManagedForm('equipment')
+  const [extra, setExtra] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState('')
   const [history, setHistory] = useState<{ equipment: Equipment; executions: Execution[] } | null>(null)
 
@@ -48,7 +52,8 @@ function EquipmentsPage() {
     event.preventDefault()
     setFormError('')
     try {
-      await createEquipment({ nome: name, identificacao: identification, local: location })
+      await createEquipment({ nome: name, identificacao: identification, local: location, customFields: extra })
+      setExtra({})
       setName('')
       setIdentification('')
       setLocation('')
@@ -121,7 +126,14 @@ function EquipmentsPage() {
                 <tbody>
                   {equipments.map((equipment) => (
                     <tr key={equipment.id}>
-                      <td>{equipment.name}</td>
+                      <td>
+                        {equipment.name}
+                        {(equipment.customFields ?? []).map((item) => (
+                          <small key={item.id} className="central-subtext">
+                            {item.label}: {item.value === 'true' ? 'Sim' : item.value.replace(/\|/g, ', ')}
+                          </small>
+                        ))}
+                      </td>
                       <td>{equipment.identification ?? '—'}</td>
                       <td>{equipment.location ?? '—'}</td>
                       <td>{equipment.executions}</td>
@@ -153,17 +165,18 @@ function EquipmentsPage() {
           <h2 id="equipment-new">Novo equipamento ou local</h2>
           <form className="form-grid" onSubmit={(event) => void submit(event)}>
             <label className="maintenance-form-field">
-              <span>Nome *</span>
+              <span>{equipmentForm.label('name', 'Nome')} *</span>
               <input required maxLength={160} value={name} onChange={(event) => setName(event.target.value)} />
             </label>
             <label className="maintenance-form-field">
-              <span>Identificação</span>
+              <span>{equipmentForm.label('identification', 'Identificação')}</span>
               <input maxLength={120} value={identification} onChange={(event) => setIdentification(event.target.value)} />
             </label>
             <label className="maintenance-form-field">
-              <span>Local</span>
+              <span>{equipmentForm.label('location', 'Local')}</span>
               <input maxLength={160} value={location} onChange={(event) => setLocation(event.target.value)} />
             </label>
+            <ExtraFields fields={equipmentForm.extraFields} values={extra} onChange={setExtra} />
             <button type="submit" className="maintenance-primary-button">
               Cadastrar
             </button>

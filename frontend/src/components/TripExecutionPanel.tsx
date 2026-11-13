@@ -270,6 +270,11 @@ function TripExecutionPanel({ requestId, status, onChanged }: { requestId: strin
               </strong>
               <span>{item.description}</span>
               {item.justification && <span>Justificativa: {item.justification}</span>}
+              {(item.customFields ?? []).map((field) => (
+                <span key={field.id}>
+                  {field.label}: {field.value === 'true' ? 'Sim' : field.value.replace(/\|/g, ', ')}
+                </span>
+              ))}
               <small>{item.driver} · {formatTripMoment(item.at)}</small>
               {item.attachments.map((file) => (
                 <small key={file.id}>

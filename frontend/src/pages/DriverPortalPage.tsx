@@ -1,3 +1,5 @@
+import { useManagedForm } from '../app/useManagedForm'
+import { ExtraFields } from '../components/ExtraFields'
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
@@ -199,6 +201,8 @@ function OccurrenceDialog({
   const [justification, setJustification] = useState('')
   const [minutes, setMinutes] = useState('')
   const [files, setFiles] = useState<File[]>([])
+  const occurrenceForm = useManagedForm('driverOccurrence')
+  const [extra, setExtra] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const selected = types.find((type) => type.key === category)
@@ -214,6 +218,7 @@ function OccurrenceDialog({
         descricao: description,
         ...(selected?.requiresJustification ? { justificativa: justification } : {}),
         ...(selected?.asksDelay ? { atrasoMinutos: Number(minutes) } : {}),
+        customFields: extra,
       })
       // A ocorrência já está registrada: um arquivo recusado não a desfaz, e a pessoa fica sabendo.
       const failed: string[] = []
@@ -242,7 +247,7 @@ function OccurrenceDialog({
         {error && <Alert tone="error">{error}</Alert>}
         <p className="driver-confirm-route">{trip.title}</p>
         <label>
-          <span>O que aconteceu?</span>
+          <span>{occurrenceForm.label('category', 'O que aconteceu?')}</span>
           <select required value={category} onChange={(event) => setCategory(event.target.value)}>
             <option value="">Selecione</option>
             {types.map((type) => (
@@ -252,20 +257,21 @@ function OccurrenceDialog({
         </label>
         {selected?.asksDelay && (
           <label>
-            <span>Atraso, em minutos</span>
+            <span>{occurrenceForm.label('delay', 'Atraso, em minutos')}</span>
             <input type="number" inputMode="numeric" required min="1" max="100000" value={minutes} onChange={(event) => setMinutes(event.target.value)} />
           </label>
         )}
         <label>
-          <span>Descrição</span>
+          <span>{occurrenceForm.label('description', 'Descrição')}</span>
           <textarea required minLength={3} maxLength={2000} rows={4} value={description} onChange={(event) => setDescription(event.target.value)} />
         </label>
         {selected?.requiresJustification && (
           <label>
-            <span>Justificativa</span>
+            <span>{occurrenceForm.label('justification', 'Justificativa')}</span>
             <textarea required minLength={3} maxLength={1000} rows={3} value={justification} onChange={(event) => setJustification(event.target.value)} />
           </label>
         )}
+        <ExtraFields fields={occurrenceForm.extraFields} values={extra} onChange={setExtra} staff={false} />
         {canAttach && (
           <label>
             <span>Anexos (opcional), até {attachments.maxFileMb} MB cada</span>
@@ -298,6 +304,11 @@ function OccurrenceList({ items }: { items: TripOccurrence[] }) {
           </strong>
           <span>{item.description}</span>
           {item.justification && <span>Justificativa: {item.justification}</span>}
+          {(item.customFields ?? []).map((field) => (
+            <span key={field.id}>
+              {field.label}: {field.value === 'true' ? 'Sim' : field.value.replace(/\|/g, ', ')}
+            </span>
+          ))}
           <small>{formatTripMoment(item.at)}</small>
           {item.attachments.map((file) => (
             <small key={file.id}>

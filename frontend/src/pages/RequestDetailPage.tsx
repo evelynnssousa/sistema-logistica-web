@@ -890,6 +890,11 @@ function RequestDetailPage({ module }: { module: RequestModule }) {
                     {item.type === 'atraso' ? `Atraso de ${item.delayMinutes} min` : 'Ocorrência'}
                   </strong>
                   <span>{item.description}</span>
+                  {(item.customFields ?? []).map((field) => (
+                    <span key={field.id}>
+                      {field.label}: {field.value === 'true' ? 'Sim' : field.value.replace(/\|/g, ', ')}
+                    </span>
+                  ))}
                   <small>
                     {item.user} · {formatDateTime(item.at)}
                   </small>

@@ -105,6 +105,7 @@ export const routeAccessMap: readonly RouteAccess[] = [
 
   { method: 'GET', path: '/catalog', access: 'session' },
   { method: 'GET', path: '/forms/definitions', access: 'session' },
+  { method: 'GET', path: '/forms/managed/:key', access: 'session' },
   { method: 'GET', path: '/settings/catalog', access: 'permission', requires: ['settings:read'] },
   { method: 'POST', path: '/settings/catalog/:category', access: 'permission', requires: ['settings:manage'] },
   { method: 'PATCH', path: '/settings/catalog/:category/:optionId', access: 'permission', requires: ['settings:manage'] },

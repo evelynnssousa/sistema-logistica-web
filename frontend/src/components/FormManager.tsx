@@ -1,3 +1,4 @@
+import { forgetManagedForm } from '../app/useManagedForm'
 import { useEffect, useState } from 'react'
 import {
   getFormLibrary,
@@ -522,7 +523,7 @@ function FormEditor({ formKey, onChanged }: { formKey: string; onChanged: () => 
 }
 
 function FormManager() {
-  const [forms, setForms] = useState<{ key: string; label: string; published: number | null; hasDraft: boolean }[] | null>(null)
+  const [forms, setForms] = useState<{ key: string; label: string; published: number | null; hasDraft: boolean; fixedLayout?: boolean }[] | null>(null)
   const [selected, setSelected] = useState('maintenance')
   const [error, setError] = useState('')
 
@@ -563,7 +564,20 @@ function FormManager() {
                 ))}
               </select>
             </label>
-            <FormEditor key={selected} formKey={selected} onChanged={() => void load()} />
+            {forms.find((form) => form.key === selected)?.fixedLayout && (
+              <Alert tone="info">
+                Neste formulário, os campos que já existem podem ser renomeados, mas a ordem e o tipo deles seguem a tela. Os
+                campos novos que você criar aparecem no fim, em "Informações adicionais", e ficam gravados junto do registro.
+              </Alert>
+            )}
+            <FormEditor
+              key={selected}
+              formKey={selected}
+              onChanged={() => {
+                forgetManagedForm(selected)
+                void load()
+              }}
+            />
           </div>
         </details>
       )}

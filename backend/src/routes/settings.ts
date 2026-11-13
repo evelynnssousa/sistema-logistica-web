@@ -1,3 +1,5 @@
+import { publishedFormContent } from '../database/customFormValues.js'
+import { fixedLayoutForms, isManagedForm } from '../requests/formRules.js'
 import { codePermissionsForProfile, permissionGroups } from '../auth/permissions.js'
 import { adjustablePermissions, adjustableProfiles } from '../requests/adminSettingsRules.js'
 import { Router } from 'express'
@@ -109,6 +111,18 @@ router.get('/public/screen', async (_request, response) => {
       loginMessage: settings.texts.loginMessage,
       announcement: activeAnnouncement(settings.announcement, today),
     })
+  } catch (error) {
+    sendModuleError(response, error)
+  }
+})
+
+// Formulário publicado (ou o padrão) de qualquer formulário administrável: quem preenche precisa dele.
+router.get('/forms/managed/:key', async (request, response) => {
+  try {
+    const key = String(request.params.key)
+    if (!isManagedForm(key)) throw notFound()
+    const { content, version } = await publishedFormContent(key)
+    response.json({ success: true, content, version, fixedLayout: fixedLayoutForms.includes(key) })
   } catch (error) {
     sendModuleError(response, error)
   }

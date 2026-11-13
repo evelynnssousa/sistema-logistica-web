@@ -257,6 +257,8 @@ export type DemandSeries = {
 export type DemandDetail = Envelope & {
   /** Ata ou contrato vinculado (migração 021). */
   instrument?: { id: string; type: string; number: string; subject: string } | null
+  /** Campos novos do Gerenciador de formulários (022). */
+  customFields?: { id: string; label: string; value: string }[]
   demand: DemandSummary & {
     description: string | null
     createdById: string

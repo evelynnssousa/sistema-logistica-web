@@ -1,3 +1,4 @@
+import { readCustomForm, saveCustomFields } from '../database/customFormValues.js'
 import { assertModuleEnabled } from '../database/moduleSwitch.js'
 import { holdsPermission } from '../auth/permissions.js'
 import { Router } from 'express'
@@ -75,7 +76,8 @@ type WarehouseRequestRecord = NonNullable<Awaited<ReturnType<WarehouseRepository
  */
 function requestViewFor(identity: AuthenticatedIdentity, request: WarehouseRequestRecord) {
   if (seesAllRequests(identity)) return { ...request, limitedView: false }
-  const { externalRequesterEmail: _email, ...own } = request
+  // O pedido próprio mostra os campos que a pessoa preencheu; os da entrega são internos.
+  const { externalRequesterEmail: _email, deliveryFields: _delivery, ...own } = request
   if (request.requesterId === identity.userId) return { ...own, limitedView: false }
   return {
     id: request.id,
@@ -180,6 +182,7 @@ router.get(
       materials: await warehouse.listMaterials({
         search: readSearch(query.search),
         includeInactive: canManage && query.inactive === 'true',
+        withCustom: canManage,
       }),
     })
   }),
@@ -189,7 +192,9 @@ router.post(
   '/warehouse/materials',
   manage,
   guarded(async (request, response) => {
+    const custom = await readCustomForm('material', asBody(request.body).customFields)
     const id = await warehouse.createMaterial(identityOf(response), readMaterial(request.body))
+    await saveCustomFields('materials', id, custom)
     response.status(201).json({ success: true, id })
   }),
 )
@@ -199,7 +204,10 @@ router.patch(
   manage,
   guarded(async (request, response) => {
     const id = idParam(request, 'materialId')
+    const body = asBody(request.body)
+    const custom = 'customFields' in body ? await readCustomForm('material', body.customFields) : null
     await warehouse.updateMaterial(identityOf(response), id, readMaterial(request.body))
+    if (custom) await saveCustomFields('materials', id, custom)
     response.json({ success: true })
   }),
 )
@@ -242,11 +250,13 @@ router.post(
   guarded(async (request, response) => {
     await assertModuleEnabled('warehouse')
     const body = asBody(request.body)
+    const custom = await readCustomForm('warehouseRequest', body.customFields, { staff: seesAllRequests(identityOf(response)) })
     const created = await warehouse.createInternalRequest(identityOf(response), {
       note: optionalText(body.note, 'Observação'),
       items: readItems(body.items, { fulfilledAllowed: false }),
       privacyNotice: readPrivacyNotice(body, privacyNoticeVersions.warehouse),
     })
+    await saveCustomFields('material_requests', created.id, custom)
     response.status(201).json({ success: true, ...created })
   }),
 )
@@ -257,6 +267,7 @@ router.post(
   guarded(async (request, response) => {
     await assertModuleEnabled('warehouse')
     const body = asBody(request.body)
+    const custom = await readCustomForm('warehouseExternal', body.customFields)
     const created = await warehouse.createExternalRequest(identityOf(response), {
       externalReference: optionalText(body.externalReference, 'Número de referência', 120),
       externalRequester: optionalText(body.externalRequester, 'Solicitante', 120),
@@ -265,6 +276,7 @@ router.post(
       note: optionalText(body.note, 'Observação'),
       items: readItems(body.items, { fulfilledAllowed: true }),
     })
+    await saveCustomFields('material_requests', created.id, custom)
     response.status(201).json({ success: true, ...created })
   }),
 )
@@ -466,12 +478,14 @@ router.post(
     if (deliveredAt.getTime() > Date.now() + 60_000) {
       throw new ModuleError('A data da entrega não pode estar no futuro.', 400)
     }
+    const custom = await readCustomForm('warehouseDelivery', body.customFields)
     await warehouse.registerDelivery(identityOf(response), id, {
       receivedBy: requiredText(body.receivedBy, 'quem recebeu', { max: 120 }),
       deliveredAt,
       comment: optionalText(body.comment, 'Comentário'),
       deliveryNote: optionalText(body.deliveryNote, 'Observação sobre a entrega'),
     })
+    await saveCustomFields('material_requests_delivery', id, custom)
     response.json({ success: true })
   }),
 )

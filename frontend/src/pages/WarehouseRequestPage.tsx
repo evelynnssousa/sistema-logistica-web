@@ -1,3 +1,5 @@
+import { useManagedForm } from '../app/useManagedForm'
+import { ExtraFields, ExtraFieldsView } from '../components/ExtraFields'
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
@@ -63,6 +65,8 @@ function WarehouseRequestPage() {
   const [receivedBy, setReceivedBy] = useState('')
   const [deliveredDate, setDeliveredDate] = useState(todayCalendarDate)
   const [deliveryNote, setDeliveryNote] = useState('')
+  const deliveryForm = useManagedForm('warehouseDelivery')
+  const [deliveryExtra, setDeliveryExtra] = useState<Record<string, string>>({})
   const [forecastDate, setForecastDate] = useState('')
   const [justification, setJustification] = useState('')
   const [requesterEmail, setRequesterEmail] = useState('')
@@ -251,6 +255,7 @@ function WarehouseRequestPage() {
             <dt>Data efetiva de entrega</dt>
             <dd>{formatDate(request.deliveredAt)}</dd>
           </div>
+          <ExtraFieldsView items={request.customFields} className="detail-info" />
         </dl>
       </section>
 
@@ -290,6 +295,7 @@ function WarehouseRequestPage() {
               <dt>Observação</dt>
               <dd>{request.note ?? '—'}</dd>
             </div>
+            <ExtraFieldsView items={request.deliveryFields} className="detail-info" />
           </dl>
         </section>
       )}
@@ -475,6 +481,7 @@ function WarehouseRequestPage() {
                       comment: '',
                       deliveredDate,
                       deliveryNote,
+                      customFields: deliveryExtra,
                     }),
                   'Entrega registrada.',
                 ),
@@ -482,7 +489,7 @@ function WarehouseRequestPage() {
             >
               <h3>Registrar entrega</h3>
               <label className="maintenance-form-field">
-                <span>Recebido por *</span>
+                <span>{deliveryForm.label('receivedBy', 'Recebido por')} *</span>
                 <input
                   required
                   name="recebidoPor"
@@ -502,7 +509,7 @@ function WarehouseRequestPage() {
                 />
               </label>
               <label className="maintenance-form-field">
-                <span>Observações sobre a entrega</span>
+                <span>{deliveryForm.label('deliveryNote', 'Observações sobre a entrega')}</span>
                 <textarea
                   rows={2}
                   maxLength={2000}
@@ -510,6 +517,7 @@ function WarehouseRequestPage() {
                   onChange={(event) => setDeliveryNote(event.target.value)}
                 />
               </label>
+              <ExtraFields fields={deliveryForm.extraFields} values={deliveryExtra} onChange={setDeliveryExtra} />
               <button className="maintenance-primary-button" type="submit">
                 Registrar entrega
               </button>

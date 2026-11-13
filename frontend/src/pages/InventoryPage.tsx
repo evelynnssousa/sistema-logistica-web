@@ -1,3 +1,5 @@
+import { useManagedForm } from '../app/useManagedForm'
+import { ExtraFields } from '../components/ExtraFields'
 import { Suspense, useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
@@ -275,6 +277,8 @@ export function ExternalRequestTab() {
   const [note, setNote] = useState('')
   const [items, setItems] = useState<ItemPayload[]>([{ materialId: '', requested: '' }])
   const [error, setError] = useState('')
+  const form = useManagedForm('warehouseExternal')
+  const [extra, setExtra] = useState<Record<string, string>>({})
 
   useEffect(() => {
     let active = true
@@ -301,6 +305,7 @@ export function ExternalRequestTab() {
         sectorId,
         note,
         items,
+        customFields: extra,
       })
       navigate(`/almoxarifado/pedidos/${created.id}`)
     } catch (err) {
@@ -313,15 +318,15 @@ export function ExternalRequestTab() {
       <h2>Inserir pedido do sistema governamental</h2>
       <p className="module-notice">{notIntegratedNotice}</p>
       <label className="maintenance-form-field">
-        <span>Número de referência no sistema governamental</span>
+        <span>{form.label('externalReference', 'Número de referência no sistema governamental')}</span>
         <input maxLength={120} value={reference} onChange={(event) => setReference(event.target.value)} />
       </label>
       <label className="maintenance-form-field">
-        <span>Solicitante informado no pedido</span>
+        <span>{form.label('externalRequester', 'Solicitante informado no pedido')}</span>
         <input maxLength={120} value={requester} onChange={(event) => setRequester(event.target.value)} />
       </label>
       <label className="maintenance-form-field">
-        <span>E-mail institucional do solicitante</span>
+        <span>{form.label('externalRequesterEmail', 'E-mail institucional do solicitante')}</span>
         <input
           type="email"
           maxLength={254}
@@ -330,7 +335,7 @@ export function ExternalRequestTab() {
         />
       </label>
       <label className="maintenance-form-field">
-        <span>Setor *</span>
+        <span>{form.label('sector', 'Setor')} *</span>
         <select required value={sectorId} onChange={(event) => setSectorId(event.target.value)}>
           <option value="" disabled>
             Selecione
@@ -343,10 +348,11 @@ export function ExternalRequestTab() {
         </select>
       </label>
       <label className="maintenance-form-field">
-        <span>Observação</span>
+        <span>{form.label('note', 'Observação')}</span>
         <textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} />
       </label>
       <ItemRows materials={materials} items={items} onChange={setItems} withFulfilled />
+      <ExtraFields fields={form.extraFields} values={extra} onChange={setExtra} />
       <PrivacyNotice module="warehouseExternal" />
       {error && <Alert tone="error">{error}</Alert>}
       <button className="maintenance-primary-button" type="submit">
@@ -356,7 +362,7 @@ export function ExternalRequestTab() {
   )
 }
 
-const emptyMaterial = { code: '', name: '', description: '', unitId: '', categoryId: '', active: true }
+const emptyMaterial = { code: '', name: '', description: '', unitId: '', categoryId: '', active: true, customFields: {} as Record<string, string> }
 
 export function MaterialsTab() {
   const { catalog } = useCatalog()
@@ -364,6 +370,7 @@ export function MaterialsTab() {
   const [search, setSearch] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyMaterial)
+  const materialForm = useManagedForm('material')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
@@ -397,6 +404,7 @@ export function MaterialsTab() {
       unitId: catalog.measurementUnits.find((unit) => unit.label === material.unit)?.id ?? '',
       categoryId: material.categoryId ?? '',
       active: material.active,
+      customFields: Object.fromEntries((material.customFields ?? []).map((item) => [item.id, item.value])),
     })
   }
 
@@ -423,15 +431,15 @@ export function MaterialsTab() {
       <form className="detail-action" onSubmit={(event) => void save(event)}>
         <h2>{editingId ? 'Editar material' : 'Cadastrar material'}</h2>
         <label className="maintenance-form-field">
-          <span>Nome *</span>
+          <span>{materialForm.label('name', 'Nome')} *</span>
           <input required maxLength={160} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
         </label>
         <label className="maintenance-form-field">
-          <span>Código</span>
+          <span>{materialForm.label('code', 'Código')}</span>
           <input maxLength={60} value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} />
         </label>
         <label className="maintenance-form-field">
-          <span>Unidade de medida *</span>
+          <span>{materialForm.label('unit', 'Unidade de medida')} *</span>
           <select required value={form.unitId} onChange={(event) => setForm({ ...form, unitId: event.target.value })}>
             <option value="" disabled>
               {catalog.measurementUnits.length ? 'Selecione' : 'Cadastre em Configurações'}
@@ -444,7 +452,7 @@ export function MaterialsTab() {
           </select>
         </label>
         <label className="maintenance-form-field">
-          <span>Categoria</span>
+          <span>{materialForm.label('category', 'Categoria')}</span>
           <select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })}>
             <option value="">Sem categoria</option>
             {catalog.warehouseCategories.map((category) => (
@@ -455,9 +463,10 @@ export function MaterialsTab() {
           </select>
         </label>
         <label className="maintenance-form-field">
-          <span>Descrição</span>
+          <span>{materialForm.label('description', 'Descrição')}</span>
           <textarea rows={2} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
         </label>
+        <ExtraFields fields={materialForm.extraFields} values={form.customFields} onChange={(values) => setForm({ ...form, customFields: values })} />
         <label>
           <input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} /> Ativo
         </label>

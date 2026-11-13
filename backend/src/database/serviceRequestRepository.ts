@@ -1,3 +1,4 @@
+import { presentCustomFields } from './customFormValues.js'
 import type { Pool, PoolClient } from 'pg'
 import { resolveRequestOwnership } from '../auth/requestPolicy.js'
 import type { RequestModule } from '../auth/requestPolicy.js'
@@ -486,7 +487,7 @@ export class ServiceRequestRepository {
       created_at: Date
     }>(
       `SELECT o.id::text AS id, o.tipo, o.descricao, o.atraso_minutos,
-              u.full_name AS usuario, o.created_at
+              u.full_name AS usuario, o.created_at, to_jsonb(o)->'campos_personalizados' AS campos_personalizados
          FROM public.request_occurrences o
          JOIN public.auth_users u ON u.id = o.registrado_por
         WHERE o.request_id = $1
@@ -500,6 +501,7 @@ export class ServiceRequestRepository {
       delayMinutes: row.atraso_minutos,
       user: row.usuario,
       at: row.created_at,
+      customFields: presentCustomFields((row as { campos_personalizados?: unknown }).campos_personalizados),
     }))
   }
 

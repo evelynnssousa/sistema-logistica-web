@@ -1,3 +1,4 @@
+import { readCustomForm, saveCustomFields } from '../database/customFormValues.js'
 import express, { Router } from 'express'
 import type { Request, RequestHandler, Response } from 'express'
 import { AttachmentRejectedError, validateAttachment } from '../attachments/fileValidation.js'
@@ -209,7 +210,9 @@ router.post(
   '/driver/trips/:tripId/occurrences',
   guarded(async (request, response) => {
     const driver = await currentDriver(response)
-    const id = await drivers.addOccurrence(identityOf(response), driver, uuidParam(request, 'tripId'), await readOccurrence(asBody(request.body)))
+    const body = asBody(request.body)
+    const custom = await readCustomForm('driverOccurrence', body.customFields)
+    const id = await drivers.addOccurrence(identityOf(response), driver, uuidParam(request, 'tripId'), { ...(await readOccurrence(body)), custom })
     response.status(201).json({ success: true, id })
   }),
 )
@@ -297,7 +300,9 @@ router.post(
   '/fleet/drivers',
   manageDrivers,
   guarded(async (request, response) => {
+    const custom = await readCustomForm('driver', asBody(request.body).customFields)
     const id = await drivers.createDriver(identityOf(response), readDriver(asBody(request.body)))
+    await saveCustomFields('fleet_drivers', id, custom)
     response.status(201).json({ success: true, id })
   }),
 )
@@ -306,7 +311,11 @@ router.patch(
   '/fleet/drivers/:driverId',
   manageDrivers,
   guarded(async (request, response) => {
-    await drivers.updateDriver(identityOf(response), uuidParam(request, 'driverId'), readDriver(asBody(request.body)))
+    const body = asBody(request.body)
+    const custom = 'customFields' in body ? await readCustomForm('driver', body.customFields) : null
+    const id = uuidParam(request, 'driverId')
+    await drivers.updateDriver(identityOf(response), id, readDriver(body))
+    if (custom) await saveCustomFields('fleet_drivers', id, custom)
     response.json({ success: true })
   }),
 )

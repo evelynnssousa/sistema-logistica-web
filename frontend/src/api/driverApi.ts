@@ -94,6 +94,7 @@ export type Trip = {
 
 export type TripOccurrence = {
   id: string
+  customFields?: { id: string; label: string; value: string }[]
   category: string | null
   /** O nome do tipo na data do registro: editar o cadastro não muda o que já foi registrado. */
   categoryLabel: string | null
@@ -117,7 +118,7 @@ export const fetchDriverHistory = (page: number) =>
 export const startTrip = (id: string, body: ExecutionInput = {}) => send<Envelope & { startedAt: string }>(`/driver/trips/${id}/start`, 'POST', body)
 export const finishTrip = (id: string, body: ExecutionInput = {}) =>
   send<Envelope & { finishedAt: string; durationMinutes: number | null }>(`/driver/trips/${id}/finish`, 'POST', body)
-export const addTripOccurrence = (id: string, body: { categoria: string; descricao: string; justificativa?: string; atrasoMinutos?: number }) =>
+export const addTripOccurrence = (id: string, body: { categoria: string; descricao: string; justificativa?: string; atrasoMinutos?: number; customFields?: Record<string, string> }) =>
   send<Envelope & { id: string }>(`/driver/trips/${id}/occurrences`, 'POST', body)
 export const uploadOccurrenceAttachment = (tripId: string, occurrenceId: string, file: File) =>
   apiRequest<Envelope & { id: string }>(`/driver/trips/${tripId}/occurrences/${occurrenceId}/attachments`, {
@@ -130,6 +131,7 @@ export const uploadOccurrenceAttachment = (tripId: string, occurrenceId: string,
 // Equipe da Frota
 // ---------------------------------------------------------------------------
 export type FleetDriver = {
+  customFields?: { id: string; label: string; value: string }[]
   id: string
   name: string
   registration: string | null

@@ -1,3 +1,5 @@
+import { useManagedForm } from '../../app/useManagedForm'
+import { ExtraFields } from '../../components/ExtraFields'
 import { useSystemInfo } from '../../app/useSystemInfo'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
@@ -41,6 +43,7 @@ export function InstrumentForm() {
   const ownSectors = new Set(context.memberships.map((item) => item.sectorId))
   const responsibleOptions = options.sectors.filter((sector) => context.directorate || ownSectors.has(sector.id))
   const { contracts } = useSystemInfo()
+  const instrumentForm = useManagedForm('contractInstrument')
   const [form, setForm] = useState<InstrumentInput | null>(() =>
     instrumentId
       ? null
@@ -75,6 +78,7 @@ export function InstrumentForm() {
           noticeDays: String(instrument.noticeDays),
           closed: instrument.closed,
           notes: instrument.notes ?? '',
+          customFields: Object.fromEntries((instrument.customFields ?? []).map((item) => [item.id, item.value])),
         })
       })
       .catch((err: unknown) => {
@@ -120,7 +124,7 @@ export function InstrumentForm() {
       <h2 id="instrument-form-title">{instrumentId ? 'Editar ata ou contrato' : 'Nova ata ou contrato'}</h2>
       <form className="form-grid" onSubmit={(event) => void submit(event)}>
         <label className="maintenance-form-field">
-          <span>Tipo *</span>
+          <span>{instrumentForm.label('type', 'Tipo')} *</span>
           <select value={form.type} onChange={(event) => set('type', event.target.value)}>
             {Object.entries(instrumentTypeLabels).map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
@@ -128,11 +132,11 @@ export function InstrumentForm() {
           </select>
         </label>
         <label className="maintenance-form-field">
-          <span>Número *</span>
+          <span>{instrumentForm.label('number', 'Número')} *</span>
           <input required maxLength={60} value={form.number} onChange={(event) => set('number', event.target.value)} />
         </label>
         <label className="maintenance-form-field">
-          <span>Categoria *</span>
+          <span>{instrumentForm.label('category', 'Categoria')} *</span>
           <select value={form.category} onChange={(event) => set('category', event.target.value)}>
             {Object.entries(instrumentCategoryLabels).map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
@@ -140,31 +144,31 @@ export function InstrumentForm() {
           </select>
         </label>
         <label className="maintenance-form-field">
-          <span>Processo</span>
+          <span>{instrumentForm.label('process', 'Processo')}</span>
           <input maxLength={60} value={form.process} onChange={(event) => set('process', event.target.value)} />
         </label>
         <label className="maintenance-form-field form-grid-wide">
-          <span>Objeto *</span>
+          <span>{instrumentForm.label('subject', 'Objeto')} *</span>
           <textarea required rows={2} minLength={3} maxLength={1000} value={form.subject} onChange={(event) => set('subject', event.target.value)} />
         </label>
         <label className="maintenance-form-field">
-          <span>Fornecedor</span>
+          <span>{instrumentForm.label('supplier', 'Fornecedor')}</span>
           <input maxLength={200} value={form.supplier} onChange={(event) => set('supplier', event.target.value)} />
         </label>
         <label className="maintenance-form-field">
-          <span>Valor total (R$) *</span>
+          <span>{instrumentForm.label('total', 'Valor total (R$)')} *</span>
           <input type="number" min="0" step="0.01" inputMode="decimal" required value={form.total} onChange={(event) => set('total', event.target.value)} />
         </label>
         <label className="maintenance-form-field">
-          <span>Início da vigência</span>
+          <span>{instrumentForm.label('validFrom', 'Início da vigência')}</span>
           <input type="date" value={form.validFrom} onChange={(event) => set('validFrom', event.target.value)} />
         </label>
         <label className="maintenance-form-field">
-          <span>Fim da vigência</span>
+          <span>{instrumentForm.label('validUntil', 'Fim da vigência')}</span>
           <input type="date" value={form.validUntil} onChange={(event) => set('validUntil', event.target.value)} />
         </label>
         <label className="maintenance-form-field">
-          <span>Setor responsável *</span>
+          <span>{instrumentForm.label('responsibleSector', 'Setor responsável')} *</span>
           <select required value={form.responsibleSectorId} onChange={(event) => set('responsibleSectorId', event.target.value)}>
             <option value="">Selecione</option>
             {sectorChoices.map((sector) => (
@@ -173,7 +177,7 @@ export function InstrumentForm() {
           </select>
         </label>
         <label className="maintenance-form-field">
-          <span>Gestor ou fiscal</span>
+          <span>{instrumentForm.label('manager', 'Gestor ou fiscal')}</span>
           <select value={form.managerId} onChange={(event) => set('managerId', event.target.value)}>
             <option value="">Sem gestor definido</option>
             {managers.map((person) => (
@@ -182,7 +186,7 @@ export function InstrumentForm() {
           </select>
         </label>
         <label className="maintenance-form-field">
-          <span>Avisar quantos dias antes do fim *</span>
+          <span>{instrumentForm.label('noticeDays', 'Avisar quantos dias antes do fim')} *</span>
           <input type="number" min="0" max="365" required value={form.noticeDays} onChange={(event) => set('noticeDays', event.target.value)} />
         </label>
         <fieldset className="demand-checks form-grid-wide">
@@ -208,9 +212,14 @@ export function InstrumentForm() {
             ))}
         </fieldset>
         <label className="maintenance-form-field form-grid-wide">
-          <span>Observações</span>
+          <span>{instrumentForm.label('notes', 'Observações')}</span>
           <textarea rows={2} maxLength={4000} value={form.notes} onChange={(event) => set('notes', event.target.value)} />
         </label>
+        <ExtraFields
+          fields={instrumentForm.extraFields}
+          values={form.customFields ?? {}}
+          onChange={(values) => set('customFields', values)}
+        />
         {instrumentId && (
           <label className="parameter-check form-grid-wide">
             <input type="checkbox" checked={form.closed} onChange={(event) => set('closed', event.target.checked)} />

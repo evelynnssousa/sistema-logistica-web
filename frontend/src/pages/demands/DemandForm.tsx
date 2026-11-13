@@ -1,3 +1,5 @@
+import { useManagedForm } from '../../app/useManagedForm'
+import { ExtraFields } from '../../components/ExtraFields'
 import { useEffect, useMemo, useState } from 'react'
 import { instrumentOptions, linkDemandInstrument } from '../../api/instrumentsApi'
 import type { FormEvent } from 'react'
@@ -173,6 +175,8 @@ function DemandForm() {
   const [notes, setNotes] = useState('')
   const [references, setReferences] = useState('')
   const [instrumentId, setInstrumentId] = useState('')
+  const demandForm = useManagedForm('demand')
+  const [extra, setExtra] = useState<Record<string, string>>({})
   const [instruments, setInstruments] = useState<{ id: string; type: string; number: string; subject: string }[]>([])
   const [reminderDays, setReminderDays] = useState('')
   const [repeat, setRepeat] = useState(false)
@@ -225,6 +229,7 @@ function DemandForm() {
         setNotes(demand.notes ?? '')
         setReferences(demand.references ?? '')
         setInstrumentId(data.instrument?.id ?? '')
+        setExtra(Object.fromEntries((data.customFields ?? []).map((item) => [item.id, item.value])))
         setReminderDays(demand.reminderDays === null ? '' : String(demand.reminderDays))
         setCollaborators(
           data.participants
@@ -268,6 +273,7 @@ function DemandForm() {
       notes,
       references,
       reminderDays: reminderDays === '' ? null : Number(reminderDays),
+      customFields: extra,
     }
   }
 
@@ -372,15 +378,15 @@ function DemandForm() {
         <legend>Identificação</legend>
         <div className="demand-form-grid">
           <label className="maintenance-form-field demand-field-wide">
-            <span>Título</span>
+            <span>{demandForm.label('title', 'Título')}</span>
             <input required minLength={3} maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} />
           </label>
           <label className="maintenance-form-field demand-field-wide">
-            <span>Descrição detalhada</span>
+            <span>{demandForm.label('description', 'Descrição detalhada')}</span>
             <textarea rows={4} maxLength={8000} value={description} onChange={(event) => setDescription(event.target.value)} />
           </label>
           <label className="maintenance-form-field">
-            <span>Categoria</span>
+            <span>{demandForm.label('category', 'Categoria')}</span>
             <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
               <option value="">Selecione</option>
               {options.categories.map((item) => (
@@ -392,7 +398,7 @@ function DemandForm() {
             </select>
           </label>
           <label className="maintenance-form-field">
-            <span>Setor de origem</span>
+            <span>{demandForm.label('originSector', 'Setor de origem')}</span>
             <select value={originSectorId} disabled={sectorLocked} onChange={(event) => setOriginSectorId(event.target.value)}>
               <option value="">Selecione</option>
               {sectorChoices.map((item) => (
@@ -401,7 +407,7 @@ function DemandForm() {
             </select>
           </label>
           <label className="maintenance-form-field">
-            <span>Setor responsável</span>
+            <span>{demandForm.label('responsibleSector', 'Setor responsável')}</span>
             <select
               value={responsibleSectorId}
               disabled={sectorLocked}
@@ -423,7 +429,7 @@ function DemandForm() {
         <legend>Responsabilidade</legend>
         <div className="demand-form-grid">
           <label className="maintenance-form-field">
-            <span>Diretor responsável pelo acompanhamento</span>
+            <span>{demandForm.label('followUpManager', 'Diretor responsável pelo acompanhamento')}</span>
             <select value={followUpManagerId} onChange={(event) => setFollowUpManagerId(event.target.value)}>
               <option value="">Nenhum</option>
               {options.people
@@ -436,7 +442,7 @@ function DemandForm() {
           {draftMode ? (
             <>
               <label className="maintenance-form-field">
-                <span>Solicitante</span>
+                <span>{demandForm.label('requester', 'Solicitante')}</span>
                 <select value={requesterId} onChange={(event) => setRequesterId(event.target.value)}>
                   {options.people.map((item) => (
                     <option key={item.id} value={item.id}>{item.name}</option>
@@ -447,7 +453,7 @@ function DemandForm() {
                 </select>
               </label>
               <label className="maintenance-form-field">
-                <span>Responsável principal</span>
+                <span>{demandForm.label('responsible', 'Responsável principal')}</span>
                 <select value={responsibleId} onChange={(event) => setResponsibleId(event.target.value)}>
                   <option value="">Sem responsável, para o setor distribuir</option>
                   {sectorPeople.map((item) => (
@@ -550,17 +556,17 @@ function DemandForm() {
           {!repeat && (
             <>
               <label className="maintenance-form-field">
-                <span>Início previsto</span>
+                <span>{demandForm.label('startDate', 'Início previsto')}</span>
                 <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
               </label>
               <label className="maintenance-form-field">
-                <span>Prazo para conclusão</span>
+                <span>{demandForm.label('dueDate', 'Prazo para conclusão')}</span>
                 <input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
               </label>
             </>
           )}
           <label className="maintenance-form-field">
-            <span>Prioridade</span>
+            <span>{demandForm.label('priority', 'Prioridade')}</span>
             <select value={priority} onChange={(event) => setPriority(event.target.value)}>
               {Object.entries(demandPriorityLabels).map(([value, label]) => (
                 <option key={value} value={value}>{label}</option>
@@ -675,7 +681,7 @@ function DemandForm() {
         <legend>Documentação</legend>
         <div className="demand-form-grid">
           <label className="maintenance-form-field demand-field-wide">
-            <span>Observações</span>
+            <span>{demandForm.label('notes', 'Observações')}</span>
             <textarea rows={2} maxLength={4000} value={notes} onChange={(event) => setNotes(event.target.value)} />
           </label>
           {(instruments.length > 0 || instrumentId) && (
@@ -697,9 +703,10 @@ function DemandForm() {
             </label>
           )}
           <label className="maintenance-form-field demand-field-wide">
-            <span>Referências ou documentos relacionados</span>
+            <span>{demandForm.label('references', 'Referências ou documentos relacionados')}</span>
             <textarea rows={2} maxLength={2000} value={references} onChange={(event) => setReferences(event.target.value)} />
           </label>
+          <ExtraFields fields={demandForm.extraFields} values={extra} onChange={setExtra} />
           <label className="maintenance-form-field demand-field-wide">
             <span>Anexos: PDF, imagens, Word, Excel ou texto</span>
             <input

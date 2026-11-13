@@ -41,6 +41,7 @@ import {
   isManagedForm,
   managedFieldTypes,
   managedForms,
+  fixedLayoutForms,
   validateFormContent,
 } from '../requests/formRules.js'
 import type { ManagedForm, ManagedFormContent } from '../requests/formRules.js'
@@ -367,6 +368,7 @@ router.get(
       forms: (Object.keys(managedForms) as ManagedForm[]).map((key) => ({
         key,
         label: managedForms[key],
+        fixedLayout: fixedLayoutForms.includes(key),
         published: stored.get(key)?.published ?? null,
         hasDraft: stored.get(key)?.hasDraft ?? false,
       })),

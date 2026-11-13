@@ -1,3 +1,5 @@
+import { customInsertColumns, presentCustomFields } from './customFormValues.js'
+import type { CustomFormResult } from './customFormValues.js'
 import type { Pool, PoolClient } from 'pg'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
 import { redactOptional, redactValidCpf } from '../integrations/redaction.js'
@@ -66,11 +68,13 @@ type VehicleRow = {
 }
 
 const vehicleColumns = `id::text AS id, placa, modelo, identificacao, situacao, km_atual, proxima_revisao_km,
-  to_char(proxima_revisao_data, 'YYYY-MM-DD') AS proxima_revisao_data`
+  to_char(proxima_revisao_data, 'YYYY-MM-DD') AS proxima_revisao_data,
+  to_jsonb(vehicles)->'campos_personalizados' AS campos_personalizados`
 
 function presentVehicle(row: VehicleRow) {
   return {
     id: row.id,
+    customFields: presentCustomFields((row as { campos_personalizados?: unknown }).campos_personalizados),
     plate: row.placa,
     model: row.modelo,
     identification: row.identificacao,
@@ -289,6 +293,7 @@ export class ModuleExtensionsRepository {
       ultima_execucao: Date | null
     }>(
       `SELECT e.id::text AS id, e.nome, e.identificacao, e.local, e.ativo,
+              to_jsonb(e)->'campos_personalizados' AS campos_personalizados,
               count(x.id)::int AS execucoes, max(x.executado_em) AS ultima_execucao
          FROM public.equipments e
          LEFT JOIN public.maintenance_executions x ON x.equipment_id = e.id
@@ -304,6 +309,7 @@ export class ModuleExtensionsRepository {
       active: row.ativo,
       executions: row.execucoes,
       lastExecution: row.ultima_execucao,
+      customFields: presentCustomFields((row as { campos_personalizados?: unknown }).campos_personalizados),
     }))
   }
 
@@ -350,7 +356,7 @@ export class ModuleExtensionsRepository {
   async addExecution(
     actor: AuthenticatedIdentity,
     requestId: string,
-    input: { equipmentId: string | null; executedBy: string; executedAt: Date; service: string; pending: string | null },
+    input: { equipmentId: string | null; executedBy: string; executedAt: Date; service: string; pending: string | null; custom?: CustomFormResult },
   ) {
     await withTransaction(this.poolProvider(), async (client) => {
       const found = await client.query<{ status: string }>(
@@ -364,10 +370,11 @@ export class ModuleExtensionsRepository {
         if (equipment.rows.length === 0) throw new ModuleError('Selecione um equipamento ativo.', 400)
       }
 
+      const extra = await customInsertColumns(client, 'maintenance_executions', input.custom, 8)
       await client.query(
         `INSERT INTO public.maintenance_executions
-          (request_id, equipment_id, executado_por, executado_em, servico_realizado, pendencias, registrado_por)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          (request_id, equipment_id, executado_por, executado_em, servico_realizado, pendencias, registrado_por${extra.columns})
+         VALUES ($1, $2, $3, $4, $5, $6, $7${extra.placeholders})`,
         [
           requestId,
           input.equipmentId,
@@ -376,6 +383,7 @@ export class ModuleExtensionsRepository {
           redactValidCpf(input.service),
           redactOptional(input.pending),
           actor.userId,
+          ...extra.values,
         ],
       )
       await recordHistory(client, {
@@ -405,7 +413,7 @@ export class ModuleExtensionsRepository {
       created_at: Date
     }>(
       `SELECT q.id::text AS id, q.companhia, q.voos, q.valor, q.condicoes, q.validade, q.selecionada,
-              u.full_name AS registrado_por, q.created_at
+              u.full_name AS registrado_por, q.created_at, to_jsonb(q)->'campos_personalizados' AS campos_personalizados
          FROM public.flight_quotes q
          JOIN public.auth_users u ON u.id = q.registrado_por
         WHERE q.request_id = $1
@@ -422,6 +430,7 @@ export class ModuleExtensionsRepository {
       selected: row.selecionada,
       registeredBy: row.registrado_por,
       at: row.created_at,
+      customFields: presentCustomFields((row as { campos_personalizados?: unknown }).campos_personalizados),
     }))
   }
 
@@ -442,13 +451,14 @@ export class ModuleExtensionsRepository {
   async addQuote(
     actor: AuthenticatedIdentity,
     requestId: string,
-    input: { company: string; flights: string; value: number; conditions: string | null; validUntil: Date | null },
+    input: { company: string; flights: string; value: number; conditions: string | null; validUntil: Date | null; custom?: CustomFormResult },
   ) {
     return withTransaction(this.poolProvider(), async (client) => {
       const current = await this.lockOpenFlight(client, requestId)
+      const extra = await customInsertColumns(client, 'flight_quotes', input.custom, 8)
       const created = await client.query<{ id: string }>(
-        `INSERT INTO public.flight_quotes (request_id, companhia, voos, valor, condicoes, validade, registrado_por)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id::text AS id`,
+        `INSERT INTO public.flight_quotes (request_id, companhia, voos, valor, condicoes, validade, registrado_por${extra.columns})
+         VALUES ($1, $2, $3, $4, $5, $6, $7${extra.placeholders}) RETURNING id::text AS id`,
         [
           requestId,
           input.company,
@@ -457,6 +467,7 @@ export class ModuleExtensionsRepository {
           redactOptional(input.conditions),
           input.validUntil,
           actor.userId,
+          ...extra.values,
         ],
       )
       await recordHistory(client, {
@@ -734,7 +745,7 @@ type ExecutionRow = {
 const executionSelect = `
   SELECT x.id::text AS id, x.request_id::text AS request_id, ${protocolSql('r')} AS protocolo,
          e.nome AS equipamento, x.executado_por, x.executado_em, x.servico_realizado, x.pendencias,
-         u.full_name AS registrado_por, x.created_at
+         u.full_name AS registrado_por, x.created_at, to_jsonb(x)->'campos_personalizados' AS campos_personalizados
     FROM public.maintenance_executions x
     JOIN public.service_requests r ON r.id = x.request_id
     JOIN public.auth_users u ON u.id = x.registrado_por
@@ -750,6 +761,7 @@ function presentExecution(row: ExecutionRow) {
     executedAt: row.executado_em,
     service: row.servico_realizado,
     pending: row.pendencias,
+    customFields: presentCustomFields((row as { campos_personalizados?: unknown }).campos_personalizados),
     registeredBy: row.registrado_por,
     at: row.created_at,
   }

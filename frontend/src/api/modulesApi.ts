@@ -235,6 +235,7 @@ export type HistoryEntry = {
 
 export type Occurrence = {
   id: string
+  customFields?: { id: string; label: string; value: string }[]
   type: string
   description: string
   delayMinutes: number | null
@@ -375,6 +376,7 @@ export const getCapabilities = () =>
 // ---------------------------------------------------------------------------
 export type Material = {
   id: string
+  customFields?: { id: string; label: string; value: string }[]
   code: string | null
   name: string
   description: string | null
@@ -385,6 +387,9 @@ export type Material = {
 }
 
 export type WarehouseRequest = {
+  /** Campos novos do Gerenciador de formulários (pedido e, só para a equipe, entrega). */
+  customFields?: { id: string; label: string; value: string }[]
+  deliveryFields?: { id: string; label: string; value: string }[]
   id: string
   protocol: string
   status: string
@@ -498,6 +503,7 @@ export type MaterialInput = {
   unitId: string
   categoryId: string
   active: boolean
+  customFields?: Record<string, string>
 }
 
 export const createMaterial = (body: MaterialInput) =>
@@ -544,6 +550,7 @@ export const createInternalWarehouseRequest = (body: {
   note: string
   items: ItemPayload[]
   avisoPrivacidade?: string
+  customFields?: Record<string, string>
 }) =>
   send<Envelope & { id: string; protocol: string }>('/warehouse/requests', 'POST', body)
 
@@ -554,6 +561,7 @@ export const createExternalWarehouseRequest = (body: {
   sectorId: string
   note: string
   items: ItemPayload[]
+  customFields?: Record<string, string>
 }) => send<Envelope & { id: string; protocol: string }>('/warehouse/external-requests', 'POST', body)
 
 export const updateWarehouseRequest = (
@@ -574,7 +582,7 @@ export const changeWarehouseStatus = (id: string, status: string, comment: strin
 
 export const deliverWarehouseRequest = (
   id: string,
-  body: { receivedBy: string; comment: string; deliveredDate: string; deliveryNote: string },
+  body: { receivedBy: string; comment: string; deliveredDate: string; deliveryNote: string; customFields?: Record<string, string> },
 ) => send<Envelope>(`/warehouse/requests/${id}/deliver`, 'POST', body)
 
 export const setDeliveryForecast = (id: string, body: { date: string; justification: string }) =>
