@@ -788,3 +788,106 @@ a.ui-card:hover,
 .audit-when span {
   color: #475569;
 }
+
+/* ------------------------------------------------------- Linhas por mês */
+.ui-line-chart {
+  display: grid;
+  gap: 10px;
+}
+
+.ui-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  color: var(--text);
+  font-size: 0.86rem;
+  list-style: none;
+}
+
+.ui-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ui-legend-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.ui-line-plot {
+  position: relative;
+}
+
+.ui-line-plot svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.ui-line-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.ui-line-axis,
+.ui-line-end {
+  fill: var(--text-muted);
+  font-size: 11px;
+}
+
+.ui-line-end {
+  fill: var(--text);
+  font-weight: 600;
+}
+
+.ui-line-crosshair {
+  stroke: var(--text-muted);
+  stroke-dasharray: 3 3;
+}
+
+.ui-line-hit {
+  fill: transparent;
+  cursor: crosshair;
+}
+
+.ui-line-hit:focus-visible {
+  outline: none;
+  fill: rgb(3 78 162 / 6%);
+}
+
+.ui-line-tooltip {
+  position: absolute;
+  top: 0;
+  z-index: 3;
+  display: grid;
+  gap: 4px;
+  min-width: 150px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 20px rgb(15 23 42 / 12%);
+  color: var(--text);
+  font-size: 0.82rem;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.ui-line-tooltip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ui-line-table summary {
+  color: var(--institutional);
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+}

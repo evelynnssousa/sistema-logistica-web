@@ -699,7 +699,7 @@ export type InsightFilters = {
 
 export type DashboardResponse = SummaryResponse & {
   recent: RecentRequest[]
-  byPeriod: { month: string; total: number }[]
+  byPeriod: { month: string; total: number; byModule?: Record<string, number> }[]
 }
 
 export const getDashboard = (filters: InsightFilters) =>

@@ -240,16 +240,26 @@ export class InsightsRepository {
 
   async byPeriod(identity: AuthenticatedIdentity, filters: InsightFilters) {
     const scope = buildScope(identity, filters)
-    const result = await this.poolProvider().query<{ mes: string; total: number }>(
+    // Por módulo também (13/11/2026), para as linhas por mês do painel.
+    const result = await this.poolProvider().query<{ mes: string; tipo: string; total: number }>(
       `SELECT to_char(date_trunc('month', r.created_at AT TIME ZONE 'America/Sao_Paulo'), 'YYYY-MM') AS mes,
-              count(*)::int AS total
+              r.tipo, count(*)::int AS total
          FROM public.service_requests r
          ${scope.where}
-        GROUP BY 1
+        GROUP BY 1, 2
         ORDER BY 1`,
       scope.parameters,
     )
-    return result.rows.map((row) => ({ month: row.mes, total: row.total }))
+    const moduleOfType = Object.fromEntries(Object.entries(moduleTypes).map(([module, type]) => [type, module]))
+    const months = new Map<string, { month: string; total: number; byModule: Record<string, number> }>()
+    for (const row of result.rows) {
+      const entry = months.get(row.mes) ?? { month: row.mes, total: 0, byModule: {} }
+      entry.total += row.total
+      const module = moduleOfType[row.tipo] ?? row.tipo
+      entry.byModule[module] = (entry.byModule[module] ?? 0) + row.total
+      months.set(row.mes, entry)
+    }
+    return [...months.values()]
   }
 
   async bySector(identity: AuthenticatedIdentity, filters: InsightFilters) {
