@@ -2,6 +2,8 @@ import { useState, type FormEvent } from 'react'
 import logoJucesp from '../assets/logoJucespNovo.png'
 import { requestPasswordRecovery, resetPassword, resetPasswordWithLink } from '../auth/auth'
 import '../App.css'
+import AuthBrand from '../components/AuthBrand'
+import PasswordField from '../components/PasswordField'
 
 type PasswordRecoveryPageProps = {
   onBackToLogin: () => void
@@ -70,7 +72,8 @@ function PasswordRecoveryPage({ onBackToLogin, linkToken = null }: PasswordRecov
   const resetCompleted = message.startsWith('Senha alterada com sucesso')
 
   return (
-    <main className="login-page">
+    <main className="login-page auth-split">
+      <AuthBrand />
       <section className="login-card">
         <img
           className="login-logo"
@@ -131,9 +134,8 @@ function PasswordRecoveryPage({ onBackToLogin, linkToken = null }: PasswordRecov
             )}
 
             <label htmlFor="recovery-new-password">Nova senha</label>
-            <input
+            <PasswordField
               id="recovery-new-password"
-              type="password"
               autoComplete="new-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -145,9 +147,8 @@ function PasswordRecoveryPage({ onBackToLogin, linkToken = null }: PasswordRecov
             />
 
             <label htmlFor="recovery-confirm-password">Confirme a nova senha</label>
-            <input
+            <PasswordField
               id="recovery-confirm-password"
-              type="password"
               autoComplete="new-password"
               value={passwordConfirmation}
               onChange={(event) => setPasswordConfirmation(event.target.value)}

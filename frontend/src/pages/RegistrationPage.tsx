@@ -5,6 +5,8 @@ import { isManagedFieldVisible } from '../app/requestForm'
 import { register } from '../auth/auth'
 import logoJucesp from '../assets/logoJucespNovo.png'
 import '../App.css'
+import AuthBrand from '../components/AuthBrand'
+import PasswordField from '../components/PasswordField'
 
 type RegistrationPageProps = {
   onBackToLogin: () => void
@@ -86,7 +88,8 @@ function RegistrationPage({ onBackToLogin }: RegistrationPageProps) {
   }
 
   return (
-    <main className="login-page">
+    <main className="login-page auth-split">
+      <AuthBrand />
       <section className="login-card">
         <img
           className="login-logo"
@@ -193,9 +196,8 @@ function RegistrationPage({ onBackToLogin }: RegistrationPageProps) {
             ))}
 
             <label htmlFor="register-password">{labelOf('password', 'Senha')}</label>
-            <input
+            <PasswordField
               id="register-password"
-              type="password"
               autoComplete="new-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -209,9 +211,8 @@ function RegistrationPage({ onBackToLogin }: RegistrationPageProps) {
             <label htmlFor="register-confirm-password">
               Confirmar senha
             </label>
-            <input
+            <PasswordField
               id="register-confirm-password"
-              type="password"
               autoComplete="new-password"
               value={passwordConfirmation}
               onChange={(event) =>
