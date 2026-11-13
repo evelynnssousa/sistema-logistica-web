@@ -31,6 +31,7 @@ export const navigationItems: NavigationItem[] = [
   { name: 'Frota', path: '/frota', icon: 'fleet', group: 'services', anyOf: ['fleet:read'] },
   { name: 'Passagens Aéreas', path: '/passagens-aereas', icon: 'flights', group: 'services', anyOf: ['flights:read'] },
   { name: 'Almoxarifado', path: '/almoxarifado', icon: 'warehouse', group: 'services', anyOf: ['warehouse:read'] },
+  { name: 'Patrimônio', path: '/patrimonio', icon: 'barcode', group: 'services', anyOf: ['patrimony:manage'] },
   { name: 'Controle de Demandas', path: '/demandas', icon: 'demands', group: 'services', demandsOnly: true },
   { name: 'Central SLM', path: '/central-slm', icon: 'central', group: 'management', anyOf: ['slm_central:read'] },
   { name: 'Notificações', path: '/notificacoes', icon: 'notifications', group: 'management' },

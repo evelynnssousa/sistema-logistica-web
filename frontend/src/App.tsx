@@ -36,6 +36,13 @@ const EquipmentsPage = lazy(() => import('./pages/EquipmentsPage'))
 const StockTab = named(() => import('./pages/WarehouseStock'), 'StockTab')
 const WarehouseFinanceTab = named(() => import('./pages/WarehouseFinance'), 'WarehouseFinanceTab')
 const WarehouseRobotTab = named(() => import('./pages/WarehouseRobot'), 'WarehouseRobotTab')
+const PatrimonyPage = lazy(() => import('./pages/PatrimonyPage'))
+const AssetsTab = named(() => import('./pages/PatrimonyPage'), 'AssetsTab')
+const NewAssetTab = named(() => import('./pages/PatrimonyPage'), 'NewAssetTab')
+const AssetDetailPage = named(() => import('./pages/PatrimonyPage'), 'AssetDetailPage')
+const PatrimonyChecksTab = named(() => import('./pages/PatrimonyPage'), 'PatrimonyChecksTab')
+const PatrimonyCheckPage = named(() => import('./pages/PatrimonyPage'), 'PatrimonyCheckPage')
+const AssetImportTab = named(() => import('./pages/PatrimonyPage'), 'AssetImportTab')
 const ControlTab = named(() => import('./pages/WarehouseControl'), 'ControlTab')
 const CalendarPage = lazy(() => import('./pages/CalendarPage'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
@@ -163,6 +170,14 @@ function App() {
             <Route path="relatorios" element={guarded(['reports:read'], <WarehouseReportsTab />)} />
             <Route path="pedidos/:requestId" element={<WarehouseRequestPage />} />
             <Route path="conferencias/:checkId" element={guarded(['warehouse:manage'], <InventoryCheckPage />)} />
+          </Route>
+          <Route path="patrimonio" element={guarded(['patrimony:manage'], <PatrimonyPage />)}>
+            <Route index element={<AssetsTab />} />
+            <Route path="novo" element={<NewAssetTab />} />
+            <Route path="bens/:assetId" element={<AssetDetailPage />} />
+            <Route path="conferencias" element={<PatrimonyChecksTab />} />
+            <Route path="conferencias/:checkId" element={<PatrimonyCheckPage />} />
+            <Route path="importar" element={<AssetImportTab />} />
           </Route>
           {/* O acesso depende de integrar um setor: DemandsLayout decide, e o backend confere. */}
           <Route path="demandas" element={<DemandsLayout />}>

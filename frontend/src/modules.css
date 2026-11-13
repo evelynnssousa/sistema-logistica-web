@@ -256,3 +256,43 @@
   font-weight: 700;
   background: var(--color-yellow-soft, rgba(255, 204, 0, 0.18));
 }
+
+/* Patrimônio */
+.patrimony-scan input {
+  font-size: 1.15rem;
+  letter-spacing: 0.04em;
+}
+
+.patrimony-scan span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.patrimony-scan-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.patrimony-scan-row input {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.patrimony-card {
+  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.15));
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.patrimony-card p {
+  margin: 0;
+}
+
+.patrimony-last-read {
+  display: grid;
+  gap: 0.5rem;
+}
