@@ -44,9 +44,18 @@ export function isManagedForm(value: string): value is ManagedForm {
 
 export const managedFieldTypes = [
   'shortText', 'longText', 'number', 'email', 'phone', 'date', 'time', 'dateTime',
-  'singleSelect', 'multiSelect', 'boolean', 'checkbox',
+  'singleSelect', 'multiSelect', 'boolean', 'checkbox', 'attachment',
 ] as const
 export type ManagedFieldType = (typeof managedFieldTypes)[number]
+
+/**
+ * Campo "Anexo" (13/11/2026): só nos formulários cujo registro tem a lista de anexos das
+ * solicitações (request_attachments). O arquivo vai para essa lista logo depois do envio, com as
+ * mesmas permissões, limites e conferências; o campo guarda o nome do arquivo no registro.
+ */
+export const attachmentFieldForms: readonly ManagedForm[] = [
+  'maintenance', 'fleet', 'airTravel', 'warehouseRequest', 'warehouseExternal',
+]
 
 const validationRules = ['none', 'digits', 'letters', 'phone', 'email'] as const
 export type ValidationRule = (typeof validationRules)[number]
@@ -473,6 +482,10 @@ export function validateFormContent(form: ManagedForm, raw: unknown): ManagedFor
   }
   const ids = sections.map((section) => section.id)
   const fields = body.fields.map((entry) => readField(entry, known, ids))
+  const attachment = fields.find((field) => field.type === 'attachment')
+  if (attachment && !attachmentFieldForms.includes(form)) {
+    fail(`O campo "${attachment.label}" é do tipo Anexo, que este formulário não aceita.`)
+  }
 
   if (new Set(fields.map((field) => field.id)).size !== fields.length) fail('Há campos repetidos no formulário.')
   if (new Set(fields.map((field) => normalized(field.label))).size !== fields.length) {
@@ -518,6 +531,11 @@ function checkValue(field: ManagedField, value: string): void {
   const name = field.label
   if (field.minLength !== null && value.length < field.minLength) fail(`"${name}" deve ter ao menos ${field.minLength} caracteres.`)
   if (field.maxLength !== null && value.length > field.maxLength) fail(`"${name}" deve ter no máximo ${field.maxLength} caracteres.`)
+  if (field.type === 'attachment') {
+    // Só o nome do arquivo: o conteúdo é validado no envio do anexo.
+    if (value.length > 180 || /[\\/\u0000-\u001f]/.test(value)) fail(`"${name}" tem um nome de arquivo inválido.`)
+    return
+  }
   if (field.type === 'number') {
     const number = Number(value)
     if (!Number.isFinite(number)) fail(`"${name}" deve ser um número.`)

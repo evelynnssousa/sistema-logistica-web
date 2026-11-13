@@ -1,5 +1,6 @@
 import type { ChangeEvent } from 'react'
 import type { FormFieldDefinition } from '../app/formDefinitions'
+import { setPendingFile } from '../app/formFiles'
 import MaintenanceOptionSelect from './MaintenanceOptionSelect'
 
 type ConfiguredFieldProps = {
@@ -181,6 +182,22 @@ function ConfiguredField({
             ))}
           </select>
           <FieldHints field={field} />
+        </>
+      ) : field.type === 'attachment' ? (
+        <>
+          <input
+            type="file"
+            name={field.id}
+            required={field.required}
+            accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.xlsx,.txt"
+            onChange={(event) => {
+              const file = event.target.files?.[0] ?? null
+              setPendingFile(field.id, file)
+              onValueChange?.(file?.name ?? '')
+            }}
+          />
+          <FieldHints field={field} />
+          <small>O arquivo é enviado junto com a solicitação e fica em "Documentos e anexos".</small>
         </>
       ) : field.type === 'checkbox' ? (
         <>

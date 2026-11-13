@@ -33,6 +33,7 @@ const typeLabels: Record<FormFieldType, string> = {
   boolean: 'Sim/não',
   phone: 'Telefone',
   checkbox: 'Caixa de seleção',
+  attachment: 'Anexo (arquivo)',
 }
 
 function copyDefinitions(fields: FormFieldDefinition[]) {

@@ -28,7 +28,11 @@ const typeLabels: Record<string, string> = {
   multiSelect: 'Seleção múltipla',
   boolean: 'Sim ou não',
   checkbox: 'Caixa de seleção',
+  attachment: 'Anexo (arquivo)',
 }
+
+/** Mesma lista do servidor: só estes formulários têm a lista de anexos da solicitação. */
+const attachmentForms = ['maintenance', 'fleet', 'airTravel', 'warehouseRequest', 'warehouseExternal']
 
 const validationLabels: Record<string, string> = {
   none: 'Sem regra adicional',
@@ -80,10 +84,12 @@ function FieldEditor({
   onRemove,
   onMove,
   disabled,
+  allowAttachment,
 }: {
   field: ManagedField
   earlier: ManagedField[]
   content: FormContent
+  allowAttachment: boolean
   onChange: (field: ManagedField) => void
   onRemove: () => void
   onMove: (step: number) => void
@@ -110,7 +116,9 @@ function FieldEditor({
           <label className="maintenance-form-field">
             <span>Tipo</span>
             <select value={field.type} disabled={field.protected || !field.id.startsWith('custom-')} onChange={(event) => set('type', event.target.value)}>
-              {Object.entries(typeLabels).map(([value, label]) => (
+              {Object.entries(typeLabels)
+                .filter(([value]) => value !== 'attachment' || allowAttachment || field.type === 'attachment')
+                .map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
@@ -425,6 +433,7 @@ function FormEditor({ formKey, onChanged }: { formKey: string; onChanged: () => 
             earlier={content.fields.slice(0, index).filter((item) => item.active)}
             content={content}
             disabled={!canEdit}
+            allowAttachment={attachmentForms.includes(formKey)}
             onChange={(next) => updateField(field.id, next)}
             onMove={(step) => move(index, step)}
             onRemove={() => setContent({ ...content, fields: content.fields.filter((item) => item.id !== field.id) })}

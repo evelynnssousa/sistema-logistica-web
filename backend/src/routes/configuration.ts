@@ -40,6 +40,7 @@ import {
   defaultForms,
   isManagedForm,
   managedFieldTypes,
+  attachmentFieldForms,
   managedForms,
   fixedLayoutForms,
   validateFormContent,
@@ -373,6 +374,7 @@ router.get(
         hasDraft: stored.get(key)?.hasDraft ?? false,
       })),
       fieldTypes: managedFieldTypes,
+      attachmentForms: attachmentFieldForms,
       catalogs: catalogSources,
     })
   }),
