@@ -366,6 +366,20 @@ export const permissionGroups = [
     ],
   },
   {
+    key: 'patrimony',
+    label: 'Patrimônio',
+    permissions: [
+      {
+        key: 'patrimony:manage',
+        label: 'Gerenciar o Patrimônio',
+        kind: 'manage',
+        description:
+          'Permite cadastrar e importar os bens do órgão, ler o código de barras, mudar o setor, a sala e a situação, ver o valor de aquisição e fazer as conferências de patrimônio.',
+        note: 'Só vale para o Administrador e para o Operador SLM da equipe SLM.',
+      },
+    ],
+  },
+  {
     key: 'users',
     label: 'Usuários e permissões',
     permissions: [
@@ -535,6 +549,7 @@ export const restrictedPermissions = [
   'warehouse:manage',
   'warehouse:finance',
   'warehouse:forecast',
+  'patrimony:manage',
   'requests:create_on_behalf',
   'flights:cpf:read',
   'slm_central:read',
@@ -568,7 +583,8 @@ export function isEligibleForRestrictedPermission(
   }
   // Fora da SLM, só o Administrador. Solicitante e Motorista nunca, qualquer que seja a origem.
   // Valores do Almoxarifado (12/11/2026): mesmo alcance da gestão do módulo.
-  if (permission === 'warehouse:manage' || permission === 'warehouse:finance') {
+  // Patrimônio (13/11/2026): o mesmo alcance, pedido da responsável.
+  if (permission === 'warehouse:manage' || permission === 'warehouse:finance' || permission === 'patrimony:manage') {
     return role === 'administrator' || isSlmStaff
   }
   return true
@@ -645,6 +661,7 @@ const profilePermissions: Record<AuthRole, readonly Permission[]> = {
     'warehouse:manage',
     'warehouse:finance',
     'warehouse:forecast',
+    'patrimony:manage',
     'reports:read',
     'calendar:read',
     'communications:read',

@@ -255,6 +255,21 @@ export const routeAccessMap: readonly RouteAccess[] = [
   { method: 'GET', path: '/warehouse/robot/restock', access: 'permission', requires: ['warehouse:manage'] },
   { method: 'GET', path: '/warehouse/robot/weekly-summary', access: 'permission', requires: ['warehouse:manage'] },
 
+  // Patrimônio (023): tudo exige patrimony:manage (Administrador e Operador SLM da equipe SLM).
+  { method: 'GET', path: '/patrimony/options', access: 'permission', requires: ['patrimony:manage'] },
+  { method: 'GET', path: '/patrimony/assets', access: 'permission', requires: ['patrimony:manage'] },
+  { method: 'POST', path: '/patrimony/assets', access: 'permission', requires: ['patrimony:manage'] },
+  { method: 'GET', path: '/patrimony/lookup', access: 'permission', requires: ['patrimony:manage'] },
+  { method: 'GET', path: '/patrimony/assets/:assetId', access: 'permission', requires: ['patrimony:manage'] },
+  { method: 'PUT', path: '/patrimony/assets/:assetId', access: 'permission', requires: ['patrimony:manage'] },
+  { method: 'PUT', path: '/patrimony/assets/:assetId/location', access: 'permission', requires: ['patrimony:manage'] },
+  { method: 'POST', path: '/patrimony/import', access: 'permission', requires: ['patrimony:manage'] },
+  { method: 'GET', path: '/patrimony/checks', access: 'permission', requires: ['patrimony:manage'] },
+  { method: 'POST', path: '/patrimony/checks', access: 'permission', requires: ['patrimony:manage'] },
+  { method: 'GET', path: '/patrimony/checks/:checkId', access: 'permission', requires: ['patrimony:manage'] },
+  { method: 'POST', path: '/patrimony/checks/:checkId/reads', access: 'permission', requires: ['patrimony:manage'] },
+  { method: 'POST', path: '/patrimony/checks/:checkId/close', access: 'permission', requires: ['patrimony:manage'] },
+
   { method: 'GET', path: '/reports/performance', access: 'permission', requires: ['reports:read'] },
 
   { method: 'GET', path: '/monitoring/status', access: 'permission', requires: ['monitoring:read'] },

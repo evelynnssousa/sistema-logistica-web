@@ -119,6 +119,10 @@ const auditActions = {
   fleet_driver_changed: 'fleet.driver_changed',
   trip_driver_assigned: 'fleet.trip_driver_assigned',
   trip_execution_corrected: 'fleet.execution_corrected',
+  // Patrimônio (023). Sem valor de aquisição nos detalhes.
+  patrimony_asset_changed: 'patrimony.asset_changed',
+  patrimony_imported: 'patrimony.imported',
+  patrimony_check_changed: 'patrimony.check_changed',
 } as const
 
 /** Ações exibidas no histórico de alterações de acesso de um usuário. */

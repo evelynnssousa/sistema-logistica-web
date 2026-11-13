@@ -13,6 +13,7 @@ import insightsRouter from './insights.js'
 import instrumentsRouter from './instruments.js'
 import moduleExtensionsRouter from './moduleExtensions.js'
 import monitoringRouter from './monitoring.js'
+import patrimonyRouter from './patrimony.js'
 import integrationsRouter from './integrations.js'
 import requestsRouter from './requests.js'
 import robotRouter from './robot.js'
@@ -45,5 +46,6 @@ apiRouter.use(insightsRouter)
 apiRouter.use(integrationsRouter)
 apiRouter.use(demandsRouter)
 apiRouter.use(instrumentsRouter)
+apiRouter.use(patrimonyRouter)
 
 export default apiRouter
