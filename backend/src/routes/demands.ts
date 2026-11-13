@@ -11,6 +11,8 @@ import { DemandInsightsRepository } from '../database/demandInsightsRepository.j
 import { DemandRepository } from '../database/demandRepository.js'
 import { DemandSeriesRepository } from '../database/demandSeriesRepository.js'
 import { InstitutionalLinkRepository } from '../database/institutionalLinkRepository.js'
+import { InstrumentRepository } from '../database/instrumentRepository.js'
+import { instrumentAccess } from '../demands/instrumentRules.js'
 import { forbidden, ModuleError, notFound, sendModuleError } from '../database/moduleErrors.js'
 import { getDatabasePool } from '../database/pool.js'
 import { readSystemSettings } from '../database/settingsRepository.js'
@@ -80,6 +82,7 @@ const insights = new DemandInsightsRepository()
 const config = new DemandConfigRepository()
 const institutional = new InstitutionalLinkRepository()
 const attachmentUsage = new AttachmentRepository()
+const instrumentLinks = new InstrumentRepository()
 
 router.use('/demands', requireAuth, requireCsrf)
 
@@ -588,7 +591,23 @@ router.get(
     if (detail.access.administrativeRead) {
       await demands.recordAdministrativeAccess(identityOf(response), detail.demand.id, 'Demanda restrita consultada')
     }
-    response.json({ success: true, ...detail })
+    // Ata ou contrato vinculado (021). Sem a migração, nulo.
+    response.json({ success: true, ...detail, instrument: await instrumentLinks.linkedInstrument(detail.demand.id) })
+  }),
+)
+
+/** Vincula ou desvincula uma ata ou contrato que a pessoa também enxerga. */
+router.put(
+  '/demands/:demandId/instrument',
+  guarded(async (request, response) => {
+    const { context, id, identity } = await loadWith(response, request, 'edit')
+    const instrumentId = optionalUuid(asBody(request.body).instrumentId, 'Ata ou contrato')
+    if (instrumentId) {
+      const sectors = await instrumentLinks.sectorsOf(instrumentId)
+      if (!sectors || !instrumentAccess(context, sectors).read) throw new ModuleError('Ata ou contrato não encontrado.', 400)
+    }
+    await instrumentLinks.linkDemand(identity, id, instrumentId)
+    response.json({ success: true })
   }),
 )
 

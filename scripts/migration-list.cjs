@@ -25,6 +25,7 @@ const migrations = [
   { file: '018_public_api_privileges', marker: 'driver_occurrence_types', closesPublicApi: true },
   { file: '019_email_quota', marker: 'email_daily_usage' },
   { file: '020_warehouse_finance', marker: 'warehouse_price_agreements' },
+  { file: '021_contract_instruments', marker: 'contract_instruments' },
 ]
 
 module.exports = { migrations }

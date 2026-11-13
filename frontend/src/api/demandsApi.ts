@@ -128,6 +128,9 @@ export const historyLabels: Record<string, string> = {
   vinculo_incluido: 'Vínculo com outro módulo incluído',
   vinculo_removido: 'Vínculo com outro módulo removido',
   ocorrencia_gerada: 'Ocorrência gerada automaticamente',
+  renovacao_gerada: 'Aberta automaticamente para renovar ata ou contrato',
+  instrumento_vinculado: 'Ata ou contrato vinculado',
+  instrumento_desvinculado: 'Ata ou contrato desvinculado',
   ocorrencia_pulada: 'Ocorrência pulada',
   alterada_em_serie: 'Alterada junto com as demais ocorrências',
   recorrencia_criada: 'Recorrência criada',
@@ -252,6 +255,8 @@ export type DemandSeries = {
 }
 
 export type DemandDetail = Envelope & {
+  /** Ata ou contrato vinculado (migração 021). */
+  instrument?: { id: string; type: string; number: string; subject: string } | null
   demand: DemandSummary & {
     description: string | null
     createdById: string

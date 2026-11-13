@@ -264,6 +264,20 @@ export const routeAccessMap: readonly RouteAccess[] = [
   // Controle de Demandas: o acesso depende do perfil (Servidor, Chefe, Diretor, Administrador) e da própria
   // demanda, e é conferido na rota, a partir do banco. Veja demands/demandPolicy.ts.
   { method: 'GET', path: '/demands/context', access: 'session' },
+  { method: 'PUT', path: '/demands/:demandId/instrument', access: 'session' },
+  // Atas e contratos (021): acesso pelo setor, conferido na rota (demands/instrumentRules.ts).
+  { method: 'GET', path: '/demand-instruments', access: 'session' },
+  { method: 'POST', path: '/demand-instruments', access: 'session' },
+  { method: 'GET', path: '/demand-instruments/options', access: 'session' },
+  { method: 'GET', path: '/demand-instruments/:instrumentId', access: 'session' },
+  { method: 'PUT', path: '/demand-instruments/:instrumentId', access: 'session' },
+  { method: 'POST', path: '/demand-instruments/:instrumentId/items', access: 'session' },
+  { method: 'PUT', path: '/demand-instruments/:instrumentId/items/:itemId', access: 'session' },
+  { method: 'POST', path: '/demand-instruments/:instrumentId/usages', access: 'session' },
+  { method: 'POST', path: '/demand-instruments/:instrumentId/amendments', access: 'session' },
+  { method: 'POST', path: '/demand-instruments/:instrumentId/attachments', access: 'session' },
+  { method: 'GET', path: '/demand-instruments/:instrumentId/attachments/:attachmentId', access: 'session' },
+  { method: 'POST', path: '/demand-instruments/:instrumentId/attachments/:attachmentId/remove', access: 'session' },
   { method: 'GET', path: '/demands/options', access: 'session' },
   { method: 'GET', path: '/demands/dashboard', access: 'session' },
   { method: 'GET', path: '/demands/reports', access: 'session' },

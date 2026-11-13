@@ -34,6 +34,7 @@ const migrations = [
   '018_public_api_privileges.sql',
   '019_email_quota.sql',
   '020_warehouse_finance.sql',
+  '021_contract_instruments.sql',
 ]
 
 function run(script, args, environment) {

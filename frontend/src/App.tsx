@@ -68,6 +68,9 @@ const DemandForm = lazy(() => import('./pages/demands/DemandForm'))
 const DemandList = lazy(() => import('./pages/demands/DemandList'))
 const DemandReports = lazy(() => import('./pages/demands/DemandReports'))
 const DemandsLayout = lazy(() => import('./pages/demands/DemandsLayout'))
+const InstrumentList = named(() => import('./pages/demands/InstrumentList'), 'InstrumentList')
+const InstrumentForm = named(() => import('./pages/demands/InstrumentForm'), 'InstrumentForm')
+const InstrumentDetail = named(() => import('./pages/demands/InstrumentDetail'), 'InstrumentDetail')
 const PendingRegistrationsPage = lazy(() => import('./pages/PendingRegistrationsPage'))
 const AuditPage = lazy(() => import('./pages/AuditPage'))
 const UserDetailPage = lazy(() => import('./pages/UserDetailPage'))
@@ -168,6 +171,10 @@ function App() {
             <Route path="compartilhadas" element={<DemandList key="compartilhadas" scope="shared" />} />
             <Route path="agenda" element={<DemandAgenda />} />
             <Route path="relatorios" element={<DemandReports />} />
+            <Route path="atas" element={<InstrumentList />} />
+            <Route path="atas/nova" element={<InstrumentForm key="nova" />} />
+            <Route path="atas/:instrumentId" element={<InstrumentDetail />} />
+            <Route path="atas/:instrumentId/editar" element={<InstrumentForm />} />
             <Route path="nova" element={<DemandForm key="nova" />} />
             <Route path=":demandId" element={<DemandDetail />} />
             <Route path=":demandId/editar" element={<DemandForm />} />

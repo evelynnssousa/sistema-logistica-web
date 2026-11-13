@@ -150,7 +150,19 @@ export class AttachmentRepository {
         `SELECT coalesce(sum(tamanho_bytes), 0)::text AS total, count(*)::int AS arquivos
            FROM public.demand_attachments`,
       )
-      return { bytes: Number(result.rows[0].total), files: result.rows[0].arquivos }
+      // Atas e contratos (021) usam o mesmo armazenamento. Sem a 021, nada a somar.
+      const contracts = await this.poolProvider().query<{ total: string; arquivos: number }>(
+        `SELECT coalesce(sum(tamanho_bytes), 0)::text AS total, count(*)::int AS arquivos
+           FROM public.contract_instrument_attachments
+          WHERE to_regclass('public.contract_instrument_attachments') IS NOT NULL`,
+      ).catch((error: unknown) => {
+        if ((error as { code?: unknown }).code === '42P01') return { rows: [{ total: '0', arquivos: 0 }] }
+        throw error
+      })
+      return {
+        bytes: Number(result.rows[0].total) + Number(contracts.rows[0].total),
+        files: result.rows[0].arquivos + contracts.rows[0].arquivos,
+      }
     } catch (error) {
       if ((error as { code?: unknown }).code === '42P01') return { bytes: 0, files: 0 }
       throw error

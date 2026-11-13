@@ -113,6 +113,8 @@ const auditActions = {
   demand_config_changed: 'demand.config_changed',
   demand_report_exported: 'demand.report_exported',
   demand_admin_access: 'demand.admin_access',
+  // Atas e contratos (021). Sem valores nos detalhes.
+  contract_instrument_changed: 'demand.instrument_changed',
   institutional_link_changed: 'user.institutional_link_changed',
   fleet_driver_changed: 'fleet.driver_changed',
   trip_driver_assigned: 'fleet.trip_driver_assigned',

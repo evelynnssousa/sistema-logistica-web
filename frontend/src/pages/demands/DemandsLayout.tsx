@@ -181,6 +181,7 @@ function DemandsLayout() {
     { to: '/demandas/setores', label: 'Demandas por Setor', icon: 'lists' },
     { to: '/demandas/compartilhadas', label: 'Demandas Compartilhadas', icon: 'users' },
     { to: '/demandas/agenda', label: 'Agenda', icon: 'calendar' },
+    { to: '/demandas/atas', label: 'Atas e Contratos', icon: 'scales' },
     { to: '/demandas/relatorios', label: 'Relatórios', icon: 'reports', show: context.canSeeReports },
   ]
 

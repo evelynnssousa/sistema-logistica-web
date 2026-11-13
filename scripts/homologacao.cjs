@@ -217,7 +217,7 @@ async function applyInitialStructure(target, args) {
   await client.connect()
   try {
     await applyStructureWith(client)
-    console.log('Estrutura inicial aplicada: 11 tabelas, sem dados. Próximo passo: as migrações 002 a 020.')
+    console.log('Estrutura inicial aplicada: 11 tabelas, sem dados. Próximo passo: as migrações 002 a 021.')
   } finally {
     await client.end().catch(() => undefined)
   }

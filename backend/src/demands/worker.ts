@@ -1,5 +1,6 @@
 import { publishDeadlineAlerts } from '../database/demandInsightsRepository.js'
 import { generateDueOccurrences } from '../database/demandSeriesRepository.js'
+import { openRenewalDemands } from '../database/instrumentRepository.js'
 import { getDatabasePool } from '../database/pool.js'
 import { recordTechnicalEvent } from '../monitoring/technicalEvents.js'
 
@@ -28,10 +29,12 @@ async function isMigrated() {
 }
 
 export async function runDemandCycle({ withAlerts = true } = {}) {
-  if (!(await isMigrated())) return { generated: 0, alerts: 0 }
+  if (!(await isMigrated())) return { generated: 0, alerts: 0, renewals: 0 }
   const generated = await generateDueOccurrences()
   const alerts = withAlerts ? await publishDeadlineAlerts() : 0
-  return { generated, alerts }
+  // Atas e contratos (021): demanda de renovação ao entrar no prazo de aviso. Sem a 021, nada.
+  const renewals = withAlerts ? await openRenewalDemands() : 0
+  return { generated, alerts, renewals }
 }
 
 export function startDemandWorker(intervalMs = defaultIntervalMs) {

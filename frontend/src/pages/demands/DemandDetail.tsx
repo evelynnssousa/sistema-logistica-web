@@ -1148,6 +1148,17 @@ function DemandDetail() {
           {demand.reopenings > 0 && <div><dt>Reaberturas</dt><dd>{demand.reopenings}</dd></div>}
           {demand.notes && <div className="demand-fact-wide"><dt>Observações</dt><dd>{demand.notes}</dd></div>}
           {demand.references && <div className="demand-fact-wide"><dt>Referências</dt><dd>{demand.references}</dd></div>}
+          {data.instrument && (
+            <div className="demand-fact-wide">
+              <dt>Ata ou contrato</dt>
+              <dd>
+                <Link to={`/demandas/atas/${data.instrument.id}`}>
+                  {data.instrument.type === 'ata' ? 'Ata' : 'Contrato'} {data.instrument.number}
+                </Link>{' '}
+                {data.instrument.subject}
+              </dd>
+            </div>
+          )}
         </dl>
       </section>
 

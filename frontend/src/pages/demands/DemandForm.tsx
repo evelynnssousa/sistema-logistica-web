@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { instrumentOptions, linkDemandInstrument } from '../../api/instrumentsApi'
 import type { FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
@@ -171,6 +172,8 @@ function DemandForm() {
   const [authorizedUserIds, setAuthorizedUserIds] = useState<string[]>([])
   const [notes, setNotes] = useState('')
   const [references, setReferences] = useState('')
+  const [instrumentId, setInstrumentId] = useState('')
+  const [instruments, setInstruments] = useState<{ id: string; type: string; number: string; subject: string }[]>([])
   const [reminderDays, setReminderDays] = useState('')
   const [repeat, setRepeat] = useState(false)
   const [recurrence, setRecurrence] = useState<RecurrenceDraft>(emptyRecurrence)
@@ -179,6 +182,25 @@ function DemandForm() {
 
   const editing = Boolean(demandId)
   const draftMode = !editing || loaded?.demand.draft === true
+
+  // Atas e contratos que a pessoa enxerga, para vincular. Sem a migração 021, a lista vem vazia.
+  useEffect(() => {
+    let active = true
+    instrumentOptions()
+      .then((result) => {
+        if (active) setInstruments(result.instruments)
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [])
+
+  /** O vínculo tem rota própria: só é gravado se mudou. */
+  async function saveInstrumentLink(id: string) {
+    const current = loaded?.instrument?.id ?? ''
+    if (instrumentId !== current) await linkDemandInstrument(id, instrumentId || null)
+  }
 
   useEffect(() => {
     if (!demandId) return
@@ -202,6 +224,7 @@ function DemandForm() {
         setRestricted(demand.restricted)
         setNotes(demand.notes ?? '')
         setReferences(demand.references ?? '')
+        setInstrumentId(data.instrument?.id ?? '')
         setReminderDays(demand.reminderDays === null ? '' : String(demand.reminderDays))
         setCollaborators(
           data.participants
@@ -287,6 +310,7 @@ function DemandForm() {
           resumeDate,
           recurrence: repeat ? recurrencePayload(recurrence) : undefined,
         })
+        await saveInstrumentLink(created.id)
         const failed = await uploadFiles(created.id)
         navigate(`/demandas/${created.id}`, { state: failed.length ? { uploadErrors: failed } : undefined })
         return
@@ -305,6 +329,7 @@ function DemandForm() {
       } else {
         await updateDemand(id, { ...commonBody(), scope, version: loaded?.demand.version })
       }
+      await saveInstrumentLink(id)
       const failed = await uploadFiles(id)
       navigate(`/demandas/${id}`, { state: failed.length ? { uploadErrors: failed } : undefined })
     } catch (err) {
@@ -653,6 +678,24 @@ function DemandForm() {
             <span>Observações</span>
             <textarea rows={2} maxLength={4000} value={notes} onChange={(event) => setNotes(event.target.value)} />
           </label>
+          {(instruments.length > 0 || instrumentId) && (
+            <label className="maintenance-form-field demand-field-wide">
+              <span>Ata ou contrato</span>
+              <select value={instrumentId} onChange={(event) => setInstrumentId(event.target.value)}>
+                <option value="">Nenhum</option>
+                {loaded?.instrument && !instruments.some((item) => item.id === loaded.instrument?.id) && (
+                  <option value={loaded.instrument.id}>
+                    {loaded.instrument.type === 'ata' ? 'Ata' : 'Contrato'} {loaded.instrument.number}: {loaded.instrument.subject}
+                  </option>
+                )}
+                {instruments.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.type === 'ata' ? 'Ata' : 'Contrato'} {item.number}: {item.subject}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="maintenance-form-field demand-field-wide">
             <span>Referências ou documentos relacionados</span>
             <textarea rows={2} maxLength={2000} value={references} onChange={(event) => setReferences(event.target.value)} />

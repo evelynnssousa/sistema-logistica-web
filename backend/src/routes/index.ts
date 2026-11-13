@@ -10,6 +10,7 @@ import demandsRouter from './demands.js'
 import driverRouter from './driver.js'
 import flightsRouter from './flights.js'
 import insightsRouter from './insights.js'
+import instrumentsRouter from './instruments.js'
 import moduleExtensionsRouter from './moduleExtensions.js'
 import monitoringRouter from './monitoring.js'
 import integrationsRouter from './integrations.js'
@@ -41,5 +42,6 @@ apiRouter.use(monitoringRouter)
 apiRouter.use(insightsRouter)
 apiRouter.use(integrationsRouter)
 apiRouter.use(demandsRouter)
+apiRouter.use(instrumentsRouter)
 
 export default apiRouter
