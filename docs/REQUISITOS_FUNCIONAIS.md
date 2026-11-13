@@ -115,3 +115,15 @@ Agenda interna de Manutenção, Frota e Passagens aéreas, usando os próprios r
 ### Auditoria
 
 Autenticação, cadastros, perfis, permissões, CPF, solicitações, agendamentos, cancelamentos, configurações, Almoxarifado e status, com usuário, ação, data, horário, resultado e motivo. Usuários comuns não alteram nem apagam registros.
+
+### Atas e contratos (Controle de Demandas, 12/11/2026)
+
+- Atas de registro de preços e contratos de materiais, serviços, cursos e outros, do setor responsável, compartilháveis com outros setores. Veem e alteram os integrantes desses setores e o Diretor; o Administrador sem perfil de Diretor só consulta.
+- Itens com quantidade registrada e valor unitário; utilizações permanentes, nunca acima do saldo; aditivos e prorrogações permanentes, que mudam vigência ou valor.
+- PDF da ata, do contrato e dos aditivos, sem URL pública.
+- Demanda de renovação aberta automaticamente no setor responsável ao entrar no prazo de aviso (padrão 90 dias), uma vez por vigência; prorrogar libera o próximo aviso.
+- A demanda pode ser vinculada a uma ata ou contrato que a pessoa enxerga; o vínculo não abre demanda de outro setor.
+
+### Dashboard (12/11/2026)
+
+- Porcentagem do total nos cartões e nas barras; comparação com o período anterior do mesmo tamanho; taxas de concluídas no prazo, canceladas e pedidos do Almoxarifado atendidos por completo; percentual usado das atas do Almoxarifado (só para quem vê valores).
