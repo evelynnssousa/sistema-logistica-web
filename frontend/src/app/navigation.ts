@@ -43,6 +43,7 @@ export const navigationItems: NavigationItem[] = [
   { name: 'Auditoria', path: '/auditoria', icon: 'audit', group: 'administration', anyOf: ['audit:read'] },
   { name: 'Integrações', path: '/integracoes', icon: 'integrations', group: 'administration', anyOf: ['integrations:read'] },
   { name: 'Monitoramento', path: '/monitoramento', icon: 'monitoring', group: 'administration', anyOf: ['monitoring:read'] },
+  { name: 'Ajuda', path: '/ajuda', icon: 'info', group: 'account' },
   { name: 'Minha conta', path: '/minha-conta', icon: 'account', group: 'account' },
 ]
 

@@ -296,3 +296,341 @@
   display: grid;
   gap: 0.5rem;
 }
+
+/* Página inicial pública e Ajuda */
+.public-page {
+  min-height: 100vh;
+  background: var(--page, #f1f4f8);
+  color: var(--text, #475467);
+}
+
+.public-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem clamp(1rem, 4vw, 3rem);
+  background: var(--executive, #17365d);
+  color: var(--on-dark, #fff);
+}
+
+.public-brand {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.public-brand img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: var(--white, #fff);
+  padding: 4px;
+}
+
+.public-brand small {
+  display: block;
+  font-weight: 500;
+  font-size: 0.75rem;
+  color: var(--on-dark-muted, #c9d6e8);
+}
+
+.public-header nav {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.public-button,
+.public-button-ghost {
+  border-radius: 8px;
+  padding: 0.55rem 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid var(--accent, #fbb900);
+}
+
+.public-button {
+  background: var(--accent, #fbb900);
+  color: var(--executive-strong, #102a4a);
+}
+
+.public-button-ghost {
+  background: transparent;
+  color: inherit;
+  border-color: currentColor;
+}
+
+.public-button-large {
+  padding: 0.8rem 1.4rem;
+  font-size: 1rem;
+}
+
+.public-hero {
+  padding: clamp(2.5rem, 7vw, 5rem) clamp(1rem, 4vw, 3rem);
+  background: linear-gradient(160deg, var(--executive, #17365d), var(--executive-raised, #1f4a7a));
+  color: var(--on-dark, #fff);
+}
+
+.public-hero h1 {
+  margin: 0.25rem 0 0.75rem;
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+  color: var(--on-dark, #fff);
+  max-width: 22ch;
+}
+
+.public-eyebrow {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent, #fbb900);
+}
+
+.public-lead {
+  max-width: 60ch;
+  font-size: 1.1rem;
+  color: var(--on-dark-muted, #c9d6e8);
+}
+
+.public-announcement {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.6rem 0.9rem;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 12%);
+}
+
+.public-announcement.is-warning {
+  background: var(--accent-soft, #fff6db);
+  color: var(--executive-strong, #102a4a);
+}
+
+.public-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.public-section {
+  padding: clamp(2rem, 5vw, 3.5rem) clamp(1rem, 4vw, 3rem);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.public-section h2 {
+  color: var(--heading, #17365d);
+  margin-top: 0;
+}
+
+.public-cards,
+.public-steps,
+.public-team,
+.public-news {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.public-cards {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.public-cards li,
+.public-steps li,
+.public-columns article {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e4e9f0);
+  border-radius: 12px;
+  padding: 1.25rem;
+  display: grid;
+  gap: 0.4rem;
+  align-content: start;
+}
+
+.public-cards svg {
+  color: var(--institutional, #034ea2);
+}
+
+.public-cards p,
+.public-steps p {
+  margin: 0;
+}
+
+.public-steps {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.public-steps span {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--institutional, #034ea2);
+  color: var(--white, #fff);
+  font-weight: 700;
+}
+
+.public-faq {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.public-faq details {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e4e9f0);
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+}
+
+.public-faq summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--heading, #17365d);
+}
+
+.public-faq p {
+  margin: 0.6rem 0 0;
+}
+
+.public-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.public-columns h3 {
+  margin: 0;
+  color: var(--heading, #17365d);
+}
+
+.public-team {
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+}
+
+.public-team li {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 0.3rem;
+}
+
+.public-team img,
+.public-team-initials {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.public-team-initials {
+  display: grid;
+  place-items: center;
+  background: var(--institutional-soft, #e8f0fa);
+  color: var(--institutional, #034ea2);
+  font-weight: 800;
+  font-size: 1.6rem;
+}
+
+.public-team strong {
+  color: var(--heading, #17365d);
+}
+
+.public-news li {
+  border-left: 4px solid var(--accent, #fbb900);
+  padding: 0.25rem 0 0.25rem 0.9rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.public-news time {
+  font-size: 0.85rem;
+  color: var(--text-muted, #667085);
+}
+
+.public-news p {
+  margin: 0;
+}
+
+.public-contact {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.public-contact div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.public-contact dt {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  font-weight: 700;
+  color: var(--heading, #17365d);
+}
+
+.public-contact dd {
+  margin: 0 0 0 1.6rem;
+}
+
+.public-footer {
+  padding: 1.5rem clamp(1rem, 4vw, 3rem);
+  background: var(--executive-strong, #102a4a);
+  color: var(--on-dark-muted, #c9d6e8);
+  font-size: 0.9rem;
+}
+
+.public-footer p {
+  margin: 0.2rem 0;
+}
+
+.public-settings-item {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border, #e4e9f0);
+  border-radius: 8px;
+}
+
+.public-settings-member {
+  grid-template-columns: auto 1fr;
+  align-items: start;
+}
+
+.public-settings-member img,
+.public-settings-member .public-team-initials {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.public-settings-member .robot-actions {
+  grid-column: 1 / -1;
+}
+
+.help-page .public-faq details {
+  background: var(--surface-muted, #f7f9fc);
+}
+
+/* Topo, abertura e rodapé alinhados à coluna de conteúdo (até 1200px). */
+.public-header,
+.public-hero,
+.public-footer {
+  padding-inline: max(clamp(1rem, 4vw, 3rem), calc((100% - 1200px) / 2 + clamp(1rem, 4vw, 3rem)));
+}

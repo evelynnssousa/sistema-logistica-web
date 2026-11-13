@@ -44,7 +44,7 @@ async function scenarios({ browser, baseUrl, runId, password, screenshotDirector
     })
     const page = await context.newPage()
     page.on('pageerror', (error) => pageErrors.push(error.message))
-    await page.goto('/')
+    await page.goto('/entrar')
     await page.fill('#login-identifier', email)
     await page.fill('#login-password', password)
     await page.click('.login-submit')
@@ -131,7 +131,7 @@ async function scenarios({ browser, baseUrl, runId, password, screenshotDirector
     assert.equal(access.status, 200)
 
     // Administrar não depende de integrar um setor.
-    await admin.goto('/')
+    await admin.goto('/entrar')
     await admin.waitForSelector('.navigation a[href="/demandas"]')
     assert.equal((await api(admin, 'GET', '/demands')).status, 200)
     assert.equal((await api(admin, 'POST', '/demands', { title: 'Sem vínculo' })).status, 403, 'consulta, sem cadastrar')
@@ -549,7 +549,7 @@ async function scenarios({ browser, baseUrl, runId, password, screenshotDirector
     await lead.waitForTimeout(1500)
     await context.unroute('**/api/demands/context')
     assert.ok(calls < 15, `${calls} tentativas em 1,5 segundo`)
-    await lead.goto('/')
+    await lead.goto('/entrar')
     await lead.waitForSelector('.topbar-logout')
   })
 

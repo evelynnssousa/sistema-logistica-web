@@ -33,7 +33,7 @@ async function scenarios({ browser, baseUrl, runId, password }) {
     })
     const page = await context.newPage()
     page.on('pageerror', (error) => pageErrors.push(error.message))
-    await page.goto('/')
+    await page.goto('/entrar')
     await page.fill('#login-identifier', email)
     await page.fill('#login-password', password)
     await page.click('.login-submit')
@@ -265,7 +265,7 @@ async function scenarios({ browser, baseUrl, runId, password }) {
   })
 
   await step('acessibilidade: atalho para o conteúdo e foco visível pelo teclado', async () => {
-    await admin.goto('/')
+    await admin.goto('/entrar')
     await admin.waitForSelector('.topbar-logout')
     await admin.keyboard.press('Tab')
     const focused = await admin.evaluate(() => document.activeElement?.className)

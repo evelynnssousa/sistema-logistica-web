@@ -158,7 +158,7 @@ async function run({ playwright, baseUrl, password, screenshotDirectory }) {
         new URL(route.request().url()).origin === baseOrigin ? route.continue() : route.abort(),
       )
       const page = await context.newPage()
-      await page.goto('/')
+      await page.goto('/entrar')
       await page.waitForSelector('#login-identifier')
       for (const problem of await page.evaluate(auditPage)) {
         failures.push(`${viewport.name} entrada: ${problem}`)
@@ -218,7 +218,7 @@ async function run({ playwright, baseUrl, password, screenshotDirectory }) {
       }
 
       // Navegação da largura atual: fixa no computador, gaveta nos demais.
-      await page.goto('/')
+      await page.goto('/entrar')
       await page.waitForSelector('.page-content h1')
       if (viewport.width < 1024) {
         const link = page.locator('.nav-item', { hasText: 'Dashboard' })
@@ -244,6 +244,8 @@ async function run({ playwright, baseUrl, password, screenshotDirectory }) {
         const outline = await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle)
         assert.equal(outline, 'solid', 'foco visível ao navegar pelo teclado')
         const active = page.locator('.nav-item.active')
+        // O item ativo muda de cor com transição: a conferência espera a animação terminar.
+        await active.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
         const colors = await active.evaluate((element) => ({
           background: getComputedStyle(element).backgroundColor,
           icon: getComputedStyle(element.querySelector('.nav-icon')).color,

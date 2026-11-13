@@ -6,13 +6,14 @@ import type { ParametersResponse, SystemSettings } from '../api/operationsApi'
 import { refreshSystemInfo } from '../app/useSystemInfo'
 import { Alert } from './ui/Feedback'
 import Icon from './ui/Icon'
+import { PublicPageCard } from './PublicPageSettings'
 
 /**
  * Administração do sistema (13/11/2026): o que antes dependia da TI ou do código e agora a
  * administração ajusta pela tela. Cada cartão salva a própria seção; o servidor valida tudo.
  */
 
-function Card({
+export function Card({
   title,
   description,
   canManage,
@@ -364,6 +365,7 @@ function AdminSettingsSection({ canManage }: { canManage: boolean }) {
           <ModulesCard value={data.settings.modules} canManage={canManage} />
           <ContractsCard value={data.settings.contracts} canManage={canManage} />
           <TextsCard value={data.settings.texts} canManage={canManage} />
+          <PublicPageCard value={data.settings.publicPage} canManage={canManage} />
           {data.options.profileDefaults && (
             <ProfilesCard value={data.settings.profileDefaults} options={data.options.profileDefaults} canManage={canManage} />
           )}

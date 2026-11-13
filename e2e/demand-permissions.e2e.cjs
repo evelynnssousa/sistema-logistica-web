@@ -31,7 +31,7 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
     })
     const page = await context.newPage()
     page.on('pageerror', (error) => pageErrors.push(error.message))
-    await page.goto('/')
+    await page.goto('/entrar')
     await page.fill('#login-identifier', email)
     await page.fill('#login-password', password)
     await page.click('.login-submit')
@@ -114,7 +114,7 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
     ].map((item) => item.status)
 
     await step('atalho da aba Inicial: um clique abre o formulário, com só os setores permitidos', async () => {
-      await servidor.goto('/')
+      await servidor.goto('/entrar')
       const shortcut = servidor.locator('.home-actions .home-action', { hasText: 'Criar demanda' })
       await shortcut.waitFor()
       await shot(servidor, 'inicio-atalho')
@@ -125,14 +125,14 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
       assert.deepEqual(await form.getByLabel('Setor responsável').locator('option').allTextContents(), ['Selecione', 'Matriz Alfa'])
       assert.deepEqual(await form.getByLabel('Setor de origem').locator('option').allTextContents(), ['Selecione', 'Matriz Alfa'])
 
-      await diretor.goto('/')
+      await diretor.goto('/entrar')
       await diretor.locator('.home-actions .home-action', { hasText: 'Criar demanda' }).click()
       await diretor.locator('.demand-form').waitFor()
       const all = await diretor.locator('.demand-form').getByLabel('Setor responsável').locator('option').allTextContents()
       assert.ok(all.includes('Matriz Alfa') && all.includes('Matriz Beta'))
 
       // O administrador sem perfil de Diretor não cadastra, e o atalho não aparece.
-      await admin.goto('/')
+      await admin.goto('/entrar')
       await admin.waitForSelector('.recent-section')
       await admin.waitForFunction(() => document.querySelector('.navigation a[href="/demandas"]'))
       assert.equal(await admin.locator('.home-action', { hasText: 'Criar demanda' }).count(), 0)
@@ -230,7 +230,7 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
       await servidor.getByRole('button', { name: 'Mais filtros' }).click()
       assert.ok((await overflow()) <= 1, 'filtros abertos')
       await shot(servidor, 'pesquisa-celular')
-      await servidor.goto('/')
+      await servidor.goto('/entrar')
       await servidor.locator('.home-action', { hasText: 'Criar demanda' }).waitFor()
       assert.ok((await overflow()) <= 1, 'aba Inicial')
       for (const page of [servidor, diretor]) await page.setViewportSize({ width: 1360, height: 900 })
@@ -305,7 +305,7 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
     })
 
     await step('diretor: configura setores, integrantes e categorias pela tela, sem definir diretores', async () => {
-      await diretor.goto('/')
+      await diretor.goto('/entrar')
       await diretor.locator('.navigation a[href="/configuracoes"]').click()
       await diretor.getByRole('heading', { name: 'Setores e integrantes' }).waitFor()
       assert.equal(await diretor.getByRole('heading', { name: /Diretor/ }).count(), 0, 'o painel de diretores é do administrador')
@@ -313,7 +313,7 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
       assert.equal((await api(diretor, 'POST', '/demands/settings/categories', { name: 'Categoria Matriz' })).status, 201)
       assert.equal((await api(diretor, 'PUT', `/demands/settings/directorate/${ids[emails.chefe]}`, { role: 'diretor' })).status, 403)
 
-      await servidor.goto('/')
+      await servidor.goto('/entrar')
       await servidor.waitForSelector('.navigation a[href="/demandas"]')
       assert.equal(await servidor.locator('.navigation a[href="/configuracoes"]').count(), 0)
       assert.equal((await api(servidor, 'GET', '/demands/settings/sectors')).status, 403)

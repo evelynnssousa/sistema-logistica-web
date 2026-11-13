@@ -53,7 +53,7 @@ async function run({ playwright, baseUrl, runId, password }) {
     const page = await context.newPage()
     page.on('pageerror', (error) => pageErrors.push(error.message))
     page.on('dialog', (dialog) => dialog.accept())
-    await page.goto('/')
+    await page.goto('/entrar')
     await page.fill('#login-identifier', email)
     await page.fill('#login-password', password)
     await page.click('.login-submit')
@@ -94,7 +94,7 @@ async function run({ playwright, baseUrl, runId, password }) {
       new URL(route.request().url()).origin === baseOrigin ? route.continue() : route.abort(),
     )
     const page = await context.newPage()
-    await page.goto('/')
+    await page.goto('/entrar')
     await page.click('.login-register-link button')
     await page.fill('#register-name', name)
     await page.fill('#register-email', email)
@@ -483,13 +483,13 @@ async function run({ playwright, baseUrl, runId, password }) {
       await requester.locator('.ui-filter-field', { hasText: 'Módulo' }).locator('select').selectOption('fleet')
       await requester.waitForFunction(() => document.querySelector('.ui-metric-value')?.textContent === '1')
 
-      await requester.goto('/')
+      await requester.goto('/entrar')
       await requester.waitForSelector('.recent-table')
       assert.equal(await requester.locator('.module-card').count(), 0)
     })
 
     await step('painel, relatórios e auditoria mostram os dados reais', async () => {
-      await requester.goto('/')
+      await requester.goto('/entrar')
       await requester.waitForSelector('.recent-table a')
       const recent = await requester.locator('.recent-table a').count()
       assert.equal(recent, 3, 'solicitante vê só as próprias solicitações')
@@ -518,7 +518,9 @@ async function run({ playwright, baseUrl, runId, password }) {
       await requester.click('button:has-text("Encerrar as outras sessões")')
       await requester.locator('[role=status]', { hasText: 'encerrada' }).waitFor()
       await second.reload()
-      await second.waitForSelector('#login-identifier')
+      // No endereço principal, sem sessão, aparece a página inicial pública (com o botão Entrar).
+      await second.waitForSelector('#login-identifier, .public-hero')
+      assert.equal(await second.locator('.topbar-logout').count(), 0)
     })
 
     assert.deepEqual(violations, [], 'toda resposta veio do backend desta execução')

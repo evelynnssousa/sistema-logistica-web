@@ -710,6 +710,7 @@ export type SystemSettings = {
   modules: Record<'maintenance' | 'fleet' | 'flights' | 'warehouse' | 'demands', boolean>
   contracts: { defaultNoticeDays: number; lowBalancePercent: number }
   texts: { loginMessage: string; homeMessage: string }
+  publicPage?: import('./configApi').PublicPageContent & { team: { name: string; role: string; photoId: string | null }[] }
   profileDefaults: Record<'requester' | 'slm_operator', { add: string[]; remove: string[] }>
 }
 

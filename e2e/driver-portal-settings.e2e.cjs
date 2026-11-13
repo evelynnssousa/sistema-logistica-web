@@ -24,7 +24,7 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
     })
     const page = await context.newPage()
     page.on('pageerror', (error) => pageErrors.push(error.message))
-    await page.goto('/')
+    await page.goto('/entrar')
     await page.fill('#login-identifier', email)
     await page.fill('#login-password', password)
     await page.click('.login-submit')

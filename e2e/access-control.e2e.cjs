@@ -45,7 +45,7 @@ async function run({ playwright, baseUrl, runId, password }) {
     const page = await context.newPage()
     page.on('pageerror', (error) => pageErrors.push(error.message))
     page.on('dialog', (dialog) => dialog.accept())
-    await page.goto('/')
+    await page.goto('/entrar')
     await page.fill('#login-identifier', email)
     await page.fill('#login-password', password)
     await page.click('.login-submit')
@@ -56,7 +56,7 @@ async function run({ playwright, baseUrl, runId, password }) {
   async function register(name, email, sector) {
     const context = await newContext()
     const page = await context.newPage()
-    await page.goto('/')
+    await page.goto('/entrar')
     await page.click('.login-register-link button')
     await page.fill('#register-name', name)
     await page.fill('#register-email', email)
@@ -81,10 +81,29 @@ async function run({ playwright, baseUrl, runId, password }) {
     let requester
     let requesterId
 
-    await step('recusa senha errada, com mensagem genérica', async () => {
+    await step('página inicial pública: explica o sistema e leva ao login e ao cadastro', async () => {
       const context = await newContext()
       const page = await context.newPage()
       await page.goto('/')
+      await page.waitForSelector('.public-hero h1')
+      assert.match(await page.textContent('.public-hero h1'), /Logística e Manutenção/)
+      assert.ok((await page.locator('.public-faq details').count()) >= 3, 'perguntas frequentes do rascunho')
+      await page.click('.public-hero-actions .public-button')
+      await page.waitForSelector('#login-identifier')
+      await page.click('text=Página inicial, dúvidas e contato')
+      await page.waitForSelector('.public-hero')
+      await page.click('.public-hero-actions .public-button-ghost')
+      await page.waitForSelector('#register-name')
+      // Link direto para uma tela vai ao login, não à página inicial.
+      await page.goto('/manutencao')
+      await page.waitForSelector('#login-identifier')
+      await context.close()
+    })
+
+    await step('recusa senha errada, com mensagem genérica', async () => {
+      const context = await newContext()
+      const page = await context.newPage()
+      await page.goto('/entrar')
       assert.equal(await page.getAttribute('#login-identifier', 'placeholder'), 'Digite seu e-mail')
       await page.fill('#login-identifier', emails.admin)
       await page.fill('#login-password', `${password}-errada`)
@@ -100,7 +119,7 @@ async function run({ playwright, baseUrl, runId, password }) {
 
       const context = await newContext()
       const page = await context.newPage()
-      await page.goto('/')
+      await page.goto('/entrar')
       await page.fill('#login-identifier', emails.requester)
       await page.fill('#login-password', password)
       await page.click('.login-submit')

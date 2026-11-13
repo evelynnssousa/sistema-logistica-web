@@ -9,6 +9,7 @@ import {
 import LoginPage from '../pages/LoginPage'
 import RegistrationPage from '../pages/RegistrationPage'
 import PasswordRecoveryPage from '../pages/PasswordRecoveryPage'
+import WelcomePage from '../pages/WelcomePage'
 import { LogoutContext, UserContext } from './UserContext'
 
 type AuthGateProps = {
@@ -42,9 +43,14 @@ function AuthGate({ children }: AuthGateProps) {
   const [checking, setChecking] = useState(true)
   const [unavailable, setUnavailable] = useState(false)
   const [linkToken, setLinkToken] = useState(readRecoveryToken)
-  const [authView, setAuthView] = useState<'login' | 'register' | 'recovery'>(
-    linkToken ? 'recovery' : 'login',
-  )
+  // A página inicial só aparece no endereço principal. Quem abre o link de uma tela vai direto ao
+  // login e, depois de entrar, chega à tela pedida. /entrar e /cadastro abrem o formulário certo.
+  const [authView, setAuthView] = useState<'welcome' | 'login' | 'register' | 'recovery'>(() => {
+    if (linkToken) return 'recovery'
+    const path = window.location.pathname
+    if (path === '/cadastro') return 'register'
+    return path === '/' ? 'welcome' : 'login'
+  })
 
   const [loginNotice, setLoginNotice] = useState('')
 
@@ -183,6 +189,10 @@ function AuthGate({ children }: AuthGateProps) {
   }
 
   if (!user) {
+    if (authView === 'welcome' && !loginNotice) {
+      return <WelcomePage onLogin={() => setAuthView('login')} onRegister={() => setAuthView('register')} />
+    }
+
     if (authView === 'register') {
       return (
         <RegistrationPage
@@ -209,6 +219,7 @@ function AuthGate({ children }: AuthGateProps) {
         onLogin={confirmLogin}
         onRegister={() => setAuthView('register')}
         onRecoverPassword={() => setAuthView('recovery')}
+        onBack={() => setAuthView('welcome')}
       />
     )
   }

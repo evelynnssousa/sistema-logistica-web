@@ -170,3 +170,72 @@ export const listControlRecords = (page: number) =>
   apiRequest<Envelope & { records: ControlRecord[]; page: number; hasMore: boolean }>(`/warehouse/control-records?page=${page}`)
 export const createControlRecord = (body: unknown) =>
   send<Envelope & { id: string }>('/warehouse/control-records', 'POST', body)
+
+// ---------------------------------------------------------------------------
+// Página inicial pública e Ajuda (Configurações → Página inicial)
+// ---------------------------------------------------------------------------
+export type PublicPageContent = {
+  heroTitle: string
+  heroText: string
+  aboutOrgan: string
+  aboutSlm: string
+  serviceHours: string
+  location: string
+  contactEmail: string
+  faq: { question: string; answer: string }[]
+  news: { date: string; title: string; text: string }[]
+}
+
+export type PublicHome = {
+  page: PublicPageContent & { team: { name: string; role: string; photoUrl: string | null }[] }
+  modules: Record<string, boolean>
+  loginMessage: string
+  announcement: { text: string; tone: 'info' | 'warning'; until: string | null } | null
+}
+
+export const getPublicHome = () => apiRequest<Envelope & PublicHome>('/public/home')
+
+export const uploadTeamPhoto = (photo: Blob) =>
+  apiRequest<Envelope & { photoId: string; photoUrl: string }>('/settings/public-page/photos', {
+    method: 'POST',
+    body: photo,
+    headers: { 'Content-Type': 'application/octet-stream' },
+  })
+
+// ---------------------------------------------------------------------------
+// Limpeza dos dados de teste (só Administrador)
+// ---------------------------------------------------------------------------
+export type TestDataInfo = {
+  environment: 'local' | 'homologacao' | 'principal'
+  confirmation: string
+  groups: { key: string; label: string }[]
+  preview: { counts: Record<string, number>; total: number; fingerprint: string; files: number } | null
+}
+
+export const getTestDataInfo = (groups: readonly string[]) =>
+  apiRequest<Envelope & TestDataInfo>(`/admin/test-data${groups.length ? `?groups=${encodeURIComponent(groups.join(','))}` : ''}`)
+
+/** Baixa a cópia em JSON e devolve a impressão digital que autoriza a limpeza. */
+export async function downloadTestDataCopy(groups: readonly string[]) {
+  const response = await fetch(`/api/admin/test-data/copy?groups=${encodeURIComponent(groups.join(','))}`, { credentials: 'include' })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { message?: string }
+    throw new Error(body.message ?? 'Não foi possível baixar a cópia.')
+  }
+  const fingerprint = response.headers.get('X-Copy-Fingerprint') ?? ''
+  const blob = await response.blob()
+  const name = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '')?.[1] ?? 'copia-dados-de-teste.json'
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  link.click()
+  URL.revokeObjectURL(url)
+  return fingerprint
+}
+
+export const purgeTestData = (body: { groups: readonly string[]; fingerprint: string; confirmation: string }) =>
+  apiRequest<Envelope & { counts: Record<string, number>; total: number; filesRemoved: number; filesFailed: number; counters: { prefix: string; year: number; from: number; to: number }[] }>(
+    '/admin/test-data/purge',
+    { method: 'POST', body: JSON.stringify(body) },
+  )

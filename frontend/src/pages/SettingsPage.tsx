@@ -14,7 +14,7 @@ import {
 } from '../app/maintenanceCatalog'
 import type { CatalogCategory as LocalCategory } from '../app/maintenanceCatalog'
 import { refreshCatalog } from '../app/useCatalog'
-import { useHasPermission } from '../auth/UserContext'
+import { useAuthenticatedUser, useHasPermission } from '../auth/UserContext'
 import { useDemandContext } from '../app/useDemandContext'
 import AccessDeniedPage from './AccessDeniedPage'
 import AdminSettingsSection from '../components/AdminSettingsSection'
@@ -23,6 +23,7 @@ import DriverPortalSettingsSection from '../components/DriverPortalSettingsSecti
 import EmailTemplatesManager from '../components/EmailTemplatesManager'
 import FormManager from '../components/FormManager'
 import ParametersSection from '../components/ParametersSection'
+import TestDataSection from '../components/TestDataSection'
 import { Alert, Loading } from '../components/ui/Feedback'
 import Icon from '../components/ui/Icon'
 import type { IconName } from '../components/ui/Icon'
@@ -319,6 +320,7 @@ function LocalCatalogImport({ onChanged }: { onChanged: () => Promise<void> }) {
 
 function FullSettingsPage() {
   const canManage = useHasPermission('settings:manage')
+  const isAdministrator = useAuthenticatedUser()?.role === 'administrator'
   const { context: demandContext } = useDemandContext()
   const canConfigureDemands = useHasPermission('demands:configure') || demandContext?.canConfigure === true
   const canReadTemplates = useHasPermission('email_templates:read')
@@ -425,6 +427,8 @@ function FullSettingsPage() {
 
       {canReadTemplates && <EmailTemplatesManager />}
       {canReadForms && <FormManager />}
+
+      {isAdministrator && canManage && <TestDataSection />}
     </div>
   )
 }

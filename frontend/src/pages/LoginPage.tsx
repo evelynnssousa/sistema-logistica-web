@@ -10,9 +10,11 @@ type LoginPageProps = {
   onLogin: () => Promise<void>
   onRegister: () => void
   onRecoverPassword: () => void
+  /** Volta à página inicial pública. */
+  onBack?: () => void
 }
 
-function LoginPage({ notice = '', onLogin, onRegister, onRecoverPassword }: LoginPageProps) {
+function LoginPage({ notice = '', onLogin, onRegister, onRecoverPassword, onBack }: LoginPageProps) {
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -141,6 +143,13 @@ function LoginPage({ notice = '', onLogin, onRegister, onRecoverPassword }: Logi
         <p className="login-footer">
           Acesso restrito a usuários autorizados.
         </p>
+        {onBack && (
+          <p className="login-register-link">
+            <button type="button" onClick={onBack} disabled={loading}>
+              ← Página inicial, dúvidas e contato
+            </button>
+          </p>
+        )}
       </section>
     </main>
   )

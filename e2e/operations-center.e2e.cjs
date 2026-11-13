@@ -45,7 +45,7 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
 
   async function login(email, viewport) {
     const page = await newPage(viewport)
-    await page.goto('/')
+    await page.goto('/entrar')
     await page.fill('#login-identifier', email)
     await page.fill('#login-password', password)
     await page.click('.login-submit')
@@ -55,7 +55,7 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
 
   async function register(name, email, sector) {
     const page = await newPage()
-    await page.goto('/')
+    await page.goto('/entrar')
     await page.click('.login-register-link button')
     await page.fill('#register-name', name)
     await page.fill('#register-email', email)

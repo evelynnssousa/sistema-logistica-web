@@ -74,7 +74,7 @@ async function scenarios({ browser, baseUrl, runId, password }) {
     })
     assert.equal(registered.status(), 202)
 
-    await page.goto('/')
+    await page.goto('/entrar')
     await fillLogin(page, adminEmail)
     await page.waitForSelector('.topbar-logout')
     const approved = await page.evaluate(async (email) => {
@@ -103,7 +103,7 @@ async function scenarios({ browser, baseUrl, runId, password }) {
     const page = await context.newPage()
 
     await step(`${label}: login com credenciais válidas e permanência`, async () => {
-      await page.goto('/')
+      await page.goto('/entrar')
       await fillLogin(page, email)
       await page.waitForSelector('.topbar-logout')
       await assertStaysInside(page, context)
@@ -130,7 +130,7 @@ async function scenarios({ browser, baseUrl, runId, password }) {
     await step(`${label}: fechar e reabrir a página mantém a sessão`, async () => {
       await page.close()
       const reopened = await context.newPage()
-      await reopened.goto('/')
+      await reopened.goto('/entrar')
       await reopened.waitForSelector('.topbar-logout')
       await assertStaysInside(reopened, context)
     })
@@ -156,7 +156,11 @@ async function scenarios({ browser, baseUrl, runId, password }) {
   await step('sem autenticação: nenhuma tela interna, e a API responde 401', async () => {
     const context = await newContext()
     const page = await context.newPage()
-    for (const path of ['/', '/manutencao', '/usuarios', '/central-slm']) {
+    // O endereço principal mostra a página inicial pública; os demais pedem login.
+    await page.goto('/')
+    await page.waitForSelector('.public-hero')
+    assert.equal(await page.locator('.topbar-logout').count(), 0)
+    for (const path of ['/manutencao', '/usuarios', '/central-slm']) {
       await page.goto(path)
       await page.waitForSelector('#login-identifier')
       assert.equal(await page.locator('.topbar-logout').count(), 0)
@@ -169,7 +173,7 @@ async function scenarios({ browser, baseUrl, runId, password }) {
   await step('sessão encerrada durante o uso volta ao login com aviso', async () => {
     const context = await newContext()
     const page = await context.newPage()
-    await page.goto('/')
+    await page.goto('/entrar')
     await fillLogin(page, adminEmail)
     await page.waitForSelector('.topbar-logout')
     await context.clearCookies()
@@ -182,7 +186,7 @@ async function scenarios({ browser, baseUrl, runId, password }) {
   await step('falha momentânea da API não encerra a sessão', async () => {
     const context = await newContext()
     const page = await context.newPage()
-    await page.goto('/')
+    await page.goto('/entrar')
     await fillLogin(page, adminEmail)
     await page.waitForSelector('.topbar-logout')
     await page.route('**/api/auth/me', (route) =>
@@ -205,7 +209,7 @@ async function scenarios({ browser, baseUrl, runId, password }) {
   await step('a tela de login não consulta a sessão ao receber foco', async () => {
     const context = await newContext()
     const page = await context.newPage()
-    await page.goto('/')
+    await page.goto('/entrar')
     await page.waitForSelector('#login-identifier')
     let consultas = 0
     page.on('request', (request) => {
@@ -221,7 +225,7 @@ async function scenarios({ browser, baseUrl, runId, password }) {
     const context = await newContext()
     const page = await context.newPage()
     // Uma consulta sem cookie sai antes do login e só chega depois dele.
-    await page.goto('/')
+    await page.goto('/entrar')
     await page.waitForSelector('#login-identifier')
     const slow = page.evaluate(async () => {
       const response = await fetch('/api/auth/me?atrasada=1')
@@ -243,7 +247,7 @@ async function scenarios({ browser, baseUrl, runId, password }) {
   await step('uma consulta anterior ao logout não traz a pessoa de volta', async () => {
     const context = await newContext()
     const page = await context.newPage()
-    await page.goto('/')
+    await page.goto('/entrar')
     await fillLogin(page, adminEmail)
     await page.waitForSelector('.topbar-logout')
     await page.route('**/api/auth/me', async (route) => {
@@ -265,7 +269,7 @@ async function scenarios({ browser, baseUrl, runId, password }) {
       { name: 'slm_session', value: staleToken, domain: host, path: '/', httpOnly: true, sameSite: 'Strict' },
     ])
     const page = await context.newPage()
-    await page.goto('/')
+    await page.goto('/entrar')
     await page.waitForSelector('#login-identifier')
     assert.equal((await sessionCookies(context)).length, 0, 'o cookie inválido é limpo')
     await fillLogin(page, adminEmail)
@@ -280,7 +284,7 @@ async function scenarios({ browser, baseUrl, runId, password }) {
       { name: 'slm_session', value: staleToken, domain: host, path: '/api', httpOnly: true, sameSite: 'Strict' },
     ])
     const page = await context.newPage()
-    await page.goto('/')
+    await page.goto('/entrar')
     await page.waitForSelector('#login-identifier')
     await fillLogin(page, adminEmail)
     await page.waitForSelector('.login-error')
@@ -296,11 +300,11 @@ async function scenarios({ browser, baseUrl, runId, password }) {
     await context.route(`${otherSite}/`, (route) =>
       route.fulfill({
         contentType: 'text/html',
-        body: `<!doctype html><iframe id="app" src="${baseUrl}/" style="width:1200px;height:800px"></iframe>`,
+        body: `<!doctype html><iframe id="app" src="${baseUrl}/entrar" style="width:1200px;height:800px"></iframe>`,
       }),
     )
     // O servidor de desenvolvimento não proíbe a página embutida; a tela de teste, sim.
-    await context.route(`${baseUrl}/`, async (route) => {
+    await context.route(`${baseUrl}/entrar`, async (route) => {
       const response = await route.fetch()
       const headers = { ...response.headers() }
       delete headers['x-frame-options']

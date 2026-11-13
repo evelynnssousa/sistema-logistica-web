@@ -80,6 +80,7 @@ const InstrumentList = named(() => import('./pages/demands/InstrumentList'), 'In
 const InstrumentForm = named(() => import('./pages/demands/InstrumentForm'), 'InstrumentForm')
 const InstrumentDetail = named(() => import('./pages/demands/InstrumentDetail'), 'InstrumentDetail')
 const PendingRegistrationsPage = lazy(() => import('./pages/PendingRegistrationsPage'))
+const HelpPage = lazy(() => import('./pages/HelpPage'))
 const AuditPage = lazy(() => import('./pages/AuditPage'))
 const UserDetailPage = lazy(() => import('./pages/UserDetailPage'))
 const UsersPage = lazy(() => import('./pages/UsersPage'))
@@ -198,6 +199,10 @@ function App() {
           </Route>
           <Route path="central-slm" element={guarded(['slm_central:read'], <SlmCentralPage />)} />
           <Route path="pesquisa" element={<SearchPage />} />
+          <Route path="ajuda" element={<HelpPage />} />
+          {/* Atalhos da página inicial: quem já entrou vai para o início. */}
+          <Route path="entrar" element={<Navigate to="/" replace />} />
+          <Route path="cadastro" element={<Navigate to="/" replace />} />
           <Route path="minha-conta" element={<AccountPage />} />
           <Route path="notificacoes" element={<NotificationsPage />} />
           <Route path="integracoes" element={guarded(['integrations:read'], <IntegrationsPage />)} />
