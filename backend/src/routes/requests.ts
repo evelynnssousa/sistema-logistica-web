@@ -73,6 +73,7 @@ import {
   statusesOf,
 } from '../requests/workflow.js'
 import type { RequestStatus } from '../requests/workflow.js'
+import { readsSector, sharesSector } from '../database/sectorScope.js'
 
 /**
  * Fluxo das solicitações de Manutenção, Frota e Passagens. As permissões da rota são
@@ -222,10 +223,14 @@ async function loadReadable(
 ): Promise<ServiceRequest> {
   if (!isUuid(id)) throw notFound()
   const current = await requests.find(module, id)
-  if (
-    !current ||
-    !canReadRequest(identityOf(response), { module, requesterId: current.requester.id })
-  ) {
+  if (!current) throw notFound()
+  const identity = identityOf(response)
+  // Setor só é conferido no banco quando a regra comum não basta.
+  const sameSector =
+    !canReadRequest(identity, { module, requesterId: current.requester.id }) &&
+    readsSector(identity, module) &&
+    (await sharesSector(getDatabasePool(), 'service_requests', id, identity.userId))
+  if (!canReadRequest(identity, { module, requesterId: current.requester.id, sameSector })) {
     throw notFound()
   }
   return current

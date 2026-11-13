@@ -44,6 +44,13 @@ test('solicitante cria para o próprio setor e vê apenas o que é dele', () => 
   assert.equal(canReadRequest(requester, others), false)
 })
 
+test('setor: o solicitante consulta as do próprio setor, nunca Passagens; sem a permissão, não', () => {
+  const requester = identity('requester', { granted: ['requests:read_sector'] })
+  assert.equal(canReadRequest(requester, { ...others, sameSector: true }), true)
+  assert.equal(canReadRequest(requester, { module: 'flights', requesterId: 'outra-pessoa', sameSector: true }), false)
+  assert.equal(canReadRequest(identity('requester'), { ...others, sameSector: true }), false, 'desligada por padrão')
+})
+
 test('estar no setor CPC não autoriza abrir em nome de outro setor', () => {
   const fromCpc = identity('requester')
 

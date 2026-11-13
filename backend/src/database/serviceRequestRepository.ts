@@ -55,6 +55,7 @@ import { getDatabasePool } from './pool.js'
 import { optionalColumnSql, protocolSql } from './protocolSql.js'
 import { readSystemSettings } from './settingsRepository.js'
 import { withTransaction } from './withTransaction.js'
+import { readsSector, sameSectorSql } from './sectorScope.js'
 
 const pageSize = 25
 
@@ -416,7 +417,12 @@ export class ServiceRequestRepository {
 
     // O filtro de dono fica no SQL, nunca depois da consulta.
     if (!actor.permissions.includes('requests:read_all')) {
-      conditions.push(`r.solicitante_id = ${bind(actor.userId)}`)
+      const user = bind(actor.userId)
+      conditions.push(
+        readsSector(actor, module)
+          ? `(r.solicitante_id = ${user} OR ${sameSectorSql('r', user)})`
+          : `r.solicitante_id = ${user}`,
+      )
     }
     if (filters.status) {
       conditions.push(`r.status = ANY(${bind(storedValuesFor(module, filters.status))})`)

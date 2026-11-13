@@ -19,6 +19,7 @@ import { recordTechnicalEvent } from '../monitoring/technicalEvents.js'
 import type { AttachmentKind } from '../requests/settingsRules.js'
 import { asBody, isUuid, requiredText } from '../requests/validation.js'
 import { isTerminalStatus, moduleTypes, normalizeStatus } from '../requests/workflow.js'
+import { readsSector, sharesSector } from '../database/sectorScope.js'
 
 /**
  * Anexos. Sem URL pública: todo acesso passa pela sessão e pelas regras da solicitação a que o
@@ -54,9 +55,13 @@ async function accessTo(identity: AuthenticatedIdentity, owner: AttachmentOwner)
     const row = found.rows[0]
     if (!row) return null
     const module = moduleByType[row.tipo]
+    const sameSector =
+      !canReadRequest(identity, { module, requesterId: row.solicitante_id }) &&
+      readsSector(identity, module) &&
+      (await sharesSector(pool, 'service_requests', owner.id, identity.userId))
     return {
       module,
-      read: canReadRequest(identity, { module, requesterId: row.solicitante_id }),
+      read: canReadRequest(identity, { module, requesterId: row.solicitante_id, sameSector }),
       staff: canUpdateRequest(identity, module),
       open: !isTerminalStatus(normalizeStatus(module, row.status)),
       requester: row.solicitante_id === identity.userId,
@@ -71,11 +76,14 @@ async function accessTo(identity: AuthenticatedIdentity, owner: AttachmentOwner)
   if (!row) return null
   const requester = row.solicitante_id === identity.userId
   const manages = holdsPermission(identity, 'warehouse:manage')
+  const sameSector =
+    !manages && !requester && readsSector(identity, 'warehouse') &&
+    (await sharesSector(pool, 'material_requests', owner.id, identity.userId))
   return {
     module: 'warehouse',
     read:
       identity.permissions.includes('warehouse:read') &&
-      (manages || requester || identity.permissions.includes('requests:read_all')),
+      (manages || requester || sameSector || identity.permissions.includes('requests:read_all')),
     staff: manages,
     open: !['entregue', 'rejeitado', 'cancelado'].includes(row.status),
     requester,

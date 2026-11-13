@@ -1061,3 +1061,36 @@ test('P-08: administrador fora da SLM mantém o controle do Almoxarifado; previs
   assert.equal(eligible('requester', false).includes('warehouse:manage'), false)
 })
 
+
+test('setor: o solicitante consulta as solicitações do próprio setor, sem alterar; outro setor não vê', async () => {
+  const author = await createUser('setor-autora@example.gov.br')
+  const colleagueWithout = await createUser('setor-colega@example.gov.br')
+  // Desligada por padrão: ligada só para esta pessoa, no cadastro.
+  const granted = await call(`/admin/users/${colleagueWithout.id}/access`, {
+    method: 'PUT',
+    session: admin,
+    body: { role: 'requester', slmMember: false, grantedPermissions: ['requests:read_sector'], deniedPermissions: [] },
+  })
+  assert.equal(granted.status, 200, granted.text)
+  const colleague = await signIn('setor-colega@example.gov.br')
+  const sameSectorWithout = await createUser('setor-sem-permissao@example.gov.br')
+  const outsider = await createUser('setor-fora@example.gov.br')
+  // Lotação sem setor na lista: não compartilha com ninguém.
+  await pool.query(`UPDATE public.auth_users SET sector = 'Setor sem lista' WHERE id = $1`, [outsider.id])
+  const outsiderAgain = await signIn('setor-fora@example.gov.br')
+
+  const created = await post('/maintenance/requests', author, maintenanceBody('Tomada solta na copa do setor'))
+  assert.equal(created.status, 201, created.text)
+  const path = `/maintenance/requests/${created.body.id}`
+
+  const seen = await call('/maintenance/requests?search=Tomada%20solta', { session: colleague })
+  assert.equal(seen.status, 200)
+  assert.ok(seen.body.requests.some((item: { id: string }) => item.id === created.body.id), 'colega vê na lista')
+  assert.equal((await call(path, { session: colleague })).status, 200, 'colega abre')
+  assert.notEqual((await post(`${path}/cancel`, colleague, { motivo: 'Tentativa de quem só consulta' })).status, 200, 'não cancela')
+  assert.equal((await call(path, { session: sameSectorWithout })).status, 404, 'sem a permissão, nem do mesmo setor')
+
+  const hidden = await call('/maintenance/requests?search=Tomada%20solta', { session: outsiderAgain })
+  assert.ok(!hidden.body.requests.some((item: { id: string }) => item.id === created.body.id), 'outro setor não vê')
+  assert.equal((await call(path, { session: outsiderAgain })).status, 404)
+})
