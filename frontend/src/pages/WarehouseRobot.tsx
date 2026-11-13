@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { createInventoryCheck, errorMessage } from '../api/modulesApi'
-import { getRestock, getWeeklySummary, readRobotSheet } from '../api/operationsApi'
-import type { RestockSuggestion, RobotColumns, RobotSheet, WeeklySummary } from '../api/operationsApi'
+import { createRobotMaterials, getRestock, getWeeklySummary, readRobotSheet } from '../api/operationsApi'
+import type { RestockSuggestion, RobotColumns, RobotLine, RobotSheet, WeeklySummary } from '../api/operationsApi'
 import StatCard from '../components/StatCard'
 import { Alert, EmptyState, Loading } from '../components/ui/Feedback'
 import { FilterSelect } from '../components/ui/Filters'
@@ -103,6 +103,7 @@ function InventoryFromSheet() {
   const [referenceDate, setReferenceDate] = useState(todayInBrasilia)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [materialsNotice, setMaterialsNotice] = useState('')
 
   async function read(selected: File, chosen?: RobotColumns) {
     setBusy(true)
@@ -240,6 +241,7 @@ function InventoryFromSheet() {
             onChange={(event) => {
               const selected = event.target.files?.[0] ?? null
               setFile(selected)
+              setMaterialsNotice('')
               if (selected) void read(selected)
             }}
           />
@@ -431,6 +433,17 @@ function InventoryFromSheet() {
             </div>
           </section>
 
+          {materialsNotice && <Alert tone="success">{materialsNotice}</Alert>}
+          <MissingMaterials
+            key={`${sheet.fileName}-${sheet.lines.length}-${sheet.catalog.length}`}
+            sheet={sheet}
+            unchosen={sheet.lines.filter((line) => !choices[line.line])}
+            onCreated={(message) => {
+              setMaterialsNotice(message)
+              void read(file, columns)
+            }}
+          />
+
           <section className="detail-action">
             <h2>4. Crie a conferência</h2>
             <p className="module-notice">
@@ -458,6 +471,171 @@ function InventoryFromSheet() {
         </>
       )}
     </>
+  )
+}
+
+type Draft = { selected: boolean; name: string; code: string; unitId: string }
+
+const materials = (count: number) => `${count} ${count === 1 ? 'material' : 'materiais'}`
+
+/**
+ * Materiais da planilha que ainda não estão no sistema. O robô preenche nome, código e unidade; a
+ * pessoa confere, marca e cadastra. Depois a planilha é lida de novo e esses materiais passam a
+ * ser reconhecidos sozinhos.
+ */
+function MissingMaterials({ sheet, unchosen, onCreated }: { sheet: RobotSheet; unchosen: RobotLine[]; onCreated: (message: string) => void }) {
+  // Uma linha por material: a mesma descrição repetida na planilha vira um cadastro só.
+  const candidates = useMemo(() => {
+    const seen = new Set<string>()
+    return unchosen.filter((line) => {
+      const key = line.suggestedName.toLowerCase()
+      if (!key || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [unchosen])
+  const [drafts, setDrafts] = useState<Record<number, Draft>>(() =>
+    Object.fromEntries(
+      candidates.map((line) => [
+        line.line,
+        { selected: line.match.status === 'none', name: line.suggestedName, code: line.code.slice(0, 60), unitId: line.unitId ?? '' },
+      ]),
+    ),
+  )
+  const [defaultUnit, setDefaultUnit] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  if (candidates.length === 0) return null
+  const update = (line: number, change: Partial<Draft>) => setDrafts((current) => ({ ...current, [line]: { ...current[line], ...change } }))
+  const selected = candidates.filter((line) => drafts[line.line]?.selected)
+  const withoutUnit = selected.filter((line) => !drafts[line.line].unitId && !defaultUnit).length
+
+  async function create() {
+    setBusy(true)
+    setError('')
+    try {
+      const outcome = await createRobotMaterials(
+        selected.map((line) => ({
+          code: drafts[line.line].code.trim(),
+          name: drafts[line.line].name.trim(),
+          unitId: drafts[line.line].unitId || defaultUnit,
+        })),
+      )
+      const skipped = outcome.skipped.length
+        ? ` ${materials(outcome.skipped.length)} não ${outcome.skipped.length === 1 ? 'foi cadastrado' : 'foram cadastrados'}: ${outcome.skipped.map((item) => `${item.name} (${item.reason.toLowerCase()})`).join('; ')}.`
+        : ''
+      onCreated(`${materials(outcome.created.length)} ${outcome.created.length === 1 ? 'cadastrado' : 'cadastrados'}.${skipped} A planilha foi lida de novo e já os reconhece.`)
+    } catch (err) {
+      setError(errorMessage(err, 'Não foi possível cadastrar os materiais.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="ui-card ui-stacked">
+      <h2>Materiais que ainda não estão no sistema ({candidates.length})</h2>
+      <p className="module-notice">
+        O robô preencheu o nome, o código e a unidade a partir da planilha. Confira, ajuste se precisar e marque os que
+        devem ser cadastrados. Os parecidos com um material que já existe vêm desmarcados. Nada é cadastrado sem o seu clique, e um
+        material com o mesmo código ou nome de outro já cadastrado é pulado.
+      </p>
+      <>
+          <div className="robot-actions">
+            <button
+              type="button"
+              className="maintenance-secondary-button"
+              onClick={() => setDrafts((current) => Object.fromEntries(Object.entries(current).map(([key, draft]) => [key, { ...draft, selected: true }])))}
+            >
+              Marcar todos
+            </button>
+            <button
+              type="button"
+              className="maintenance-secondary-button"
+              onClick={() => setDrafts((current) => Object.fromEntries(Object.entries(current).map(([key, draft]) => [key, { ...draft, selected: false }])))}
+            >
+              Desmarcar todos
+            </button>
+            <label className="maintenance-form-field">
+              <span>Unidade para os que não tiverem</span>
+              <select value={defaultUnit} onChange={(event) => setDefaultUnit(event.target.value)}>
+                <option value="">Escolha</option>
+                {sheet.units.map((unit) => (
+                  <option key={unit.id} value={unit.id}>
+                    {unit.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {sheet.units.length === 0 && (
+            <Alert tone="warning">Não há unidades de medida cadastradas. Cadastre-as em Configurações antes de continuar.</Alert>
+          )}
+          <div className="data-table-wrapper">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Cadastrar</th>
+                  <th>Linha</th>
+                  <th>Nome do material</th>
+                  <th>Código</th>
+                  <th>Unidade</th>
+                </tr>
+              </thead>
+              <tbody>
+                {candidates.map((line) => {
+                  const draft = drafts[line.line]
+                  if (!draft) return null
+                  return (
+                    <tr key={line.line}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          aria-label={`Cadastrar ${draft.name}`}
+                          checked={draft.selected}
+                          onChange={(event) => update(line.line, { selected: event.target.checked })}
+                        />
+                      </td>
+                      <td>
+                        {line.line}
+                        {line.match.status === 'suggested' && <small className="central-subtext">Parecido com um existente</small>}
+                      </td>
+                      <td>
+                        <input maxLength={160} value={draft.name} aria-label={`Nome da linha ${line.line}`} onChange={(event) => update(line.line, { name: event.target.value })} />
+                      </td>
+                      <td>
+                        <input maxLength={60} value={draft.code} aria-label={`Código da linha ${line.line}`} onChange={(event) => update(line.line, { code: event.target.value })} />
+                      </td>
+                      <td>
+                        <select value={draft.unitId} aria-label={`Unidade da linha ${line.line}`} onChange={(event) => update(line.line, { unitId: event.target.value })}>
+                          <option value="">{line.unit ? `"${line.unit}" não reconhecida` : 'Usar a unidade padrão'}</option>
+                          {sheet.units.map((unit) => (
+                            <option key={unit.id} value={unit.id}>
+                              {unit.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          {withoutUnit > 0 && <Alert tone="warning">{materials(withoutUnit)} {withoutUnit === 1 ? 'marcado está' : 'marcados estão'} sem unidade: escolha a unidade padrão acima ou em cada linha.</Alert>}
+          {error && <Alert tone="error">{error}</Alert>}
+          <button
+            type="button"
+            className="maintenance-primary-button"
+            disabled={busy || selected.length === 0 || withoutUnit > 0 || selected.length > 300 || selected.some((line) => drafts[line.line].name.trim().length < 2)}
+            onClick={() => void create()}
+          >
+            {busy ? 'Cadastrando...' : `Cadastrar ${materials(selected.length)}`}
+          </button>
+          {selected.length > 300 && <p className="management-hint">Cadastre no máximo 300 por vez.</p>}
+      </>
+    </section>
   )
 }
 

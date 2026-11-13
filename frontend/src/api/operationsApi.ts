@@ -772,6 +772,9 @@ export type RobotLine = {
     materialId: string | null
     suggestions: { id: string; name: string; score: number }[]
   }
+  /** Unidade de medida reconhecida no texto da planilha, para cadastrar o material que falta. */
+  unitId: string | null
+  suggestedName: string
 }
 
 export type RobotCatalogEntry = {
@@ -792,7 +795,16 @@ export type RobotSheet = {
   guessed: RobotColumns
   lines: RobotLine[]
   catalog: RobotCatalogEntry[]
+  units: { id: string; name: string }[]
 }
+
+/** Cadastra os materiais da planilha marcados na tela. O que já existe é pulado, sem duplicar. */
+export const createRobotMaterials = (items: { code: string; name: string; unitId: string }[]) =>
+  send<Envelope & { created: { id: string; name: string }[]; skipped: { name: string; reason: string }[] }>(
+    '/warehouse/robot/materials',
+    'POST',
+    { items },
+  )
 
 const columnParameter = (value: number | null | undefined) =>
   value === undefined ? undefined : value === null ? 'none' : value

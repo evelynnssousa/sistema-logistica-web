@@ -140,6 +140,11 @@ Autenticação, cadastros, perfis, permissões, CPF, solicitações, agendamento
 Decisão da responsável: só funções sem IA, sem custo de API. Aba **Almoxarifado → Robô**, para quem administra o Almoxarifado. O robô prepara, e a equipe confere e confirma.
 
 - **Inventário pela planilha do governo:** aceita .xlsx, .csv (inclusive o do Excel em português), .ods e o .xls em HTML que os sistemas do governo exportam. O .xls binário antigo pede para salvar como .xlsx. Limites: 5 MB, 5.000 linhas e 60 colunas. O robô acha o cabeçalho e as colunas (código, descrição, quantidade, unidade), e a pessoa pode trocá-las. Liga cada linha a um material, por código, por nome igual ou por nome parecido (só com a confirmação da pessoa). Mostra as quantidades iguais, as diferentes, as que faltam cadastrar e o que só existe no sistema, e baixa o relatório de divergências em CSV. A conferência é criada pela rota de sempre, com as quantidades do governo preenchidas e na ordem dos armários. A planilha não fica guardada.
+- **Cadastro dos materiais que faltam (13/11/2026):** na mesma leitura, o robô lista as linhas sem material no sistema, uma por descrição, com:
+  - o nome e o código da planilha;
+  - a unidade reconhecida pelo nome ou pela abreviação (UN, CX, PCT, KG, L, RL, PAR e outras).
+  
+  As linhas sem correspondência vêm marcadas; as parecidas com um material existente, desmarcadas. A pessoa confere, ajusta, escolhe a unidade quando ela não foi reconhecida e cadastra, até 300 por vez. Material com o mesmo código (sem pontuação nem zeros à esquerda) ou o mesmo nome de outro já cadastrado é pulado, com o motivo. Cada cadastro fica na Auditoria com a origem "robo_planilha". Depois, a planilha é lida de novo e esses materiais passam a ser reconhecidos.
 - **Sugestão de reposição:** consumo médio de 12 meses e estoque disponível (físico menos reservado), para durar 1 a 12 meses, nunca abaixo do mínimo. Para quem vê valores (`warehouse:finance`), indica itens de atas e contratos vigentes com saldo e nome parecido. Lista de compras em CSV.
 - **Resumo semanal:** abaixo do mínimo, a repor (3 meses), pedidos aguardando e conferências abertas. Na segunda-feira a partir das 7h, uma vez por semana, à equipe do Almoxarifado (e-mail e central de notificações), só com contagens. Começa desligado e liga em Configurações → Notificações.
 - Não exige migração.
