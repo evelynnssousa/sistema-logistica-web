@@ -29,10 +29,10 @@ function FleetPage() {
       searchPlaceholder="Pesquisar por protocolo, trajeto ou solicitante"
       statusOptions={statuses}
       columns={[
-        { label: 'Trajeto', render: (request) => request.title },
-        { label: 'Solicitante', render: (request) => request.requester.name },
-        { label: 'Saída prevista', render: (request) => formatDateTime(request.details.dataHora as string) },
-        { label: 'Agendado para', render: (request) => formatDateTime(request.scheduledAt) },
+        { label: 'Trajeto', sortKey: 'titulo', render: (request) => request.title },
+        { label: 'Solicitante', sortKey: 'solicitante', render: (request) => request.requester.name },
+        { label: 'Saída prevista', sortKey: 'saida', render: (request) => formatDateTime(request.details.dataHora as string) },
+        { label: 'Agendado para', sortKey: 'agendamento', render: (request) => formatDateTime(request.scheduledAt) },
         ...(seesDriver ? [{ label: 'Motorista', render: (request: ServiceRequest) => request.driverName ?? '—' }] : []),
       ]}
       createPermission="fleet:create"

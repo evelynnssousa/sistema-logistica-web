@@ -10,6 +10,8 @@ import { Alert, EmptyState, Loading } from '../components/ui/Feedback'
 import Icon from '../components/ui/Icon'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
+import SortableTh from '../components/ui/SortableTh'
+import { useTableSort } from '../app/tableSort'
 
 type Account = { id: string; name: string; email: string }
 
@@ -102,6 +104,13 @@ function DriverDialog({
 /** Cadastro de motoristas da Frota. Criar a conta e definir o perfil continuam em Usuários. */
 function DriversPage() {
   const [drivers, setDrivers] = useState<FleetDriver[] | null>(null)
+  const table = useTableSort(drivers ?? [], {
+    nome: (item) => item.name,
+    matricula: (item) => item.registration,
+    conta: (item) => item.accountEmail,
+    viagens: (item) => item.openTrips,
+    situacao: (item) => (!item.active ? 'Inativo' : item.canReceiveTrips ? 'Pode receber viagens' : 'Falta a conta'),
+  })
   const [accounts, setAccounts] = useState<Account[]>([])
   const [error, setError] = useState('')
   const [editing, setEditing] = useState<FleetDriver | 'new' | null>(null)
@@ -167,16 +176,16 @@ function DriversPage() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Nome</th>
-                  <th>Matrícula</th>
-                  <th>Conta de acesso</th>
-                  <th>Viagens em aberto</th>
-                  <th>Situação</th>
+                  <SortableTh label="Nome" sortKey="nome" sort={table.sort} onSort={table.onSort} />
+                  <SortableTh label="Matrícula" sortKey="matricula" sort={table.sort} onSort={table.onSort} />
+                  <SortableTh label="Conta de acesso" sortKey="conta" sort={table.sort} onSort={table.onSort} />
+                  <SortableTh label="Viagens em aberto" sortKey="viagens" sort={table.sort} onSort={table.onSort} />
+                  <SortableTh label="Situação" sortKey="situacao" sort={table.sort} onSort={table.onSort} />
                   <th><span className="visually-hidden">Ações</span></th>
                 </tr>
               </thead>
               <tbody>
-                {drivers.map((driver) => (
+                {table.sorted.map((driver) => (
                   <tr key={driver.id}>
                     <td>{driver.name}</td>
                     <td>{driver.registration ?? '—'}</td>

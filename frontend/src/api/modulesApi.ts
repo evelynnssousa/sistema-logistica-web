@@ -312,7 +312,7 @@ const requestBase = (module: RequestModule) => `/${module}/requests`
 
 export function listRequests(
   module: RequestModule,
-  filters: { status?: string; tripType?: string; search?: string; from?: string; to?: string; page: number },
+  filters: { status?: string; tripType?: string; search?: string; from?: string; to?: string; page: number; ordem?: string; direcao?: 'asc' | 'desc' },
 ) {
   return apiRequest<
     Envelope & { requests: ServiceRequest[]; total: number; page: number; pageSize: number }

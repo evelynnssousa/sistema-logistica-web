@@ -11,11 +11,21 @@ import { Alert, EmptyState, Loading } from '../components/ui/Feedback'
 import Icon from '../components/ui/Icon'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
+import SortableTh from '../components/ui/SortableTh'
+import { useTableSort } from '../app/tableSort'
 
 /** Cadastro opcional: atendimentos continuam podendo ser registrados sem equipamento. */
 function EquipmentsPage() {
   const canManage = useHasPermission('maintenance:manage')
   const [equipments, setEquipments] = useState<Equipment[] | null>(null)
+  const table = useTableSort(equipments ?? [], {
+    nome: (item) => item.name,
+    identificacao: (item) => item.identification,
+    local: (item) => item.location,
+    servicos: (item) => item.executions,
+    ultimo: (item) => item.lastExecution,
+    situacao: (item) => (item.active ? 'Ativo' : 'Inativo'),
+  })
   const [error, setError] = useState('')
   const [name, setName] = useState('')
   const [identification, setIdentification] = useState('')
@@ -112,19 +122,19 @@ function EquipmentsPage() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Nome</th>
-                    <th>Identificação</th>
-                    <th>Local</th>
-                    <th>Serviços</th>
-                    <th>Último serviço</th>
-                    <th>Situação</th>
+                    <SortableTh label="Nome" sortKey="nome" sort={table.sort} onSort={table.onSort} />
+                    <SortableTh label="Identificação" sortKey="identificacao" sort={table.sort} onSort={table.onSort} />
+                    <SortableTh label="Local" sortKey="local" sort={table.sort} onSort={table.onSort} />
+                    <SortableTh label="Serviços" sortKey="servicos" sort={table.sort} onSort={table.onSort} />
+                    <SortableTh label="Último serviço" sortKey="ultimo" sort={table.sort} onSort={table.onSort} />
+                    <SortableTh label="Situação" sortKey="situacao" sort={table.sort} onSort={table.onSort} />
                     <th>
                       <span className="visually-hidden">Ações</span>
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {equipments.map((equipment) => (
+                  {table.sorted.map((equipment) => (
                     <tr key={equipment.id}>
                       <td>
                         {equipment.name}

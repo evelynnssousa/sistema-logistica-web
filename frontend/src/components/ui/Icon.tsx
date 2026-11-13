@@ -26,6 +26,9 @@ import {
   EraserIcon,
   EyeIcon,
   EyeSlashIcon,
+  CaretUpIcon,
+  CaretDownIcon,
+  CaretUpDownIcon,
   FunnelIcon,
   GearSixIcon,
   HourglassMediumIcon,
@@ -119,6 +122,9 @@ const icons = {
   robot: RobotIcon,
   barcode: BarcodeIcon,
   hide: EyeSlashIcon,
+  sortAsc: CaretUpIcon,
+  sortDesc: CaretDownIcon,
+  sortable: CaretUpDownIcon,
 } satisfies Record<string, PhosphorIcon>
 
 export type IconName = keyof typeof icons

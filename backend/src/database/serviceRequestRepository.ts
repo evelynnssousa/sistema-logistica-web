@@ -65,6 +65,27 @@ export type RequestFilters = {
   from?: Date | null
   to?: Date | null
   page?: number
+  /** Ordenação pela coluna clicada na lista. Só as chaves de requestSortColumns valem. */
+  sort?: { key: RequestSortKey; direction: 'asc' | 'desc' }
+}
+
+/**
+ * Colunas que a lista pode ordenar (13/11/2026). A ordenação é no servidor porque a lista vem em
+ * páginas: ordenar só a página aberta enganaria. Nenhum texto do usuário entra no SQL.
+ */
+export const requestSortColumns = {
+  protocolo: 'r.protocolo',
+  titulo: 'lower(r.titulo)',
+  solicitante: 'lower(solicitante.full_name)',
+  criacao: 'r.created_at',
+  saida: "(r.dados->>'dataHora')",
+  agendamento: 'r.data_agendada',
+  situacao: 'r.status',
+} as const
+export type RequestSortKey = keyof typeof requestSortColumns
+
+export function isRequestSortKey(value: unknown): value is RequestSortKey {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(requestSortColumns, value)
 }
 
 type RequestRow = {
@@ -417,7 +438,11 @@ export class ServiceRequestRepository {
     const [rows, total] = await Promise.all([
       pool.query<RequestRow>(
         `${requestSelect} ${where}
-          ORDER BY r.created_at DESC, r.id DESC
+          ORDER BY ${
+            filters.sort
+              ? `${requestSortColumns[filters.sort.key]} ${filters.sort.direction === 'asc' ? 'ASC' : 'DESC'} NULLS LAST, `
+              : ''
+          }r.created_at DESC, r.id DESC
           LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`,
         parameters,
       ),
