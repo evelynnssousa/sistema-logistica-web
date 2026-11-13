@@ -279,3 +279,57 @@ export function brasiliaWeek(now: Date = new Date()) {
   const week = Math.ceil(((thursday.getTime() - yearStart) / 86_400_000 + 1) / 7)
   return { key: `${thursday.getUTCFullYear()}-W${String(week).padStart(2, '0')}`, weekday: day, hour: local.getUTCHours() }
 }
+
+// ---------------------------------------------------------------------------
+// Unidade de medida escrita na planilha
+// ---------------------------------------------------------------------------
+/** Abreviações comuns nas planilhas do governo, para o nome usado no cadastro de unidades. */
+const unitAbbreviations: Record<string, string[]> = {
+  unidade: ['un', 'und', 'unid', 'unidade', 'unidades', 'u', 'pc', 'pca', 'peca', 'pecas'],
+  caixa: ['cx', 'caixa', 'caixas'],
+  pacote: ['pct', 'pc te', 'pac', 'pacote', 'pacotes'],
+  resma: ['rm', 'resma', 'resmas'],
+  quilograma: ['kg', 'quilo', 'quilos', 'quilograma'],
+  grama: ['g', 'gr', 'grama', 'gramas'],
+  litro: ['l', 'lt', 'litro', 'litros'],
+  mililitro: ['ml', 'mililitro'],
+  metro: ['m', 'mt', 'metro', 'metros'],
+  rolo: ['rl', 'rolo', 'rolos'],
+  par: ['par', 'pares', 'pr'],
+  frasco: ['fr', 'frasco', 'frascos'],
+  galao: ['gl', 'galao', 'galoes'],
+  tubo: ['tb', 'tubo', 'tubos'],
+  bloco: ['bl', 'bloco', 'blocos'],
+  conjunto: ['cj', 'conj', 'conjunto', 'kit', 'jogo', 'jg'],
+  duzia: ['dz', 'duzia'],
+  cartela: ['ct', 'cartela'],
+  envelope: ['env', 'envelope'],
+  saco: ['sc', 'saco', 'sacos'],
+}
+
+/**
+ * Unidade do cadastro que corresponde ao texto da planilha ("UN", "Cx.", "Pacote com 100"), ou null.
+ * Compara pelo nome igual, pela primeira palavra e pelas abreviações comuns.
+ */
+export function matchUnit(text: string, units: readonly { id: string; name: string }[]) {
+  const value = normalizeText(text)
+  if (!value) return null
+  const byName = units.find((unit) => normalizeText(unit.name) === value)
+  if (byName) return byName.id
+  const first = value.split(' ')[0]
+  for (const [canonical, aliases] of Object.entries(unitAbbreviations)) {
+    if (!aliases.includes(value) && !aliases.includes(first)) continue
+    const unit = units.find((option) => {
+      const name = normalizeText(option.name)
+      return name === canonical || name.startsWith(`${canonical} `) || aliases.includes(name)
+    })
+    if (unit) return unit.id
+  }
+  const byFirstWord = units.find((unit) => normalizeText(unit.name).split(' ')[0] === first)
+  return byFirstWord?.id ?? null
+}
+
+/** Nome do material a cadastrar: a descrição da planilha, limpa e dentro do limite do cadastro. */
+export function materialNameFrom(description: string) {
+  return description.replace(/\s+/g, ' ').trim().slice(0, 160)
+}

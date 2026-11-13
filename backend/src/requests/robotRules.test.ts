@@ -113,3 +113,23 @@ test('semana do resumo no horário de Brasília', () => {
   // Virada de ano: 31/12/2026 é quinta, semana 53 de 2026.
   assert.equal(brasiliaWeek(new Date('2026-12-31T15:00:00Z')).key, '2026-W53')
 })
+
+test('unidade da planilha: nome igual, abreviação comum ou primeira palavra', async () => {
+  const { matchUnit, materialNameFrom } = await import('./robotRules.js')
+  const units = [
+    { id: 'un', name: 'Unidade' },
+    { id: 'cx', name: 'Caixa' },
+    { id: 'pct', name: 'Pacote com 100' },
+    { id: 'kg', name: 'Quilograma' },
+  ]
+  assert.equal(matchUnit('UN', units), 'un')
+  assert.equal(matchUnit('Und.', units), 'un')
+  assert.equal(matchUnit('cx', units), 'cx')
+  assert.equal(matchUnit('CAIXA', units), 'cx')
+  assert.equal(matchUnit('PCT', units), 'pct')
+  assert.equal(matchUnit('Kg', units), 'kg')
+  assert.equal(matchUnit('Litro', units), null)
+  assert.equal(matchUnit('', units), null)
+  assert.equal(materialNameFrom('  Papel   A4  '), 'Papel A4')
+  assert.equal(materialNameFrom('x'.repeat(200)).length, 160)
+})

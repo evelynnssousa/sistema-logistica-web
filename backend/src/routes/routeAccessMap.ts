@@ -255,6 +255,7 @@ export const routeAccessMap: readonly RouteAccess[] = [
   { method: 'PUT', path: '/warehouse/stock/:materialId/value', access: 'permission', requires: ['warehouse:manage', 'warehouse:finance'] },
   // Robô do Almoxarifado (sem IA). As atas na reposição só aparecem com warehouse:finance, conferido na rota.
   { method: 'POST', path: '/warehouse/robot/sheet', access: 'permission', requires: ['warehouse:manage'] },
+  { method: 'POST', path: '/warehouse/robot/materials', access: 'permission', requires: ['warehouse:manage'] },
   { method: 'GET', path: '/warehouse/robot/restock', access: 'permission', requires: ['warehouse:manage'] },
   { method: 'GET', path: '/warehouse/robot/weekly-summary', access: 'permission', requires: ['warehouse:manage'] },
 

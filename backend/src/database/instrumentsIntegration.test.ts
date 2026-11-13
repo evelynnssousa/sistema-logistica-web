@@ -426,6 +426,45 @@ test('robô: lê a planilha do governo, compara com o catálogo e não grava nad
   assert.equal((await pool.query(`SELECT count(*)::int AS total FROM public.inventory_checks`)).rows[0].total, before)
 })
 
+test('robô: cadastra os materiais da planilha que ainda não existem, sem duplicar', async () => {
+  const csv = 'Código;Descrição do material;Unidade;Saldo\r\n;Grampeador industrial;CX;1\r\nC-77;Envelope pardo;Cx.;30\r\n;LÁPIS GRAFITE;UN;5\r\n'
+  const sheet = () => call('/warehouse/robot/sheet', { method: 'POST', session: admin, raw: Buffer.from(csv, 'latin1'), fileName: 'novos.csv' })
+  const read = await sheet()
+  assert.equal(read.status, 200, read.text)
+  const caixa = read.body.units.find((unit: { name: string }) => unit.name === 'Caixa').id
+  const missing = read.body.lines.filter((line: { match: { status: string } }) => line.match.status === 'none')
+  assert.deepEqual(missing.map((line: { suggestedName: string; unitId: string }) => [line.suggestedName, line.unitId]), [
+    ['Grampeador industrial', caixa],
+    ['Envelope pardo', caixa],
+  ])
+
+  const items = [
+    { code: '', name: 'Grampeador industrial', unitId: caixa },
+    { code: 'C-77', name: 'Envelope pardo', unitId: caixa },
+    // Já existe com este nome (outra caixa e acento não contam): não duplica.
+    { code: '', name: 'lapis grafite', unitId: caixa },
+    // Repetido na mesma lista, pelo código sem pontuação.
+    { code: 'c77', name: 'Envelope pardo grande', unitId: caixa },
+  ]
+  assert.equal((await post('/warehouse/robot/materials', memberA, { items })).status, 403)
+  assert.equal((await post('/warehouse/robot/materials', admin, { items: [] })).status, 400)
+  const created = await post('/warehouse/robot/materials', admin, { items })
+  assert.equal(created.status, 201, created.text)
+  assert.deepEqual(created.body.created.map((item: { name: string }) => item.name), ['Grampeador industrial', 'Envelope pardo'])
+  assert.deepEqual(created.body.skipped.map((item: { reason: string }) => item.reason), [
+    'Já existe material com este nome',
+    'Já existe material com este código',
+  ])
+  const unknownUnit = await post('/warehouse/robot/materials', admin, { items: [{ name: 'Outro material', unitId: '00000000-0000-4000-8000-000000000000' }] })
+  assert.deepEqual(unknownUnit.body.skipped.map((item: { reason: string }) => item.reason), ['Unidade de medida indisponível'])
+
+  // Lida de novo, a planilha já reconhece os materiais cadastrados.
+  const again = await sheet()
+  assert.deepEqual(again.body.lines.map((line: { match: { status: string } }) => line.match.status), ['name', 'code', 'name'])
+  const audit = await pool.query(`SELECT count(*)::int AS total FROM public.auth_audit_events WHERE action = 'warehouse.material_created' AND details->>'origin' = 'robo_planilha'`)
+  assert.equal(audit.rows[0].total, 2)
+})
+
 test('robô: reposição, resumo semanal desligado por padrão e publicado uma vez por semana', async () => {
   assert.equal((await get('/warehouse/robot/restock?months=3', memberA)).status, 403)
   const restock = await get('/warehouse/robot/restock?months=3', admin)

@@ -1,5 +1,7 @@
 import type { Pool } from 'pg'
-import { brasiliaWeek, instrumentHints, restockSuggestions } from '../requests/robotRules.js'
+import { brasiliaWeek, instrumentHints, normalizeCode, normalizeText, restockSuggestions } from '../requests/robotRules.js'
+import type { AuthenticatedIdentity } from '../auth/roles.js'
+import { insertAuthAuditEvent } from './authAuditRepository.js'
 import type { InstrumentItemForRestock } from '../requests/robotRules.js'
 import { publishIntegrationEvent } from '../integrations/publisher.js'
 import { ModuleExtensionsRepository } from './moduleExtensionsRepository.js'
@@ -40,6 +42,60 @@ export class RobotRepository {
       location: row.localizacao,
       current: Number(row.estoque_atual),
     }))
+  }
+
+  /** Unidades de medida ativas, para reconhecer a unidade escrita na planilha. */
+  async units() {
+    const { rows } = await this.poolProvider().query<{ id: string; nome: string }>(
+      `SELECT id::text AS id, nome FROM public.catalog_options WHERE categoria = 'measurement_unit' AND ativo ORDER BY lower(nome)`,
+    )
+    return rows.map((row) => ({ id: row.id, name: row.nome }))
+  }
+
+  /**
+   * Cadastra os materiais da planilha que a pessoa confirmou. Pula, sem erro, o que já existir com o
+   * mesmo código (sem pontuação nem zeros à esquerda) ou o mesmo nome: o robô nunca duplica material.
+   */
+  async createMaterials(actor: AuthenticatedIdentity, items: readonly { code: string | null; name: string; unitId: string }[]) {
+    return withTransaction(this.poolProvider(), async (client) => {
+      // Duas importações ao mesmo tempo não cadastram o mesmo material duas vezes.
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext('slm:robot-materials'))`)
+      const { rows: units } = await client.query<{ id: string; nome: string }>(
+        `SELECT id::text AS id, nome FROM public.catalog_options WHERE categoria = 'measurement_unit' AND ativo AND id = ANY($1::uuid[])`,
+        [[...new Set(items.map((item) => item.unitId))]],
+      )
+      const unitName = new Map(units.map((unit) => [unit.id, unit.nome]))
+      const { rows: existing } = await client.query<{ codigo: string | null; nome: string }>(`SELECT codigo, nome FROM public.materials`)
+      const codes = new Set(existing.map((row) => (row.codigo ? normalizeCode(row.codigo) : '')).filter(Boolean))
+      const names = new Set(existing.map((row) => normalizeText(row.nome)))
+      const created: { id: string; name: string }[] = []
+      const skipped: { name: string; reason: string }[] = []
+      for (const item of items) {
+        const code = item.code ? normalizeCode(item.code) : ''
+        const name = normalizeText(item.name)
+        if (!unitName.has(item.unitId)) skipped.push({ name: item.name, reason: 'Unidade de medida indisponível' })
+        else if (code && codes.has(code)) skipped.push({ name: item.name, reason: 'Já existe material com este código' })
+        else if (names.has(name)) skipped.push({ name: item.name, reason: 'Já existe material com este nome' })
+        else {
+          const { rows } = await client.query<{ id: string }>(
+            `INSERT INTO public.materials (codigo, nome, unidade, ativo) VALUES ($1, $2, $3, true) RETURNING id::text AS id`,
+            [item.code, item.name, unitName.get(item.unitId)],
+          )
+          await insertAuthAuditEvent(client, {
+            actorUserId: actor.userId,
+            actorKind: 'user',
+            subjectUserId: null,
+            sessionId: rows[0].id,
+            eventType: 'material_created',
+            details: { name: item.name, origin: 'robo_planilha' },
+          })
+          if (code) codes.add(code)
+          names.add(name)
+          created.push({ id: rows[0].id, name: item.name })
+        }
+      }
+      return { created, skipped }
+    })
   }
 
   /** Sugestão de compra para o período; com withValues, indica atas e contratos com saldo. */

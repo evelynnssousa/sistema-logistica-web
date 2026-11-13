@@ -12,11 +12,13 @@ import { readSpreadsheet, SpreadsheetError, spreadsheetLimits } from '../reports
 import {
   guessColumns,
   matchLine,
+  matchUnit,
+  materialNameFrom,
   restockMonthOptions,
   sheetLines,
 } from '../requests/robotRules.js'
 import type { ColumnGuess, SheetKind } from '../requests/robotRules.js'
-import { asBody, RequestValidationError } from '../requests/validation.js'
+import { asBody, optionalText, requiredText, requiredUuid, RequestValidationError } from '../requests/validation.js'
 
 /**
  * Robô do Almoxarifado (sem inteligência artificial): leitura da planilha do sistema governamental,
@@ -98,11 +100,17 @@ router.post(
       quantity: column(query.quantity, guess.quantity, width),
       unit: column(query.unit, guess.unit, width),
     }
-    const catalog = await robot.catalog()
+    const [catalog, units] = await Promise.all([robot.catalog(), robot.units()])
     const lines =
       columns.description === null && columns.code === null
         ? []
-        : sheetLines(rows, columns, kind).map((line) => ({ ...line, match: matchLine(line, catalog) }))
+        : sheetLines(rows, columns, kind).map((line) => ({
+            ...line,
+            match: matchLine(line, catalog),
+            // Para cadastrar o material que falta: a unidade reconhecida e o nome a usar.
+            unitId: matchUnit(line.unit, units),
+            suggestedName: materialNameFrom(line.description),
+          }))
     response.json({
       success: true,
       fileName,
@@ -114,7 +122,29 @@ router.post(
       guessed: guess,
       lines,
       catalog,
+      units,
     })
+  }),
+)
+
+/** Cadastra os materiais da planilha que a pessoa marcou. Nada é cadastrado sem essa confirmação. */
+router.post(
+  '/warehouse/robot/materials',
+  manage,
+  guarded(async (request, response) => {
+    const items = asBody(request.body).items
+    if (!Array.isArray(items) || items.length === 0) throw new RequestValidationError('Marque os materiais a cadastrar.')
+    if (items.length > 300) throw new RequestValidationError('Cadastre no máximo 300 materiais por vez.')
+    const parsed = items.map((raw) => {
+      const item = asBody(raw)
+      return {
+        code: optionalText(item.code, 'Código', 60),
+        name: requiredText(item.name, 'o nome do material', { max: 160 }),
+        unitId: requiredUuid(item.unitId, 'a unidade de medida'),
+      }
+    })
+    const result = await robot.createMaterials(identityOf(response), parsed)
+    response.status(201).json({ success: true, ...result })
   }),
 )
 
