@@ -243,6 +243,8 @@ export const searchCategoryLabels: Record<string, string> = {
   warehouseRequests: 'Pedidos do Almoxarifado',
   inventoryChecks: 'Inventário',
   vehicles: 'Veículos',
+  demands: 'Demandas',
+  instruments: 'Atas e contratos',
 }
 
 export const globalSearch = (filters: {

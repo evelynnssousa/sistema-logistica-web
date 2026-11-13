@@ -1,3 +1,6 @@
+import { loadDemandContextData } from './demandConfigRepository.js'
+import { contextFromIdentity, hasDemandAccess, visibilityLevel, visibleDemandSql } from '../demands/demandPolicy.js'
+import { visibleInstrumentSql } from '../demands/instrumentRules.js'
 import { holdsPermission } from '../auth/permissions.js'
 import type { Pool } from 'pg'
 import type { RequestModule } from '../auth/requestPolicy.js'
@@ -26,12 +29,15 @@ export const searchCategories = [
   'warehouseRequests',
   'inventoryChecks',
   'vehicles',
+  // Controle de Demandas (13/11/2026): mesma visibilidade do módulo, por setor e compartilhamento.
+  'demands',
+  'instruments',
 ] as const
 export type SearchCategory = (typeof searchCategories)[number]
 
 export type SearchFilters = {
   term: string
-  module?: RequestModule | 'warehouse'
+  module?: RequestModule | 'warehouse' | 'demands'
   status?: string
   from?: Date | null
   to?: Date | null
@@ -44,7 +50,7 @@ export type SearchHit = {
   title: string
   subtitle: string | null
   protocol: string | null
-  module: RequestModule | 'warehouse'
+  module: RequestModule | 'warehouse' | 'demands'
   status: string | null
   at: Date | null
   link: string
@@ -109,6 +115,15 @@ export class SearchRepository {
     }
     if ((!filters.module || filters.module === 'fleet') && holds('fleet:update') && wants('vehicles') && !filters.status) {
       tasks.vehicles = this.vehicles(context)
+    }
+    if (!filters.module || filters.module === 'demands') {
+      const demandViewer = await this.demandViewer(identity)
+      if (demandViewer) {
+        if (wants('demands')) tasks.demands = this.demands(context, demandViewer)
+        if (wants('instruments') && !filters.status && demandViewer.instruments) {
+          tasks.instruments = this.instruments(context, demandViewer)
+        }
+      }
     }
 
     const entries = await Promise.all(
@@ -384,7 +399,92 @@ export class SearchRepository {
       }
     })
   }
+
+  /** Quem tem acesso ao Controle de Demandas, com o alcance do módulo. Sem migração ou sem vínculo, nulo. */
+  private async demandViewer(identity: AuthenticatedIdentity): Promise<DemandViewer | null> {
+    const pool = this.poolProvider()
+    const present = await pool.query<{ demands: boolean; members: boolean; instruments: boolean }>(
+      `SELECT to_regclass('public.demands') IS NOT NULL AS demands,
+              to_regclass('public.user_directorate_links') IS NOT NULL AS members,
+              to_regclass('public.contract_instruments') IS NOT NULL AS instruments`,
+    )
+    if (!present.rows[0].demands || !present.rows[0].members) return null
+    const context = contextFromIdentity(identity, await loadDemandContextData(pool, identity.userId))
+    if (!hasDemandAccess(context)) return null
+    return { userId: identity.userId, level: visibilityLevel(context), instruments: present.rows[0].instruments }
+  }
+
+  /** A mesma regra das listas do módulo (visibleDemandSql): setor, compartilhamento e restrição. */
+  private demands(context: Context, viewer: DemandViewer) {
+    return this.page(context, (paging) => {
+      const { filters } = context
+      const parameters: unknown[] = [likePattern(filters.term), viewer.userId, viewer.level]
+      const conditions = [
+        visibleDemandSql('d', '$2', '$3'),
+        `(d.numero ILIKE $1 OR d.titulo ILIKE $1 OR d.descricao ILIKE $1 OR s.nome ILIKE $1)`,
+      ]
+      if (filters.status) {
+        parameters.push(filters.status)
+        conditions.push(`d.status = $${parameters.length}`)
+      }
+      if (filters.from) {
+        parameters.push(filters.from)
+        conditions.push(`d.data_abertura >= $${parameters.length}`)
+      }
+      if (filters.to) {
+        parameters.push(filters.to)
+        conditions.push(`d.data_abertura <= $${parameters.length}`)
+      }
+      const where = conditions.join(' AND ')
+      const from = `FROM public.demands d LEFT JOIN public.demand_sectors s ON s.id = d.setor_responsavel_id`
+      return {
+        parameters,
+        sql: `SELECT d.id::text AS id, d.numero, d.titulo, d.status, d.rascunho, s.nome AS setor, d.data_abertura
+                ${from} WHERE ${where}
+               ORDER BY d.data_abertura DESC, d.id ${paging}`,
+        countSql: `SELECT count(*)::int AS total ${from} WHERE ${where}`,
+        map: (row) => ({
+          id: row.id,
+          title: row.titulo,
+          subtitle: [row.setor, row.rascunho ? 'Rascunho' : null].filter(Boolean).join(' · ') || null,
+          protocol: row.numero,
+          module: 'demands',
+          status: row.status,
+          at: row.data_abertura,
+          link: `/demandas/${row.id}`,
+        }),
+      }
+    })
+  }
+
+  /** Atas e contratos: setor responsável ou compartilhado (visibleInstrumentSql). */
+  private instruments(context: Context, viewer: DemandViewer) {
+    return this.page(context, (paging) => {
+      const parameters: unknown[] = [likePattern(context.filters.term), viewer.userId, viewer.level]
+      const where = `${visibleInstrumentSql('i', '$2', '$3')}
+        AND (i.numero ILIKE $1 OR i.objeto ILIKE $1 OR i.fornecedor ILIKE $1 OR i.processo ILIKE $1)`
+      return {
+        parameters,
+        sql: `SELECT i.id::text AS id, i.tipo, i.numero, i.objeto, i.fornecedor, i.encerrado, i.vigencia_fim
+                FROM public.contract_instruments i WHERE ${where}
+               ORDER BY i.encerrado, i.vigencia_fim NULLS LAST, lower(i.numero) ${paging}`,
+        countSql: `SELECT count(*)::int AS total FROM public.contract_instruments i WHERE ${where}`,
+        map: (row) => ({
+          id: row.id,
+          title: `${row.tipo === 'ata' ? 'Ata' : 'Contrato'} ${row.numero} · ${row.objeto}`,
+          subtitle: row.fornecedor,
+          protocol: null,
+          module: 'demands',
+          status: row.encerrado ? 'encerrado' : null,
+          at: null,
+          link: `/demandas/atas/${row.id}`,
+        }),
+      }
+    })
+  }
 }
+
+type DemandViewer = { userId: string; level: number; instruments: boolean }
 
 type Context = {
   identity: AuthenticatedIdentity

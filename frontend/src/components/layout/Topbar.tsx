@@ -60,7 +60,7 @@ function Topbar({ apiOnline, onOpenMenu }: TopbarProps) {
         <input
           type="search"
           aria-label="Pesquisar no sistema"
-          placeholder="Pesquisar protocolo, solicitação, material..."
+          placeholder="Pesquisar protocolo, solicitação, material, demanda..."
           maxLength={120}
           value={term}
           onChange={(event) => setTerm(event.target.value)}

@@ -332,6 +332,25 @@ test('ligação com o Almoxarifado: a entrada pelo item da ata baixa o saldo del
   assert.ok(summary.instruments.some((item: { id: string }) => item.id === ataId))
 })
 
+test('pesquisa geral: demandas e atas só do setor da pessoa ou compartilhadas', async () => {
+  const search = async (session: Session, term: string) => (await get(`/search?q=${encodeURIComponent(term)}`, session)).body.results
+  const own = await search(memberA, 'Comprar papel')
+  assert.equal(own.demands.hits[0].title, 'Comprar papel pela ata')
+  assert.equal(own.demands.hits[0].link.startsWith('/demandas/'), true)
+  // Outro setor: não encontra a demanda nem a ata do setor A, só a sua própria ata.
+  const other = await search(outsider, 'papel')
+  assert.equal(other.demands, undefined)
+  assert.ok((other.instruments?.hits ?? []).every((hit: { title: string }) => !hit.title.includes('12/2026')))
+  // Compartilhada com o setor B: a ata aparece; a demanda do setor A, não.
+  const shared = await search(memberB, 'papel')
+  assert.ok(shared.instruments.hits.some((hit: { title: string }) => hit.title.includes('12/2026')))
+  assert.equal(shared.demands, undefined)
+  // Filtro por módulo e pessoa sem vínculo com o Controle de Demandas.
+  assert.equal(Object.keys(await search(memberA, 'Comprar papel')).includes('demands'), true)
+  const onlyDemands = (await get('/search?q=papel&module=demands', memberA)).body.results
+  assert.deepEqual(Object.keys(onlyDemands).sort(), ['demands', 'instruments'])
+})
+
 test('a 021 não se desfaz com atas cadastradas', async () => {
   await assert.rejects(pool.query(schema('021_contract_instruments.rollback.sql')), /não pode ser desfeita/)
 })

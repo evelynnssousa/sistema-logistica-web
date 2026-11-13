@@ -12,7 +12,7 @@ const repository = new SearchRepository()
 
 router.use('/search', requireAuth, requireCsrf)
 
-const modules = ['maintenance', 'fleet', 'flights', 'warehouse'] as const
+const modules = ['maintenance', 'fleet', 'flights', 'warehouse', 'demands'] as const
 
 router.get('/search', async (request, response) => {
   try {

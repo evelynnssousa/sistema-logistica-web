@@ -1,3 +1,4 @@
+import { demandStatusLabels } from '../api/demandsApi'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
@@ -16,20 +17,26 @@ import { FilterBar, FilterSelect, PeriodFields } from '../components/ui/Filters'
 import PageHeader from '../components/ui/PageHeader'
 import Pagination from '../components/ui/Pagination'
 
-const statusOptions = Object.entries({ ...warehouseStatusLabels, ...statusLabels }).map(([value, label]) => ({
+const statusOptions = Object.entries({ ...warehouseStatusLabels, ...statusLabels, ...demandStatusLabels }).map(([value, label]) => ({
   value,
   label,
 }))
 
+// A pesquisa também alcança o Controle de Demandas, com a visibilidade do próprio módulo.
+const searchModuleLabels: Record<string, string> = { ...moduleLabels, demands: 'Controle de Demandas' }
+const extraStatusLabels: Record<string, string> = { ...demandStatusLabels, encerrado: 'Encerrado' }
+
 function Hit({ hit }: { hit: SearchHit }) {
-  const status = hit.status ? (statusLabels[hit.status] ?? warehouseStatusLabels[hit.status] ?? hit.status) : null
+  const status = hit.status
+    ? (statusLabels[hit.status] ?? warehouseStatusLabels[hit.status] ?? extraStatusLabels[hit.status] ?? hit.status)
+    : null
   return (
     <li>
       <Link className="search-hit" to={hit.link}>
         <strong>{hit.protocol ? `${protocolLabel(hit.protocol)} · ${hit.title}` : hit.title}</strong>
         {hit.subtitle && <span>{hit.subtitle}</span>}
         <small>
-          {[moduleLabels[hit.module], status, hit.at ? formatDateTime(hit.at) : null].filter(Boolean).join(' · ')}
+          {[searchModuleLabels[hit.module], status, hit.at ? formatDateTime(hit.at) : null].filter(Boolean).join(' · ')}
         </small>
       </Link>
     </li>
@@ -103,7 +110,7 @@ function SearchPage() {
             setPage(1)
           }}
           allLabel="Todos"
-          options={Object.entries(moduleLabels).map(([value, label]) => ({ value, label }))}
+          options={Object.entries(searchModuleLabels).map(([value, label]) => ({ value, label }))}
         />
         <FilterSelect
           label="Situação"
