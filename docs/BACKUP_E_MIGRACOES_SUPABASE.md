@@ -344,6 +344,16 @@ Criada em 12/11/2026, **não aplicada em nenhum banco remoto**. Aplique depois d
 
 Criada em 12/11/2026. Aplique depois da 020, com backup e autorização; o script já a inclui (marcador `contract_instruments`). Cria `contract_instruments` (ata ou contrato do setor responsável, com valor, vigência e antecedência do aviso), `contract_instrument_sectors` (compartilhamento), `contract_instrument_items` (quantidade registrada e valor unitário), `contract_instrument_usages` e `contract_instrument_amendments` (permanentes) e `contract_instrument_attachments` (mesmas garantias dos anexos das demandas), todas com RLS e sem privilégios para a API pública. Acrescenta `instrumento_id`, vazio, em `demands`. Não altera registros existentes. Depende da 014. Sem ela, a aba "Atas e Contratos" responde que a migração falta e o restante do Controle de Demandas segue igual. Reverter: `021_contract_instruments.rollback.sql`, que para se já houver ata ou contrato cadastrado.
 
+### Migração 023: Patrimônio
+
+Criada em 13/11/2026 e **ainda não aplicada em nenhum banco**. Aplique depois da 022, com backup e autorização. Cria quatro tabelas e não altera as existentes:
+- `patrimony_assets`: os bens, com número único sem contar pontos, traços e espaços;
+- `patrimony_movements`: o histórico, permanente;
+- `patrimony_checks`: as conferências;
+- `patrimony_check_reads`: as leituras do código de barras, também permanentes.
+
+Todas ficam fora da API pública do Supabase. Sem a 023, a aba Patrimônio avisa que a migração falta, e o resto do sistema segue igual. Para desfazer, use `023_patrimony.rollback.sql`, que se recusa a rodar se já houver bem ou conferência registrada.
+
 ### Migração 022: formulários editáveis, localização e atas no Almoxarifado
 
 Criada em 13/11/2026. Aplique depois da 021, com backup e autorização. Não cria tabela: o script a reconhece pela coluna `contract_instrument_usages.stock_movement_id`. Acrescenta, vazias, `campos_personalizados` e `formulario_versao` em `material_requests`, `demands`, `contract_instruments`, `vehicles`, `equipments`, `materials`, `fleet_drivers`, `flight_quotes`, `maintenance_executions` e `request_occurrences`; `campos_entrega` em `material_requests`; `localizacao` em `materials`; `instrumento_item_id` em `stock_movements`; e `stock_movement_id` em `contract_instrument_usages`. Não altera registros existentes. Sem ela, os formulários seguem funcionando, mas campos novos preenchidos, localização e entrada pela ata respondem que a migração falta. Reverter: `022_forms_and_links.rollback.sql`, que para se já houver algum desses valores gravado.

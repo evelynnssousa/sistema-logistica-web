@@ -143,3 +143,25 @@ Decisão da responsável: só funções sem IA, sem custo de API. Aba **Almoxari
 - **Sugestão de reposição:** consumo médio de 12 meses e estoque disponível (físico menos reservado), para durar 1 a 12 meses, nunca abaixo do mínimo. Para quem vê valores (`warehouse:finance`), indica itens de atas e contratos vigentes com saldo e nome parecido. Lista de compras em CSV.
 - **Resumo semanal:** abaixo do mínimo, a repor (3 meses), pedidos aguardando e conferências abertas. Na segunda-feira a partir das 7h, uma vez por semana, à equipe do Almoxarifado (e-mail e central de notificações), só com contagens. Começa desligado e liga em Configurações → Notificações.
 - Não exige migração.
+
+### Patrimônio (13/11/2026, migração 023)
+
+Menu **Serviços → Patrimônio**. Só para o Administrador e o Operador SLM da equipe SLM, pela permissão `patrimony:manage`.
+
+- **Cadastro:**
+  - número do patrimônio, lido pelo leitor de código de barras ou digitado;
+  - descrição, setor, sala, situação (em uso, ocioso, em manutenção, inservível, baixado);
+  - marca, modelo, número de série;
+  - data em que foi patrimoniado;
+  - valor de aquisição, nota fiscal, fornecedor e observação.
+  
+  O número é único sem contar pontos, traços e espaços; os zeros à esquerda contam.
+- **Leitor de código de barras (USB ou Bluetooth):** funciona como um teclado. Os campos de leitura recebem o número e o Enter, e o Enter não envia o formulário por engano. Ao ler, o sistema responde se o bem já foi patrimoniado, onde está (setor e sala), quando foi patrimoniado e quando foi conferido pela última vez. Se o número ainda não existir, oferece o cadastro.
+- **Histórico:** cada cadastro, importação, alteração, mudança de local ou de situação e conferência fica registrado com data, pessoa, antes e depois, e não pode ser apagado.
+- **Conferência:** por setor, por sala do setor ou geral. Cada leitura diz na hora se o bem está no local certo, em outro local, não cadastrado ou baixado. Quando o bem está em outro local, um botão registra o local novo, e o anterior fica no histórico. A conferência mostra os bens do local que ainda não foram lidos. Uma leitura repetida não duplica.
+- **Importação pela planilha (robô, sem IA):** mesmos formatos e limites do robô do Almoxarifado. O robô acha as colunas, que podem ser trocadas na tela. A prévia mostra:
+  - o que é novo;
+  - o que já está cadastrado, onde e desde quando, e se a planilha indica outro local;
+  - as linhas com problema (sem número, número repetido, sem descrição).
+  
+  Só os bens novos são cadastrados: os existentes não mudam pela planilha.
