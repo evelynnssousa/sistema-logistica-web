@@ -8,7 +8,7 @@ Os planos gratuitos "dormem" quando ninguém usa:
 | **Supabase** (os bancos) | Pausa o projeto depois de 7 dias sem atividade. | O sistema para até alguém reativar o projeto no painel. Os dados não se perdem, mas o projeto só pode ser reativado por 90 dias. |
 | **Cloudflare Pages** (o site) | Não dorme. | Nada a fazer. |
 
-Dois robôs do GitHub (GitHub Actions) resolvem isso. Eles já estão no projeto e ficam **parados** até você fazer a configuração abaixo. Os agendamentos só rodam a partir da branch `main`.
+Robôs do GitHub (GitHub Actions) resolvem isso, e um terceiro faz o backup semanal. Eles já estão no projeto e ficam **parados** até você fazer a configuração abaixo. Os agendamentos só rodam a partir da branch `main`.
 
 ---
 
@@ -16,7 +16,7 @@ Dois robôs do GitHub (GitHub Actions) resolvem isso. Eles já estão no projeto
 
 Arquivo: `.github/workflows/manter-api-acordada.yml`. A cada 10 minutos, de segunda a sexta, das 7h às 19h de Brasília, ele abre o endereço `/api/health` da API. Ele não usa senha nem acessa o banco.
 
-Consumo: cerca de 290 horas por mês do Render, dentro das 750 horas gratuitas, e cerca de 1.600 minutos por mês do GitHub Actions, dentro dos 2.000 gratuitos de um repositório privado.
+Consumo: cerca de 290 horas por mês do Render, dentro das 750 horas gratuitas. O GitHub Actions é gratuito e sem limite de minutos em repositório público (num privado, seriam cerca de 1.600 dos 2.000 minutos gratuitos por mês).
 
 **Como ligar:**
 
@@ -26,7 +26,7 @@ Consumo: cerca de 290 horas por mês do Render, dentro das 750 horas gratuitas, 
 4. Clique na aba **Variables** e depois em **New repository variable**.
 5. Preencha:
    - **Name:** `SLM_API_HEALTH_URL`
-   - **Value:** o endereço do passo 1 seguido de `/api/health`. Por exemplo: `https://nome-da-api.onrender.com/api/health`
+   - **Value:** o endereço do passo 1 seguido de `/api/health`. Por exemplo: `https://slm-homologacao-api.onrender.com/api/health` (o endereço da homologação)
 6. Clique em **Add variable**.
 7. Para testar, vá na aba **Actions**, clique em **Manter a API acordada**, depois em **Run workflow** e mais uma vez em **Run workflow**. Em até 2 minutos deve aparecer um ✅ verde.
 
@@ -79,6 +79,63 @@ Use o **Session pooler**, e não o endereço "Direct connection": as máquinas d
 
 - **Para parar o robô:** apague o segredo no GitHub.
 - **Para apagar o usuário do banco:** no SQL Editor, rode `DROP ROLE slm_keepalive;`.
+
+---
+
+## Robô 3: backup semanal automático (banco real e anexos)
+
+Arquivo: `.github/workflows/backup-semanal.yml`. Todo domingo, às 3h17, ele copia o banco real e, se configurado, os anexos, **criptografa tudo com uma senha só sua** e guarda o pacote por 30 dias na aba **Actions** do GitHub. Consumo: poucos minutos por semana.
+
+**O repositório é público.** Por isso:
+- o pacote só sai da máquina do GitHub já criptografado (AES-256), e sem a senha ninguém consegue abrir;
+- o robô se recusa a rodar se a senha tiver menos de 20 caracteres;
+- os registros mostram só o tamanho do pacote, nunca dados.
+
+Mesmo assim, **baixe o pacote e guarde uma cópia fora do GitHub**, como pede a política de backup. Se puder, deixe o repositório privado em Settings → General → Danger Zone → Change visibility.
+
+### Parte A: usuário de leitura para o backup (no banco real)
+
+No Supabase, no projeto do **banco real**, abra **SQL Editor → New query**, cole o texto abaixo, troque a senha e clique em **Run**:
+
+```sql
+CREATE ROLE slm_backup WITH LOGIN PASSWORD 'TROQUE-POR-UMA-SENHA-LONGA' BYPASSRLS NOINHERIT CONNECTION LIMIT 2;
+GRANT USAGE ON SCHEMA public TO slm_backup;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO slm_backup;
+GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO slm_backup;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO slm_backup;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO slm_backup;
+```
+
+Esse usuário só **lê**: não altera nem apaga nada. Se o Supabase recusar o `BYPASSRLS`, use na Parte B o usuário `postgres` com a senha principal do banco.
+
+### Parte B: endereço de conexão
+
+Igual ao Robô 2, Parte B: **Connect → Session pooler**, troque `postgres.` por `slm_backup.` e `[YOUR-PASSWORD]` pela senha da Parte A.
+
+### Parte C: segredos no GitHub
+
+Em **Settings → Secrets and variables → Actions → Secrets → New repository secret**, crie:
+
+| Nome | Valor |
+|---|---|
+| `SLM_BACKUP_DB_URL` | o endereço da Parte B |
+| `SLM_BACKUP_PASSPHRASE` | uma senha **nova**, com 20 caracteres ou mais. **Guarde uma cópia no cofre da TI**: sem ela, nenhum backup abre |
+| `SLM_BACKUP_SUPABASE_URL` | opcional, para os anexos: `https://<código do projeto>.supabase.co` do banco real |
+| `SLM_BACKUP_SUPABASE_KEY` | opcional, para os anexos: a chave secreta (`sb_secret_...`) do banco real |
+
+Para testar: **Actions → Backup semanal → Run workflow**. Em poucos minutos aparece o ✅ e, dentro da execução, em **Artifacts**, o pacote `slm-backup-...`.
+
+### Como abrir um backup
+
+1. Na aba **Actions**, abra a execução do backup e baixe o pacote em **Artifacts**. Vem um `.zip`; descompacte e fica um arquivo `slm-backup-....tar.gpg`.
+2. Num computador com `gpg`, como o Git Bash no Windows, rode o comando abaixo e digite a senha quando ela for pedida:
+
+   ```bash
+   gpg --decrypt slm-backup-AAAA-MM-DD.tar.gpg | tar -xf -
+   ```
+
+3. Aparecem `banco.dump`, `anexos.tar.gz` (se configurado) e `conferencia.sha256`. Para conferir se nada se corrompeu: `sha256sum -c conferencia.sha256`.
+4. Restaurar é uma decisão da responsável e da TI: veja "Backup e restauração" em `docs/BACKUP_E_MIGRACOES_SUPABASE.md`.
 
 ---
 

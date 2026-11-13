@@ -1,0 +1,96 @@
+# Backup semanal automático do banco real e dos anexos (Supabase Free não faz backup).
+#
+# Fica inerte até existirem os segredos do repositório (Settings → Secrets and variables → Actions →
+# Secrets). Passo a passo em docs/MANTER_SERVICOS_ATIVOS.md, "Robô 3":
+#   SLM_BACKUP_DB_URL          endereço de conexão (Session pooler) de um usuário que lê o banco
+#   SLM_BACKUP_PASSPHRASE      senha da criptografia, com 20 caracteres ou mais, guardada também no cofre
+#   SLM_BACKUP_SUPABASE_URL    opcional: endereço do projeto, para copiar também os anexos
+#   SLM_BACKUP_SUPABASE_KEY    opcional: chave secreta do projeto, só para os anexos
+#
+# O REPOSITÓRIO É PÚBLICO: o pacote é criptografado (AES-256) antes de sair da máquina do GitHub, e
+# só quem tem a senha consegue abrir. Nada de dado aparece nos registros. O pacote fica 30 dias na
+# aba Actions; baixe e guarde uma cópia fora do GitHub, como pede a política de backup.
+# Só agendamentos da branch principal (main) rodam. Domingo, 3h17 de Brasília (6h17 UTC).
+name: Backup semanal
+
+on:
+  schedule:
+    - cron: '17 6 * * 0'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DB_URL: ${{ secrets.SLM_BACKUP_DB_URL }}
+      PASSPHRASE: ${{ secrets.SLM_BACKUP_PASSPHRASE }}
+      SUPABASE_URL: ${{ secrets.SLM_BACKUP_SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SLM_BACKUP_SUPABASE_KEY }}
+    steps:
+      - name: Conferir a configuração
+        id: config
+        run: |
+          if [ -z "$DB_URL" ]; then
+            echo "Sem o segredo SLM_BACKUP_DB_URL: nada a fazer."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${#PASSPHRASE}" -lt 20 ]; then
+            echo "::error::SLM_BACKUP_PASSPHRASE ausente ou curta (mínimo 20 caracteres). Sem ela o backup não é gravado."
+            exit 1
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.config.outputs.ready == 'true'
+
+      - name: Instalar o cliente do PostgreSQL 17 (mesma versão do Supabase)
+        if: steps.config.outputs.ready == 'true'
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17 > /dev/null
+
+      - name: Copiar o banco (schema public, somente leitura)
+        if: steps.config.outputs.ready == 'true'
+        env:
+          PGSSLMODE: require
+          PGCONNECT_TIMEOUT: '30'
+        run: |
+          mkdir -p pacote
+          /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" --format=custom --schema=public --no-owner --no-privileges \
+            --file=pacote/banco.dump
+          # Confere que a cópia abre, sem restaurar nada.
+          /usr/lib/postgresql/17/bin/pg_restore --list pacote/banco.dump > /dev/null
+          echo "Banco copiado: $(du -h pacote/banco.dump | cut -f1)."
+
+      - name: Copiar os anexos (Supabase Storage)
+        if: steps.config.outputs.ready == 'true' && env.SUPABASE_URL != '' && env.SUPABASE_SECRET_KEY != ''
+        run: |
+          node scripts/download-supabase-attachments.cjs --out "$RUNNER_TEMP/anexos" > /dev/null
+          tar -czf pacote/anexos.tar.gz -C "$RUNNER_TEMP/anexos" .
+          echo "Anexos copiados: $(du -h pacote/anexos.tar.gz | cut -f1)."
+
+      - name: Criptografar
+        if: steps.config.outputs.ready == 'true'
+        run: |
+          stamp=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+          (cd pacote && sha256sum * > conferencia.sha256)
+          tar -cf - -C pacote . | gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-fd 3 \
+            --symmetric --cipher-algo AES256 --output "slm-backup-$stamp.tar.gpg" 3<<< "$PASSPHRASE"
+          rm -rf pacote "$RUNNER_TEMP/anexos"
+          echo "STAMP=$stamp" >> "$GITHUB_ENV"
+
+      - name: Guardar o pacote criptografado (30 dias)
+        if: steps.config.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: slm-backup-${{ env.STAMP }}
+          path: slm-backup-*.tar.gpg
+          retention-days: 30
+          if-no-files-found: error
