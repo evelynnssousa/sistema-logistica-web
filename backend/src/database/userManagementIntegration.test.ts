@@ -1076,7 +1076,9 @@ test('cada rota do mapa: só com a permissão exata passa, e sem qualquer uma de
     const allowed = await callRoute(route, user)
     if (route.administratorOnly) {
       assert.equal(allowed.status, 403, `${label} exige administrador`)
-      assert.equal((await callRoute(route, admin)).status, 404, `${label} por administrador`)
+      const byAdministrator = (await callRoute(route, admin)).status
+      if (route.path.includes(':')) assert.equal(byAdministrator, 404, `${label} por administrador`)
+      else assert.ok(![401, 403, 500, 503].includes(byAdministrator), `${label} por administrador respondeu ${byAdministrator}`)
     } else {
       assert.ok(
         ![401, 403, 500, 503].includes(allowed.status),

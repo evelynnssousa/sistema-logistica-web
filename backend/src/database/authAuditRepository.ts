@@ -123,6 +123,8 @@ const auditActions = {
   patrimony_asset_changed: 'patrimony.asset_changed',
   patrimony_imported: 'patrimony.imported',
   patrimony_check_changed: 'patrimony.check_changed',
+  // Limpeza dos dados de teste: grupos, total e banco. Este registro nunca é apagado.
+  test_data_purged: 'settings.test_data_purged',
 } as const
 
 /** Ações exibidas no histórico de alterações de acesso de um usuário. */
