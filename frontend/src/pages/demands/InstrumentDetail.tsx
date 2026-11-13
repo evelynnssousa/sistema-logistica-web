@@ -73,6 +73,14 @@ export function InstrumentDetail() {
   const canEdit = loaded.access.edit
   const activeItems = instrument.items.filter((item) => item.active && item.balance > 0)
 
+  const startUsage = () => {
+    setDialogError('')
+    setUsageForm({ itemId: activeItems[0].id, quantity: '', date: today(), document: '', note: '' })
+  }
+  // Item em reais (como o "Valor global da ata"): a quantidade é o próprio valor utilizado.
+  const usageItem = usageForm ? activeItems.find((item) => item.id === usageForm.itemId) : undefined
+  const usageByValue = Boolean(usageItem && usageItem.unit.trim().toUpperCase() === 'R$' && usageItem.unitPrice === 1)
+
   async function run(action: () => Promise<unknown>, success: string, close: () => void) {
     setDialogError('')
     try {
@@ -204,14 +212,7 @@ export function InstrumentDetail() {
           {canEdit && (
             <div className="ui-card-actions">
               {activeItems.length > 0 && (
-                <button
-                  type="button"
-                  className="maintenance-secondary-button"
-                  onClick={() => {
-                    setDialogError('')
-                    setUsageForm({ itemId: activeItems[0].id, quantity: '', date: today(), document: '', note: '' })
-                  }}
-                >
+                <button type="button" className="maintenance-secondary-button" onClick={startUsage}>
                   Registrar utilização
                 </button>
               )}
@@ -225,6 +226,8 @@ export function InstrumentDetail() {
         {instrument.items.length === 0 ? (
           <EmptyState icon="lists" title="Nenhum item cadastrado">
             Cadastre os itens com a quantidade registrada e o valor unitário para acompanhar o saldo de cada um.
+            Para controlar só pelo valor (um serviço, por exemplo), cadastre um item "Valor global da ata" com unidade R$,
+            quantidade igual ao valor da ata e valor unitário 1,00.
           </EmptyState>
         ) : (
           <>
@@ -281,7 +284,17 @@ export function InstrumentDetail() {
       </section>
 
       <section className="ui-card ui-stacked" aria-labelledby="instrument-usages">
-        <h2 id="instrument-usages">Utilizações</h2>
+        <div className="ui-card-heading">
+          <h2 id="instrument-usages">Utilizações</h2>
+          {canEdit && activeItems.length > 0 && (
+            <div className="ui-card-actions">
+              <button type="button" className="maintenance-primary-button" onClick={startUsage}>
+                <Icon name="add" size={18} />
+                Registrar utilização
+              </button>
+            </div>
+          )}
+        </div>
         {instrument.usages.length === 0 ? (
           <EmptyState icon="lists" title="Nenhuma utilização registrada">
             Registre cada empenho, pedido ou ordem de serviço para o saldo ficar atualizado.
@@ -503,7 +516,7 @@ export function InstrumentDetail() {
               </select>
             </label>
             <label className="maintenance-form-field">
-              <span>Quantidade *</span>
+              <span>{usageByValue ? 'Valor utilizado (R$) *' : 'Quantidade *'}</span>
               <input type="number" min="0" step="any" required value={usageForm.quantity} onChange={(event) => setUsageForm({ ...usageForm, quantity: event.target.value })} />
             </label>
             <label className="maintenance-form-field">
@@ -518,7 +531,11 @@ export function InstrumentDetail() {
               <span>Observação</span>
               <textarea rows={2} maxLength={2000} value={usageForm.note} onChange={(event) => setUsageForm({ ...usageForm, note: event.target.value })} />
             </label>
-            <p className="demand-muted">O valor é calculado pela quantidade vezes o valor unitário do item. A utilização não pode ser apagada.</p>
+            <p className="demand-muted">
+              {usageByValue
+                ? 'Esta ata é controlada em reais: informe o valor gasto (um serviço, uma compra fora do estoque). A utilização não pode ser apagada.'
+                : 'O valor é calculado pela quantidade vezes o valor unitário do item. A utilização não pode ser apagada.'}
+            </p>
             {dialogError && <Alert tone="error">{dialogError}</Alert>}
             <button type="submit" className="maintenance-primary-button">Registrar</button>
           </form>

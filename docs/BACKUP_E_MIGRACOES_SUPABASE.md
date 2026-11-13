@@ -362,6 +362,17 @@ Criada em 13/11/2026. Aplique depois da 021, com backup e autorização. Não cr
 
 **Conceda a Central individualmente.** Nem o perfil Administrador recebe `slm_central:read` e `slm_central:manage`: é preciso incluir as quatro pessoas na equipe SLM e conceder a cada uma, pela tela do usuário.
 
+### Migração 024: atas unificadas
+
+Criada em 13/11/2026, **não aplicada em nenhum banco remoto**. Aplique depois da 023, com backup e autorização; o script já a inclui (marcador `warehouse_price_agreements.instrumento_id`). Pedido: nem toda ata é só de materiais do Almoxarifado, então as atas passam a ficar todas em Controle de Demandas → Atas e contratos, que aceita material, serviço, curso ou outro e tem o botão "Registrar utilização".
+
+- Acrescenta `instrumento_id` em `warehouse_price_agreements`.
+- Cada ata do Almoxarifado vira uma ata (categoria material) do setor do Controle de Demandas cujo nome contém "Almoxarifado". Sem esse setor, cria o setor "Almoxarifado". Quem cadastrou as atas antigas entra nele como colaborador.
+- A ata convertida ganha o item "Valor global da ata" em reais (quantidade = valor da ata, valor unitário R$ 1,00), e cada entrada no estoque com valor que usou a ata vira uma utilização ligada à entrada. Gasto e saldo ficam iguais. Número repetido ganha o sufixo "(Almox.)".
+- A ata antiga fica encerrada, como histórico. As movimentações de estoque não mudam.
+
+Sem atas do Almoxarifado, só acrescenta a coluna. Depois dela, a API recusa cadastrar ata no Almoxarifado (`AGREEMENTS_UNIFIED`), e a tela Valores leva para Atas e contratos. Reverter: `024_unified_agreements.rollback.sql`, que para se alguma ata já foi convertida.
+
 ### O que a 003 faz com cada conta
 
 | Conta atual | Resultado |
