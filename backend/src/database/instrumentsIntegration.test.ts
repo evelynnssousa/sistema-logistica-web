@@ -14,6 +14,7 @@ import { authRateLimits } from '../security/authRateLimits.js'
 import { resetAccessSchemaCacheForTests } from './accessSchema.js'
 import { requireDisposableDatabaseUrl } from './databaseSafety.js'
 import { openRenewalDemands } from './instrumentRepository.js'
+import { RobotRepository } from './robotRepository.js'
 import { setDatabasePoolForTests } from './pool.js'
 
 // Atas e contratos no Controle de Demandas (migração 021) e taxas do Dashboard, em 12/11/2026.
@@ -384,6 +385,74 @@ test('localização do material: interna, e o inventário segue a ordem dos arm�
   )
   const byLocation = (await get('/warehouse/stock?order=location', admin)).body.items.map((item: { name: string }) => item.name)
   assert.ok(byLocation.indexOf('Clipe') < byLocation.indexOf('Lápis grafite'))
+})
+
+test('robô: lê a planilha do governo, compara com o catálogo e não grava nada', async () => {
+  const sheet = (text: string, session: Session, query = '', fileName = 'saldo.csv') =>
+    call(`/warehouse/robot/sheet${query}`, { method: 'POST', session, raw: Buffer.from(text, 'latin1'), fileName })
+  const csv = 'Relatório de saldo\r\n\r\nCódigo;Descrição do material;Saldo\r\n;LÁPIS GRAFITE;1.250\r\n;Fita adesiva larga;2\r\n;Grampeador industrial;1\r\n;Total geral;1.253\r\n'
+
+  assert.equal((await sheet(csv, memberA)).status, 403)
+  const before = (await pool.query(`SELECT count(*)::int AS total FROM public.inventory_checks`)).rows[0].total
+
+  const read = await sheet(csv, admin)
+  assert.equal(read.status, 200, read.text)
+  assert.equal(read.body.kind, 'csv')
+  assert.deepEqual(read.body.columns, { headerRow: 2, code: 0, description: 1, quantity: 2, unit: null })
+  const byLine = Object.fromEntries(read.body.lines.map((line: { description: string; quantity: number; match: { status: string } }) => [line.description, [line.match.status, line.quantity]]))
+  assert.deepEqual(byLine, {
+    'LÁPIS GRAFITE': ['name', 1250],
+    'Fita adesiva larga': ['suggested', 2],
+    'Grampeador industrial': ['none', 1],
+  })
+  assert.ok(read.body.catalog.some((entry: { name: string; location: string }) => entry.name === 'Lápis grafite' && entry.location === 'Armário 3'))
+
+  // Colunas trocadas na tela: sem a quantidade, as linhas vêm sem número.
+  const noQuantity = await sheet(csv, admin, '?header=2&description=1&code=none&quantity=none')
+  assert.equal(noQuantity.status, 200, noQuantity.text)
+  assert.ok(noQuantity.body.lines.every((line: { quantity: number | null }) => line.quantity === null))
+  assert.equal((await sheet(csv, admin, '?description=9')).status, 400)
+
+  const oldXls = await call('/warehouse/robot/sheet', {
+    method: 'POST', session: admin, fileName: 'a.xls',
+    raw: Buffer.concat([Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]), Buffer.alloc(64)]),
+  })
+  assert.equal(oldXls.status, 400)
+  assert.match(oldXls.body.message, /salve como \.xlsx/)
+  const tooBig = await call('/warehouse/robot/sheet', { method: 'POST', session: admin, fileName: 'a.csv', raw: Buffer.alloc(6 * 1024 * 1024, 65) })
+  assert.equal(tooBig.status, 413)
+
+  // Ler a planilha não cria conferência: isso só acontece pela rota de sempre, depois da confirmação.
+  assert.equal((await pool.query(`SELECT count(*)::int AS total FROM public.inventory_checks`)).rows[0].total, before)
+})
+
+test('robô: reposição, resumo semanal desligado por padrão e publicado uma vez por semana', async () => {
+  assert.equal((await get('/warehouse/robot/restock?months=3', memberA)).status, 403)
+  const restock = await get('/warehouse/robot/restock?months=3', admin)
+  assert.equal(restock.status, 200, restock.text)
+  assert.ok(Array.isArray(restock.body.suggestions))
+  assert.equal((await get('/warehouse/robot/restock?months=5', admin)).status, 400)
+
+  const summary = await get('/warehouse/robot/weekly-summary', admin)
+  assert.equal(summary.status, 200, summary.text)
+  assert.equal(summary.body.enabled, false)
+  assert.equal(typeof summary.body.summary.belowMinimum, 'number')
+
+  const robot = new RobotRepository()
+  const monday = new Date('2026-11-16T12:00:00Z')
+  assert.equal(await robot.publishWeeklySummary(monday), false)
+
+  const saved = await put('/settings/parameters/notifications', admin, { disabled: {}, pendingReminderDays: null, warehouseWeeklySummary: true })
+  assert.equal(saved.status, 200, saved.text)
+  assert.equal((await get('/warehouse/robot/weekly-summary', admin)).body.enabled, true)
+  // Terça-feira, ou segunda antes das 7h: não sai.
+  assert.equal(await robot.publishWeeklySummary(new Date('2026-11-17T12:00:00Z')), false)
+  assert.equal(await robot.publishWeeklySummary(new Date('2026-11-16T09:00:00Z')), false)
+  assert.equal(await robot.publishWeeklySummary(monday), true)
+  assert.equal(await robot.publishWeeklySummary(new Date('2026-11-16T18:00:00Z')), true)
+  const events = await pool.query(`SELECT payload FROM public.integration_events WHERE event_key = 'warehouse-weekly:2026-W47'`)
+  assert.equal(events.rowCount, 1)
+  await put('/settings/parameters/notifications', admin, { disabled: {}, pendingReminderDays: null, warehouseWeeklySummary: false })
 })
 
 test('a 021 não se desfaz com atas cadastradas', async () => {

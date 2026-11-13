@@ -51,6 +51,8 @@ export const defaultSettings = {
     >,
     // Dias sem andamento para avisar a equipe. Sem valor definido, nenhum prazo é presumido.
     pendingReminderDays: null as number | null,
+    // Resumo semanal do Almoxarifado (robô), toda segunda-feira. Começa desligado.
+    warehouseWeeklySummary: false,
     // E-mails de segurança. O aviso de cada novo acesso começa desligado, para não virar ruído.
     securityEmails: {
       newLogin: false,
@@ -316,6 +318,7 @@ export function validateSettings(
         body.pendingReminderDays === ''
           ? null
           : integer(body.pendingReminderDays, 'O aviso de solicitações paradas', 1, 365),
+      warehouseWeeklySummary: body.warehouseWeeklySummary === true,
       securityEmails: readSecurityEmails(body.securityEmails),
     }
   }

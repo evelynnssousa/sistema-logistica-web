@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { RobotRepository } from '../database/robotRepository.js'
 import { resolveAttachmentStorage } from '../attachments/storage.js'
 import type { AttachmentStorage } from '../attachments/storage.js'
 import { CommunicationRepository } from '../database/communicationRepository.js'
@@ -454,6 +455,10 @@ export function startIntegrationWorker(dependencies: WorkerDependencies = {}) {
       if (tick % reminderIntervalTicks === 0) {
         await publishPendingReminders(await configuredReminderDays(), repository)
         await publishOverdueAlerts(repository)
+        // Resumo semanal do Almoxarifado: só se ligado em Configurações, na segunda-feira.
+        await new RobotRepository().publishWeeklySummary().catch((error: unknown) =>
+          recordTechnicalEvent('worker', 'warehouse_weekly_summary_failed', error),
+        )
       }
     } catch (error) {
       recordTechnicalEvent('worker', 'integration_worker_cycle_failed', error)

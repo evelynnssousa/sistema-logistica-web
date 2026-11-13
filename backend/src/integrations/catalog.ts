@@ -99,6 +99,11 @@ export type EventContext = {
    * "address" quando foi o limite da conta a partir de um mesmo endereço de rede.
    */
   blockScope?: 'account' | 'address' | null
+  // Resumo semanal do Almoxarifado (robô): só contagens, sem nomes, valores ou materiais.
+  belowMinimum?: number
+  restockCount?: number
+  pendingCount?: number
+  openChecks?: number
 }
 
 type Definition = {
@@ -678,6 +683,24 @@ export const eventCatalog = {
     ],
     notice: (context) =>
       `${context.total} solicitações sem andamento há mais de ${context.days} dias.`,
+  },
+  warehouse_weekly_summary: {
+    label: 'Resumo semanal do Almoxarifado',
+    category: 'pendencia',
+    modules: ['warehouse'],
+    toRequester: false,
+    toTeam: true,
+    path: '/almoxarifado/robo',
+    headline: () => 'Resumo semanal do Almoxarifado',
+    lines: (context) => [
+      `Materiais abaixo do estoque mínimo: ${context.belowMinimum ?? 0}.`,
+      `Materiais com sugestão de reposição (para 3 meses de consumo): ${context.restockCount ?? 0}.`,
+      `Pedidos de materiais aguardando atendimento: ${context.pendingCount ?? 0}.`,
+      `Conferências de inventário em andamento: ${context.openChecks ?? 0}.`,
+      'A lista completa está na aba Robô do Almoxarifado.',
+    ],
+    notice: (context) =>
+      `Resumo da semana: ${context.belowMinimum ?? 0} abaixo do mínimo, ${context.restockCount ?? 0} a repor, ${context.pendingCount ?? 0} pedidos aguardando.`,
   },
   integration_failure: {
     label: 'Falha operacional',

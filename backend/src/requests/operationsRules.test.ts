@@ -130,6 +130,8 @@ test('aviso de paradas: sem valor na tela nem no ambiente, não há lembrete', (
   assert.deepEqual(save(''), {
     disabled: { administrator: [], slm_operator: [], requester: [] },
     pendingReminderDays: null,
+    // O resumo semanal do robô só liga com a escolha expressa.
+    warehouseWeeklySummary: false,
     // Sem valor enviado, os e-mails de segurança ficam no padrão.
     securityEmails: { newLogin: false, lockout: true, sessionsRevoked: true, adminAlerts: true },
   })

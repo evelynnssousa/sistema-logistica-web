@@ -15,6 +15,7 @@ import moduleExtensionsRouter from './moduleExtensions.js'
 import monitoringRouter from './monitoring.js'
 import integrationsRouter from './integrations.js'
 import requestsRouter from './requests.js'
+import robotRouter from './robot.js'
 import searchRouter from './search.js'
 import settingsRouter from './settings.js'
 import slmRouter from './slm.js'
@@ -37,6 +38,7 @@ apiRouter.use(communicationsRouter)
 apiRouter.use(warehouseRouter)
 // Depois dos roteadores de cada módulo, que conferem a sessão pelo prefixo.
 apiRouter.use(moduleExtensionsRouter)
+apiRouter.use(robotRouter)
 apiRouter.use(driverRouter)
 apiRouter.use(monitoringRouter)
 apiRouter.use(insightsRouter)
