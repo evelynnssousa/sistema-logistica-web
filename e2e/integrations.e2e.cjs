@@ -139,7 +139,7 @@ async function run({ playwright, baseUrl, runId, password }) {
     await step('conflito de agenda pede confirmação, e a decisão fica no histórico', async () => {
       // A concessão individual de agendar vem da administradora.
       const userId = await operator.evaluate(async () => (await (await fetch('/api/auth/me')).json()).user.id)
-      await admin.goto(`/usuarios/${userId}`)
+      await admin.goto(`/usuarios/${userId}?aba=acesso`)
       await admin.waitForSelector('.users-permission')
       await admin.locator('.users-permission', { hasText: 'requests:schedule' }).locator('select').selectOption('grant')
       await admin.click('button:has-text("Salvar acesso")')

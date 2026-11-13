@@ -80,7 +80,7 @@ async function run({ playwright, baseUrl, runId, password, screenshotDirectory }
 
     let driverOneId
     await step('administração: define o perfil pela tela e cadastra o motorista na Frota', async () => {
-      await admin.goto(`/usuarios/${ids.um}`)
+      await admin.goto(`/usuarios/${ids.um}?aba=acesso`)
       const profile = admin.locator('label', { hasText: 'Perfil' }).locator('select').first()
       await profile.selectOption('driver')
       await admin.waitForSelector('text=não aceita permissões individuais')
