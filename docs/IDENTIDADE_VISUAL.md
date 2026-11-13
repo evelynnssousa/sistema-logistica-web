@@ -112,3 +112,16 @@ Segue os componentes acima, com estilos em `styles/demands.css`. Botões e item 
 Também seguem estes padrões as telas do Supercomando 04: Central SLM, Pesquisa, Veículos, Equipamentos, Estoque interno, Monitoramento e Revisão de acessos. Estilos em `styles/operations.css`.
 
 Entrada, Início, Dashboard, Manutenção, Frota, Passagens (listas, formulários e detalhes), Almoxarifado (todas as abas, pedido e conferência), Calendário, Relatórios, Configurações, Cadastros pendentes, Usuários, Auditoria, Minha conta e Acesso negado.
+
+## Visual moderno (13/11/2026)
+
+As telas internas seguem o padrão da página inicial, por meio de `frontend/src/styles/modern.css`, carregado depois de `theme.css`. O arquivo muda só a aparência, sem cor nova:
+
+- menu lateral, abas dos módulos e telas de entrada usam o degradê azul executivo com uma grade sutil;
+- o logotipo fica maior, num cartão branco levemente inclinado;
+- o título de cada tela vira uma faixa clara com um filete azul, e o sobretítulo ganha o traço amarelo;
+- cantos são mais arredondados e as sombras mais suaves;
+- indicadores e cartões sobem levemente ao passar o mouse;
+- campos ganham um halo azul quando estão em foco.
+
+Todo degradê tem uma cor sólida equivalente por trás, para o teste automático de contraste e para navegadores antigos. Animações são desligadas com `prefers-reduced-motion`, e degradês e sombras são desligados na impressão.

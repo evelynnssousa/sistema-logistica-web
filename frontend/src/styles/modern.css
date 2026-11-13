@@ -1,0 +1,540 @@
+/*
+ * Visual moderno (13/11/2026): leva às telas internas o padrão da página inicial — degradê azul
+ * executivo com grade sutil, cantos mais arredondados, sombras suaves, traço amarelo como detalhe.
+ * Carregado depois de theme.css. Só aparência: nenhuma cor nova, nenhum comportamento muda.
+ * Regras de cor continuam as de docs/IDENTIDADE_VISUAL.md (botão principal azul, amarelo só detalhe).
+ */
+:root {
+  --radius: 14px;
+  --radius-small: 10px;
+  --radius-large: 18px;
+  --shadow: 0 1px 2px rgb(16 42 74 / 5%), 0 6px 20px rgb(16 42 74 / 6%);
+  --shadow-hover: 0 4px 10px rgb(16 42 74 / 6%), 0 16px 36px rgb(16 42 74 / 10%);
+  --shadow-raised: 0 12px 36px rgb(16 42 74 / 16%);
+  --transition: 150ms ease;
+  --hero-gradient:
+    radial-gradient(circle at 88% 8%, rgb(251 185 0 / 16%), transparent 34%),
+    radial-gradient(circle at 6% 96%, rgb(3 78 162 / 55%), transparent 48%),
+    linear-gradient(160deg, var(--executive-strong) 0%, var(--executive) 55%, var(--executive-raised) 100%);
+  --grid-lines:
+    linear-gradient(rgb(255 255 255 / 4.5%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 4.5%) 1px, transparent 1px);
+}
+
+/* ------------------------------------------------------------------ Fundo */
+.app-layout,
+.main-content {
+  background:
+    radial-gradient(circle at 100% 0%, rgb(3 78 162 / 6%), transparent 40%),
+    var(--page);
+}
+
+/* ------------------------------------------------------------- Menu lateral */
+.sidebar {
+  background: var(--hero-gradient);
+  background-color: var(--executive);
+  box-shadow: 8px 0 32px rgb(16 42 74 / 12%);
+}
+
+.sidebar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--grid-lines);
+  background-size: 40px 40px;
+  mask-image: linear-gradient(180deg, #000 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.sidebar > * {
+  position: relative;
+}
+
+.sidebar .brand {
+  gap: 14px;
+  padding: 20px 18px 18px;
+}
+
+/* Logotipo maior, no cartão branco inclinado da página inicial. */
+.sidebar .brand-symbol {
+  width: 84px;
+  height: 58px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  box-shadow: 0 10px 24px rgb(0 0 0 / 25%);
+  transform: rotate(-2deg);
+}
+
+.sidebar .brand-text {
+  padding-left: 12px;
+  border-left: 2px solid var(--accent);
+}
+
+.sidebar .brand-text strong {
+  font-size: 0.8rem;
+  line-height: 1.25;
+}
+
+.sidebar .brand-text span {
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.sidebar .nav-group-label::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 2px;
+  margin-right: 8px;
+  vertical-align: middle;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.sidebar .nav-item {
+  border-radius: 10px;
+  transition: background-color var(--transition), color var(--transition), transform var(--transition);
+}
+
+.sidebar .nav-item:hover {
+  transform: translateX(2px);
+}
+
+.sidebar .nav-item.active,
+.sidebar .nav-item.active:hover {
+  background: linear-gradient(135deg, var(--institutional), var(--institutional-hover));
+  background-color: var(--institutional);
+  box-shadow: 0 8px 20px rgb(3 78 162 / 35%);
+  transform: none;
+}
+
+.sidebar .user-profile {
+  padding: 10px;
+  border: 1px solid var(--on-dark-border);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 7%);
+  backdrop-filter: blur(6px);
+}
+
+.sidebar .avatar {
+  box-shadow: 0 0 0 4px rgb(251 185 0 / 22%);
+}
+
+/* -------------------------------------------------------------------- Topo */
+.topbar {
+  background: rgb(255 255 255 / 88%);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 24px rgb(16 42 74 / 6%);
+}
+
+.topbar .breadcrumb strong {
+  color: var(--heading);
+  font-size: 0.98rem;
+  font-weight: 800;
+}
+
+.topbar .breadcrumb strong::before {
+  content: '';
+  display: inline-block;
+  width: 18px;
+  height: 3px;
+  margin-right: 10px;
+  vertical-align: middle;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.topbar .environment-badge {
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(16 42 74 / 5%);
+}
+
+.topbar .topbar-logout,
+.topbar-menu {
+  border-color: var(--institutional);
+  border-radius: 10px;
+  color: var(--institutional);
+}
+
+.topbar .topbar-logout:hover,
+.topbar-menu:hover {
+  border-color: var(--institutional);
+  background: var(--institutional-soft);
+}
+
+/* --------------------------------------------------------- Título da tela */
+/* Faixa no estilo da abertura da página inicial, em versão clara para não pesar nas telas. */
+.ui-page-header {
+  position: relative;
+  overflow: hidden;
+  align-items: center;
+  margin-bottom: 24px;
+  padding: 24px 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-large);
+  background:
+    radial-gradient(circle at 96% 0%, rgb(251 185 0 / 14%), transparent 30%),
+    radial-gradient(circle at 0% 100%, rgb(3 78 162 / 9%), transparent 45%),
+    linear-gradient(135deg, var(--surface) 0%, var(--surface-muted) 100%);
+  background-color: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.ui-page-header::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: linear-gradient(180deg, var(--institutional), var(--executive));
+}
+
+.ui-page-header > * {
+  position: relative;
+}
+
+.ui-page-header h1 {
+  font-size: clamp(1.5rem, 2.6vw, 2.05rem);
+}
+
+/* O sobretítulo ganha o traço amarelo do "kicker" da página inicial. */
+.eyebrow,
+.page-section .page-header p.eyebrow {
+  color: var(--institutional);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.ui-page-header .eyebrow::before {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 3px;
+  margin-right: 8px;
+  vertical-align: middle;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+/* ------------------------------------------------------------------ Botões */
+.page-content button,
+.ui-modal button,
+.ui-button,
+.page-content .ui-button,
+.page-content .maintenance-secondary-button,
+.page-content .back-button {
+  border-radius: 10px;
+  transition:
+    background-color var(--transition),
+    border-color var(--transition),
+    color var(--transition),
+    box-shadow var(--transition),
+    transform var(--transition);
+}
+
+.page-content .ui-button-primary,
+.page-content .maintenance-primary-button,
+.page-content button.maintenance-primary-button,
+.ui-modal .ui-button-primary {
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--institutional), var(--institutional-hover));
+  background-color: var(--institutional);
+  box-shadow: 0 6px 16px rgb(3 78 162 / 24%);
+}
+
+.page-content .ui-button-primary:hover,
+.page-content .maintenance-primary-button:hover,
+.page-content button.maintenance-primary-button:hover:not(:disabled),
+.ui-modal .ui-button-primary:hover:not(:disabled) {
+  background: var(--institutional-hover);
+  box-shadow: 0 10px 22px rgb(3 78 162 / 30%);
+  transform: translateY(-1px);
+}
+
+.page-content .maintenance-secondary-button:hover,
+.page-content .back-button:hover {
+  border-color: var(--institutional);
+  background: var(--institutional-soft);
+}
+
+.page-content button.danger,
+.page-content .ui-button-danger,
+.ui-modal .ui-button-danger {
+  box-shadow: 0 6px 16px rgb(180 35 24 / 20%);
+}
+
+.page-content button:disabled,
+.page-content button:disabled:hover {
+  box-shadow: none;
+  transform: none;
+}
+
+/* ----------------------------------------------------------------- Cartões */
+.admin-data-card,
+.maintenance-list,
+.maintenance-request-card,
+.recent-section,
+.users-card,
+.settings-card,
+.reports-chart-card,
+.placeholder-card,
+.detail-action,
+.ui-card {
+  border-radius: var(--radius);
+  transition: box-shadow var(--transition), border-color var(--transition);
+}
+
+.ui-card {
+  padding: 22px;
+}
+
+.ui-card h2,
+.detail-card h2,
+.reports-chart-card h2 {
+  letter-spacing: -0.01em;
+}
+
+/* Cartões que levam a outra tela sobem levemente, como os serviços da página inicial. */
+a.ui-card:hover,
+.maintenance-request-card:hover {
+  border-color: var(--info-border);
+  box-shadow: var(--shadow-hover);
+}
+
+/* ---------------------------------------------------------------- Métricas */
+.ui-metric {
+  position: relative;
+  overflow: hidden;
+  padding: 20px;
+  transition: box-shadow var(--transition), transform var(--transition), border-color var(--transition);
+}
+
+.ui-metric::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--institutional), var(--accent));
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.ui-metric:hover {
+  border-color: var(--info-border);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-2px);
+}
+
+.ui-metric:hover::after {
+  opacity: 1;
+}
+
+.ui-metric-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+}
+
+/* ------------------------------------------------------------------- Abas */
+.module-tabs {
+  padding: 5px;
+  border-radius: 14px;
+  background: var(--hero-gradient);
+  background-color: var(--executive);
+  box-shadow: 0 8px 22px rgb(16 42 74 / 14%);
+}
+
+.module-tabs a {
+  border-radius: 10px;
+}
+
+.module-tabs a.active {
+  background: linear-gradient(135deg, var(--institutional), var(--institutional-hover));
+  background-color: var(--institutional);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 22%);
+}
+
+/* ------------------------------------------------------------------ Campos */
+.page-content input:not([type='checkbox'], [type='radio']),
+.page-content select,
+.page-content textarea,
+.ui-modal input,
+.ui-modal select,
+.ui-modal textarea {
+  border-color: #c4ccd8;
+  border-radius: 10px;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.page-content input:not([type='checkbox'], [type='radio']):hover:not(:disabled, [readonly]),
+.page-content select:hover:not(:disabled),
+.page-content textarea:hover:not(:disabled),
+.ui-modal input:hover:not(:disabled),
+.ui-modal select:hover:not(:disabled),
+.ui-modal textarea:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+/* Foco com halo azul suave, além do contorno exigido pela acessibilidade. */
+.page-content input:not([type='checkbox'], [type='radio']):focus-visible,
+.page-content select:focus-visible,
+.page-content textarea:focus-visible,
+.ui-modal input:focus-visible,
+.ui-modal select:focus-visible,
+.ui-modal textarea:focus-visible {
+  border-color: var(--institutional);
+  box-shadow: 0 0 0 4px rgb(3 78 162 / 14%);
+}
+
+/* ----------------------------------------------------------------- Tabelas */
+.data-table-wrapper,
+.maintenance-table-wrapper,
+.recent-table-wrapper,
+.admin-table-wrapper {
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.data-table th,
+.maintenance-table th,
+.recent-table th,
+.admin-table th {
+  background: linear-gradient(180deg, var(--surface-muted), #eef2f7);
+  background-color: var(--surface-muted);
+  color: var(--executive);
+}
+
+.data-table tbody tr,
+.maintenance-table tbody tr,
+.recent-table tbody tr,
+.admin-table tbody tr {
+  transition: background-color var(--transition);
+}
+
+.data-table tbody tr:hover,
+.maintenance-table tbody tr:hover,
+.recent-table tbody tr:hover,
+.admin-table tbody tr:hover {
+  background: var(--institutional-soft);
+}
+
+/* -------------------------------------------------------------------- Modal */
+.ui-modal {
+  border-radius: var(--radius-large);
+  box-shadow: 0 30px 80px rgb(16 42 74 / 30%);
+}
+
+/* ------------------------------------------------------------------ Rodapé */
+.page-footer {
+  align-items: center;
+  gap: 10px;
+}
+
+.page-footer::before {
+  content: '';
+  width: 18px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+/* ---------------------------------------------- Entrar, criar conta, senha */
+/* O mesmo fundo da abertura da página inicial, com a grade sutil. */
+.login-page {
+  position: relative;
+  overflow: hidden;
+  background: var(--hero-gradient);
+  background-color: var(--executive);
+}
+
+.login-page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--grid-lines);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(180deg, #000 10%, transparent 90%);
+  pointer-events: none;
+}
+
+.login-page > * {
+  position: relative;
+}
+
+.login-card {
+  border-radius: 20px;
+  box-shadow: 0 30px 70px rgb(0 0 0 / 30%);
+}
+
+.login-form input {
+  border-radius: 10px;
+}
+
+.login-submit {
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--institutional), var(--institutional-hover));
+  background-color: var(--institutional);
+  box-shadow: 0 8px 20px rgb(3 78 162 / 28%);
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+
+.login-submit:hover:not(:disabled) {
+  box-shadow: 0 12px 26px rgb(3 78 162 / 34%);
+  transform: translateY(-1px);
+}
+
+/* ------------------------------------------------------------ Celular e afins */
+@media (max-width: 1023px) {
+  .ui-page-header {
+    padding: 18px 18px 18px 22px;
+  }
+
+  /* Na gaveta, o botão de fechar divide a linha com a marca: logotipo um pouco menor. */
+  .sidebar .brand {
+    gap: 10px;
+    padding: 16px 14px;
+  }
+
+  .sidebar .brand-symbol {
+    width: 66px;
+    height: 46px;
+  }
+
+  .sidebar .brand-text {
+    padding-left: 10px;
+  }
+
+  .sidebar .brand-text strong {
+    font-size: 0.74rem;
+  }
+}
+
+/* Sem animações para quem pediu menos movimento ao sistema operacional. */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar .nav-item:hover,
+  .ui-metric:hover,
+  .page-content .ui-button-primary:hover,
+  .page-content button.maintenance-primary-button:hover:not(:disabled),
+  .ui-modal .ui-button-primary:hover:not(:disabled),
+  .login-submit:hover:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* Na impressão, nada de degradês nem sombras. */
+@media print {
+  .ui-page-header,
+  .ui-card,
+  .ui-metric,
+  .data-table-wrapper,
+  .maintenance-table-wrapper,
+  .admin-table-wrapper {
+    background: none;
+    box-shadow: none;
+  }
+
+  .ui-page-header::before,
+  .ui-metric::after {
+    display: none;
+  }
+}
