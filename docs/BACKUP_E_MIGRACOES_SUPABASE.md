@@ -346,7 +346,7 @@ Criada em 12/11/2026. Aplique depois da 020, com backup e autorização; o scrip
 
 ### Migração 023: Patrimônio
 
-Criada em 13/11/2026 e **ainda não aplicada em nenhum banco**. Aplique depois da 022, com backup e autorização. Cria quatro tabelas e não altera as existentes:
+Criada e **aplicada em 13/11/2026 na homologação e no banco real**, com backup e autorização. As conferências terminaram sem problemas, com 77 tabelas, todas com RLS. Cria quatro tabelas e não altera as existentes:
 - `patrimony_assets`: os bens, com número único sem contar pontos, traços e espaços;
 - `patrimony_movements`: o histórico, permanente;
 - `patrimony_checks`: as conferências;
