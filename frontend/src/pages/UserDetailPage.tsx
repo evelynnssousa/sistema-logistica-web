@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { revokeUserSessions } from '../api/modulesApi'
 import { roleLabels } from '../app/roleLabels'
 import { useAuthenticatedUser, useHasPermission } from '../auth/UserContext'
@@ -48,6 +48,8 @@ function overridesFrom(user: ManagedUser) {
 }
 
 function UserDetailPage() {
+  // Abas (13/11/2026): a página tinha de 7 a 11 telas de rolagem. A aba fica no endereço.
+  const [searchParams] = useSearchParams()
   const { userId = '' } = useParams()
   const currentUser = useAuthenticatedUser()
   const canManage = useHasPermission('users:manage')
@@ -317,6 +319,14 @@ function UserDetailPage() {
     )
   }
 
+  const userTabs: { key: string; label: string; icon: 'account' | 'lists' | 'locked' | 'audit' }[] = [
+    { key: 'dados', label: 'Dados e situação', icon: 'account' },
+    ...(decided && links && linkOptions ? [{ key: 'vinculos', label: 'Vínculos', icon: 'lists' as const }] : []),
+    ...(decided ? [{ key: 'acesso', label: 'Perfil e permissões', icon: 'locked' as const }] : []),
+    { key: 'historico', label: 'Histórico', icon: 'audit' },
+  ]
+  const tab = userTabs.find((item) => item.key === searchParams.get('aba'))?.key ?? 'dados'
+
   return (
     <section className="page-section admin-module-page">
       <PageHeader
@@ -347,6 +357,23 @@ function UserDetailPage() {
         </p>
       )}
 
+      <nav className="module-tabs" aria-label="Partes do cadastro">
+        {userTabs.map((item) => (
+          <Link
+            key={item.key}
+            to={`?aba=${item.key}`}
+            replace
+            className={item.key === tab ? 'active' : undefined}
+            aria-current={item.key === tab ? 'page' : undefined}
+          >
+            <Icon name={item.icon} size={18} />
+            {item.label}
+          </Link>
+        ))}
+      </nav>
+
+      {tab === 'dados' && (
+      <>
       <form className="users-card" onSubmit={saveData}>
         <h2>Dados cadastrais</h2>
         <div className="users-form-grid">
@@ -419,7 +446,10 @@ function UserDetailPage() {
         </div>
       )}
 
-      {decided && links && linkOptions && (
+      </>
+      )}
+
+      {tab === 'vinculos' && decided && links && linkOptions && (
         <form className="users-card" onSubmit={(event) => void saveLinks(event)}>
           <h2>Vínculos institucionais</h2>
           <p>
@@ -446,7 +476,7 @@ function UserDetailPage() {
         </form>
       )}
 
-      {decided && (
+      {tab === 'acesso' && decided && (
         <form className="users-card" onSubmit={(event) => void saveAccess(event)}>
           <h2>Perfil e equipe SLM</h2>
           {!canEditAccess && !isSelf && (
@@ -586,6 +616,7 @@ function UserDetailPage() {
         </form>
       )}
 
+      {tab === 'historico' && (
       <div className="users-card">
         <h2>Histórico de alterações</h2>
         {history.length === 0 ? (
@@ -615,6 +646,7 @@ function UserDetailPage() {
           </div>
         )}
       </div>
+      )}
       {confirmDialog}
     </section>
   )

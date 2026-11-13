@@ -78,7 +78,7 @@ async function run({ playwright, baseUrl, runId, password }) {
 
   async function grant(admin, page, permissions) {
     const userId = await page.evaluate(async () => (await (await fetch('/api/auth/me')).json()).user.id)
-    await admin.goto(`/usuarios/${userId}`)
+    await admin.goto(`/usuarios/${userId}?aba=acesso`)
     await admin.waitForSelector('.users-permission')
     for (const permission of permissions) {
       await admin.locator('.users-permission', { hasText: permission }).locator('select').selectOption('grant')

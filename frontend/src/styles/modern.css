@@ -783,3 +783,8 @@ a.ui-card:hover,
 .sort-button {
   gap: 4px;
 }
+
+/* Horário na Auditoria: o cinza claro ficava abaixo do contraste mínimo (4,5:1) nas linhas alternadas. */
+.audit-when span {
+  color: #475569;
+}

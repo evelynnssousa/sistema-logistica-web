@@ -55,7 +55,7 @@ const details = [
   ['passagens-detalhe', '/passagens-aereas', '.service-row-action', '.request-detail-page'],
   ['pedido-detalhe', '/almoxarifado/solicitacoes', '.data-table a', '.warehouse-request-page'],
   ['conferencia-detalhe', '/almoxarifado/inventario', '.data-table a', '.detail-status'],
-  ['usuario-detalhe', '/usuarios', '.users-link', '.users-permission'],
+  ['usuario-detalhe', '/usuarios', '.users-link', '.users-card'],
 ]
 
 const removedTexts = ['GESTÃO OPERACIONAL', 'Versão inicial', 'plataforma em desenvolvimento', 'Nova plataforma']

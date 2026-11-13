@@ -455,9 +455,10 @@ async function scenarios({ browser, baseUrl, runId, password, screenshotDirector
     await approved.locator('.demand-form').getByLabel('Setor de origem').selectOption({ label: 'Setor E2E Alfa' })
 
     const users = (await api(admin, 'GET', `/admin/users?search=${encodeURIComponent(email)}`)).body.users
-    await admin.goto(`/usuarios/${users[0].id}`)
-    await admin.waitForSelector('h2:has-text("Vínculos institucionais")')
+    await admin.goto(`/usuarios/${users[0].id}?aba=historico`)
     await admin.waitForSelector('text=Vínculo institucional alterado')
+    await admin.goto(`/usuarios/${users[0].id}?aba=vinculos`)
+    await admin.waitForSelector('h2:has-text("Vínculos institucionais")')
     await shot(admin, 'usuario-vinculos')
     await admin.getByRole('checkbox', { name: 'Setor E2E Beta' }).uncheck()
     await admin.getByRole('button', { name: 'Salvar vínculos' }).click()

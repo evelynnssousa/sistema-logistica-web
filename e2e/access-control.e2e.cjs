@@ -179,7 +179,7 @@ async function run({ playwright, baseUrl, runId, password }) {
     requesterId = await requester.evaluate(async () => (await (await fetch('/api/auth/me')).json()).user.id)
 
     async function setPermissions(changes) {
-      await admin.goto(`/usuarios/${requesterId}`)
+      await admin.goto(`/usuarios/${requesterId}?aba=acesso`)
       await admin.waitForSelector('.users-permission')
       for (const [key, value] of Object.entries(changes)) {
         await admin.locator('.users-permission', { hasText: key }).locator('select').selectOption(value)
@@ -198,14 +198,14 @@ async function run({ playwright, baseUrl, runId, password }) {
       for (const key of operational) assert.ok(before.includes(key), `padrão do perfil: ${key}`)
       for (const key of individual) assert.equal(before.includes(key), false, key)
 
-      await admin.goto(`/usuarios/${requesterId}`)
+      await admin.goto(`/usuarios/${requesterId}?aba=acesso`)
       await admin.waitForSelector('.users-permission')
       for (const key of special) {
         const grant = admin.locator('.users-permission', { hasText: key }).locator('option[value=grant]')
         assert.equal(await grant.isDisabled(), true, `solicitante: ${key}`)
       }
 
-      await admin.goto(`/usuarios/${operatorId}`)
+      await admin.goto(`/usuarios/${operatorId}?aba=acesso`)
       await admin.waitForSelector('.users-permission')
       for (const key of special) {
         await admin.locator('.users-permission', { hasText: key }).locator('select').selectOption('grant')
@@ -231,7 +231,7 @@ async function run({ playwright, baseUrl, runId, password }) {
     })
 
     await step('a tela explica cada permissão e distingue o padrão do perfil da concessão individual', async () => {
-      await admin.goto(`/usuarios/${requesterId}`)
+      await admin.goto(`/usuarios/${requesterId}?aba=acesso`)
       await admin.waitForSelector('.users-permission')
       await admin.locator('.permission-scope-notice').waitFor()
       assert.match(await admin.textContent('.permission-scope-notice'), /não elimina as demais regras/)
@@ -254,7 +254,7 @@ async function run({ playwright, baseUrl, runId, password }) {
       const catalog = await admin.evaluate(async () => (await (await fetch('/api/admin/permissions')).json()).essentialAdministrator)
       assert.equal(catalog.length, 6)
 
-      await admin.goto(`/usuarios/${operatorId}`)
+      await admin.goto(`/usuarios/${operatorId}?aba=acesso`)
       await admin.waitForSelector('.users-permission')
       await admin.selectOption('form select >> nth=0', 'administrator')
       for (const key of catalog) {
@@ -270,7 +270,7 @@ async function run({ playwright, baseUrl, runId, password }) {
       assert.equal(await cpfGrant.isDisabled(), true, 'administrador que saiu da equipe')
 
       // Só a simulação na tela: nada foi salvo, e não existe segundo administrador.
-      await admin.goto(`/usuarios/${operatorId}`)
+      await admin.goto(`/usuarios/${operatorId}?aba=acesso`)
       await admin.waitForSelector('.users-permission')
       assert.equal(await admin.locator('form select >> nth=0').inputValue(), 'requester')
     })
@@ -308,7 +308,7 @@ async function run({ playwright, baseUrl, runId, password }) {
 
     await step('a própria conta não oferece alteração de acesso', async () => {
       const id = await admin.evaluate(async () => (await (await fetch('/api/auth/me')).json()).user.id)
-      await admin.goto(`/usuarios/${id}`)
+      await admin.goto(`/usuarios/${id}?aba=acesso`)
       await admin.waitForSelector('.users-note')
       assert.equal(await admin.locator('button:has-text("Salvar acesso")').count(), 0)
     })
