@@ -195,6 +195,7 @@ router.post(
     const custom = await readCustomForm('material', asBody(request.body).customFields)
     const id = await warehouse.createMaterial(identityOf(response), readMaterial(request.body))
     await saveCustomFields('materials', id, custom)
+    await warehouse.setMaterialLocation(id, optionalText(asBody(request.body).location, 'Localização', 120))
     response.status(201).json({ success: true, id })
   }),
 )
@@ -208,6 +209,7 @@ router.patch(
     const custom = 'customFields' in body ? await readCustomForm('material', body.customFields) : null
     await warehouse.updateMaterial(identityOf(response), id, readMaterial(request.body))
     if (custom) await saveCustomFields('materials', id, custom)
+    if ('location' in body) await warehouse.setMaterialLocation(id, optionalText(body.location, 'Localização', 120))
     response.json({ success: true })
   }),
 )

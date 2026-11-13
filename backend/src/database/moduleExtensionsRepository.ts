@@ -516,7 +516,7 @@ export class ModuleExtensionsRepository {
   // Estoque interno. Não substitui o sistema governamental.
   // -------------------------------------------------------------------------
   /** withValues: só para quem tem warehouse:finance. Sem a 020, os valores vêm nulos. */
-  async stock(filters: { search: string; belowMinimum: boolean; withValues?: boolean }) {
+  async stock(filters: { search: string; belowMinimum: boolean; withValues?: boolean; byLocation?: boolean }) {
     const parameters: unknown[] = []
     const conditions = ['m.ativo']
     if (filters.search) {
@@ -541,6 +541,7 @@ export class ModuleExtensionsRepository {
     }>(
       `SELECT m.id::text AS id, m.codigo, m.nome, m.unidade, m.estoque_atual, m.estoque_minimo,
               to_jsonb(m)->>'valor_estoque' AS valor_estoque,
+              to_jsonb(m)->>'localizacao' AS localizacao,
               to_jsonb(m)->>'quantidade_reservada' AS reservada,
               (SELECT sum(i.quantidade_atendida) FROM public.material_request_items i
                  JOIN public.material_requests r ON r.id = i.material_request_id
@@ -556,7 +557,9 @@ export class ModuleExtensionsRepository {
               (SELECT max(s.created_at) FROM public.stock_movements s WHERE s.material_id = m.id) AS ultima_movimentacao
          FROM public.materials m
         WHERE ${conditions.join(' AND ')}
-        ORDER BY m.estoque_minimo > 0 AND m.estoque_atual < m.estoque_minimo DESC, lower(m.nome)
+        ORDER BY ${filters.byLocation
+          ? `lower(to_jsonb(m)->>'localizacao') NULLS LAST, lower(m.nome)`
+          : 'm.estoque_minimo > 0 AND m.estoque_atual < m.estoque_minimo DESC, lower(m.nome)'}
         LIMIT 500`,
       parameters,
     )
@@ -565,6 +568,7 @@ export class ModuleExtensionsRepository {
       code: row.codigo,
       name: row.nome,
       unit: row.unidade,
+      location: (row as { localizacao?: string | null }).localizacao ?? null,
       current: Number(row.estoque_atual),
       minimum: Number(row.estoque_minimo),
       belowMinimum: Number(row.estoque_minimo) > 0 && Number(row.estoque_atual) < Number(row.estoque_minimo),

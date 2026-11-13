@@ -362,7 +362,7 @@ export function ExternalRequestTab() {
   )
 }
 
-const emptyMaterial = { code: '', name: '', description: '', unitId: '', categoryId: '', active: true, customFields: {} as Record<string, string> }
+const emptyMaterial = { code: '', name: '', description: '', unitId: '', categoryId: '', location: '', active: true, customFields: {} as Record<string, string> }
 
 export function MaterialsTab() {
   const { catalog } = useCatalog()
@@ -403,6 +403,7 @@ export function MaterialsTab() {
       // A unidade é um texto copiado; a opção correspondente vem do cadastro atual.
       unitId: catalog.measurementUnits.find((unit) => unit.label === material.unit)?.id ?? '',
       categoryId: material.categoryId ?? '',
+      location: material.location ?? '',
       active: material.active,
       customFields: Object.fromEntries((material.customFields ?? []).map((item) => [item.id, item.value])),
     })
@@ -463,6 +464,15 @@ export function MaterialsTab() {
           </select>
         </label>
         <label className="maintenance-form-field">
+          <span>{materialForm.label('location', 'Localização (armário, prateleira)')}</span>
+          <input
+            maxLength={120}
+            placeholder="Ex.: Armário 1, prateleira 2"
+            value={form.location}
+            onChange={(event) => setForm({ ...form, location: event.target.value })}
+          />
+        </label>
+        <label className="maintenance-form-field">
           <span>{materialForm.label('description', 'Descrição')}</span>
           <textarea rows={2} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
         </label>
@@ -488,6 +498,7 @@ export function MaterialsTab() {
               <tr>
                 <th>Código</th>
                 <th>Material</th>
+                <th>Localização</th>
                 <th>Categoria</th>
                 <th>Unidade</th>
                 <th>Situação</th>
@@ -499,6 +510,7 @@ export function MaterialsTab() {
                 <tr key={material.id}>
                   <td>{material.code ?? '—'}</td>
                   <td>{material.name}</td>
+                  <td>{material.location ?? '—'}</td>
                   <td>{material.category ?? '—'}</td>
                   <td>{material.unit}</td>
                   <td>{material.active ? 'Ativo' : 'Inativo'}</td>
@@ -627,9 +639,16 @@ export function ChecksTab() {
           <span>Data de referência *</span>
           <input required type="date" value={referenceDate} onChange={(event) => setReferenceDate(event.target.value)} />
         </label>
-        {materials.map((material) => (
+        {[...materials]
+          .sort(
+            (a, b) =>
+              (a.location ?? '\uffff').localeCompare(b.location ?? '\uffff', 'pt-BR', { numeric: true }) ||
+              a.name.localeCompare(b.name, 'pt-BR'),
+          )
+          .map((material) => (
           <label className="maintenance-form-field" key={material.id}>
             <span>
+              {material.location ? `${material.location} · ` : ''}
               {material.name} ({material.unit})
             </span>
             <input

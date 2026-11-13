@@ -119,6 +119,7 @@ function InventoryCheckPage() {
           <table className="data-table">
             <thead>
               <tr>
+                <th>Localização</th>
                 <th>Material</th>
                 <th>Sistema governamental</th>
                 <th>Contagem interna</th>
@@ -133,6 +134,7 @@ function InventoryCheckPage() {
                 const draft = drafts[item.materialId]
                 return (
                   <tr key={item.materialId}>
+                    <td>{item.location ?? 'Sem localização'}</td>
                     <td>
                       {item.material} ({item.unit})
                     </td>

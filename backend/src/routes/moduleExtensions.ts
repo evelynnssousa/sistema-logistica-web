@@ -358,6 +358,7 @@ router.get(
         search: readSearch(query.search),
         belowMinimum: query.belowMinimum === 'true',
         withValues: seesValues(response),
+        byLocation: query.order === 'location',
       }),
     })
   }),

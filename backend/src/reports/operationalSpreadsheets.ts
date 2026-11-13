@@ -179,11 +179,11 @@ export async function warehouseWorkbook(
     {
       name: 'Estoque',
       rows: [
-        ['Código', 'Material', 'Unidade', 'Estoque físico', 'Reservado', 'Disponível', 'Mínimo', 'Abaixo do mínimo',
+        ['Código', 'Material', 'Localização', 'Unidade', 'Estoque físico', 'Reservado', 'Disponível', 'Mínimo', 'Abaixo do mínimo',
           'Consumo médio por mês', 'Base do consumo (meses)', 'Entregue nos últimos 12 meses', 'Fornecido (total)', 'Última movimentação',
           ...(financial ? ['Custo médio (R$)', 'Valor em estoque (R$)'] : [])],
         ...stock.map((item) => [
-          item.code, item.name, item.unit, item.current, item.reserved, item.available,
+          item.code, item.name, item.location, item.unit, item.current, item.reserved, item.available,
           item.minimum > 0 ? item.minimum : null, item.belowMinimum ? 'Sim' : 'Não',
           item.monthlyConsumption.average, item.monthlyConsumption.months, item.monthlyConsumption.total,
           item.provided, dateTime(item.lastMovement),

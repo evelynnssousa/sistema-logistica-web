@@ -14,8 +14,9 @@ BEGIN
      OR EXISTS (SELECT 1 FROM public.flight_quotes WHERE campos_personalizados IS NOT NULL)
      OR EXISTS (SELECT 1 FROM public.maintenance_executions WHERE campos_personalizados IS NOT NULL)
      OR EXISTS (SELECT 1 FROM public.request_occurrences WHERE campos_personalizados IS NOT NULL)
-     OR EXISTS (SELECT 1 FROM public.stock_movements WHERE instrumento_item_id IS NOT NULL) THEN
-    RAISE EXCEPTION 'Há campos personalizados ou entradas ligadas a atas. A migração 022 não pode ser desfeita sem perdê-los.';
+     OR EXISTS (SELECT 1 FROM public.stock_movements WHERE instrumento_item_id IS NOT NULL)
+     OR EXISTS (SELECT 1 FROM public.materials WHERE localizacao IS NOT NULL) THEN
+    RAISE EXCEPTION 'Há campos personalizados, localizações de materiais ou entradas ligadas a atas. A migração 022 não pode ser desfeita sem perdê-los.';
   END IF;
 END
 $rollback$;
@@ -23,6 +24,9 @@ $rollback$;
 ALTER TABLE public.contract_instrument_usages DROP COLUMN stock_movement_id;
 DROP INDEX public.idx_sm_instrumento_item;
 ALTER TABLE public.stock_movements DROP COLUMN instrumento_item_id;
+
+DROP INDEX public.idx_materials_localizacao;
+ALTER TABLE public.materials DROP COLUMN localizacao;
 
 ALTER TABLE public.request_occurrences DROP COLUMN formulario_versao, DROP COLUMN campos_personalizados;
 ALTER TABLE public.maintenance_executions DROP COLUMN formulario_versao, DROP COLUMN campos_personalizados;

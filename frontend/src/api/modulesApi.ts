@@ -376,6 +376,8 @@ export const getCapabilities = () =>
 // ---------------------------------------------------------------------------
 export type Material = {
   id: string
+  /** Onde o material fica (022). Só para quem administra o Almoxarifado. */
+  location?: string | null
   customFields?: { id: string; label: string; value: string }[]
   code: string | null
   name: string
@@ -504,6 +506,7 @@ export type MaterialInput = {
   categoryId: string
   active: boolean
   customFields?: Record<string, string>
+  location?: string
 }
 
 export const createMaterial = (body: MaterialInput) =>
@@ -615,6 +618,7 @@ export type InventoryCheck = {
   note: string | null
   status: string
   items: Array<{
+    location?: string | null
     materialId: string
     material: string
     unit: string

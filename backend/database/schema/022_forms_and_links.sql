@@ -12,6 +12,8 @@
 -- 3. Ligação das atas e contratos (021) com o Almoxarifado: a entrada de material pode indicar o
 --    item da ata ou do contrato (stock_movements.instrumento_item_id), e a utilização gerada guarda
 --    a entrada que a originou (contract_instrument_usages.stock_movement_id).
+-- 4. materials.localizacao: onde o material fica (ex.: "Armário 1, prateleira 2"), para o inventário
+--    seguir a ordem física de contagem em vez da alfabética.
 --
 -- Não altera registros existentes: as colunas novas começam vazias. Depende da 021.
 -- Para desfazer: 022_forms_and_links.rollback.sql.
@@ -48,6 +50,10 @@ ALTER TABLE public.maintenance_executions
 ALTER TABLE public.request_occurrences
   ADD COLUMN campos_personalizados jsonb,
   ADD COLUMN formulario_versao integer;
+
+ALTER TABLE public.materials
+  ADD COLUMN localizacao text CHECK (localizacao IS NULL OR length(trim(localizacao)) BETWEEN 1 AND 120);
+CREATE INDEX idx_materials_localizacao ON public.materials (lower(localizacao)) WHERE localizacao IS NOT NULL;
 
 ALTER TABLE public.stock_movements
   ADD COLUMN instrumento_item_id uuid REFERENCES public.contract_instrument_items(id);

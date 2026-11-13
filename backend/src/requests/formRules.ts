@@ -231,6 +231,7 @@ export const defaultForms: Record<ManagedForm, ManagedFormContent> = {
       standard('code', 'Código', 'shortText'),
       standard('unit', 'Unidade de medida', 'singleSelect', true, { catalog: 'measurementUnits' }),
       standard('category', 'Categoria', 'singleSelect', false, { catalog: 'warehouseCategories' }),
+      standard('location', 'Localização (armário, prateleira)', 'shortText'),
       standard('description', 'Descrição', 'longText'),
     ],
   },

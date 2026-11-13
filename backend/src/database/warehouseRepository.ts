@@ -285,6 +285,20 @@ export class WarehouseRepository {
   // -------------------------------------------------------------------------
   // Catálogo de materiais
   // -------------------------------------------------------------------------
+  /** Localização do material (022). Sem a migração, só aceita deixar em branco. */
+  async setMaterialLocation(id: string, location: string | null) {
+    const pool = this.poolProvider()
+    const { rows } = await pool.query<{ present: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+                       AND table_name = 'materials' AND column_name = 'localizacao') AS present`,
+    )
+    if (!rows[0].present) {
+      if (location) throw new ModuleError('A localização do material depende da migração 022, ainda não aplicada neste banco.', 409)
+      return
+    }
+    await pool.query(`UPDATE public.materials SET localizacao = $2 WHERE id = $1`, [id, location])
+  }
+
   async listMaterials(filters: {
     search?: string
     includeInactive: boolean
@@ -310,7 +324,8 @@ export class WarehouseRepository {
     }>(
       `SELECT id::text AS id, codigo, nome, descricao, unidade,
               categoria_id::text AS categoria_id, categoria_nome, ativo,
-              to_jsonb(materials)->'campos_personalizados' AS campos_personalizados
+              to_jsonb(materials)->'campos_personalizados' AS campos_personalizados,
+              to_jsonb(materials)->>'localizacao' AS localizacao
          FROM public.materials
          ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
         ORDER BY lower(nome)
@@ -328,7 +343,13 @@ export class WarehouseRepository {
       category: row.categoria_nome,
       active: row.ativo,
       // Campos novos do cadastro: só para quem administra o Almoxarifado.
-      ...(filters.withCustom ? { customFields: presentCustomFields((row as { campos_personalizados?: unknown }).campos_personalizados) } : {}),
+      ...(filters.withCustom
+        ? {
+            customFields: presentCustomFields((row as { campos_personalizados?: unknown }).campos_personalizados),
+            // Onde o material fica: informação interna da equipe do Almoxarifado.
+            location: (row as { localizacao?: string | null }).localizacao ?? null,
+          }
+        : {}),
     }))
   }
 
@@ -1404,11 +1425,13 @@ export class WarehouseRepository {
     }>(
       `SELECT i.material_id::text AS material_id, i.material_nome, i.unidade,
               i.quantidade_governamental, i.quantidade_contada, i.diferenca, i.observacao,
-              u.full_name AS atualizado_por_nome, i.updated_at
+              u.full_name AS atualizado_por_nome, i.updated_at, to_jsonb(m)->>'localizacao' AS localizacao
          FROM public.inventory_check_items i
+         JOIN public.materials m ON m.id = i.material_id
          LEFT JOIN public.auth_users u ON u.id = i.atualizado_por
         WHERE i.check_id = $1
-        ORDER BY lower(i.material_nome)`,
+        -- Ordem de contagem: pela localização (armário por armário), e dentro dela pelo nome.
+        ORDER BY lower(to_jsonb(m)->>'localizacao') NULLS LAST, lower(i.material_nome)`,
       [id],
     )
 
@@ -1423,6 +1446,7 @@ export class WarehouseRepository {
         const government = Number(row.quantidade_governamental)
         const counted = row.quantidade_contada === null ? null : Number(row.quantidade_contada)
         return {
+          location: (row as { localizacao?: string | null }).localizacao ?? null,
           materialId: row.material_id,
           material: row.material_nome,
           unit: row.unidade,

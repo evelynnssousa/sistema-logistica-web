@@ -393,6 +393,7 @@ export const selectQuote = (requestId: string, quoteId: string, justificativa: s
 // ---------------------------------------------------------------------------
 export type StockItem = {
   id: string
+  location?: string | null
   code: string | null
   name: string
   unit: string
@@ -427,9 +428,13 @@ export type StockMovement = {
   agreement?: string | null
 }
 
-export const listStock = (filters: { search?: string; belowMinimum?: boolean }) =>
+export const listStock = (filters: { search?: string; belowMinimum?: boolean; byLocation?: boolean }) =>
   apiRequest<Envelope & { items: StockItem[] }>(
-    `/warehouse/stock${queryString({ search: filters.search, belowMinimum: filters.belowMinimum ? 'true' : undefined })}`,
+    `/warehouse/stock${queryString({
+      search: filters.search,
+      belowMinimum: filters.belowMinimum ? 'true' : undefined,
+      order: filters.byLocation ? 'location' : undefined,
+    })}`,
   )
 export const setStockMinimum = (id: string, minimo: number | string) =>
   send<Envelope>(`/warehouse/stock/${id}/minimum`, 'PUT', { minimo })

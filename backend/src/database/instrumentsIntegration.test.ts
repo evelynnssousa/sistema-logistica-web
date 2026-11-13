@@ -351,6 +351,41 @@ test('pesquisa geral: demandas e atas só do setor da pessoa ou compartilhadas',
   assert.deepEqual(Object.keys(onlyDemands).sort(), ['demands', 'instruments'])
 })
 
+test('localização do material: interna, e o inventário segue a ordem dos armários', async () => {
+  const unit = await post('/settings/catalog/measurementUnits', admin, { label: 'Caixa' })
+  assert.equal(unit.status, 201, unit.text)
+  const create = async (name: string, location: string) => {
+    const created = await post('/warehouse/materials', admin, { name, unitId: unit.body.option.id, location })
+    assert.equal(created.status, 201, created.text)
+    return created.body.id as string
+  }
+  const pencil = await create('Lápis grafite', 'Armário 2')
+  const clip = await create('Clipe', 'Armário 1')
+  const tape = await create('Fita adesiva', 'Armário 1')
+  assert.equal(
+    (await call(`/warehouse/materials/${pencil}`, { method: 'PATCH', session: admin, body: { name: 'Lápis grafite', unitId: unit.body.option.id, location: 'Armário 3' } })).status,
+    200,
+  )
+  const listed = (await get('/warehouse/materials', admin)).body.materials.find((item: { id: string }) => item.id === pencil)
+  assert.equal(listed.location, 'Armário 3')
+  // Quem só pede materiais não vê onde ficam.
+  const forRequester = (await get('/warehouse/materials', memberA)).body.materials.find((item: { id: string }) => item.id === pencil)
+  assert.equal('location' in forRequester, false)
+
+  const check = await post('/warehouse/inventory-checks', admin, {
+    title: 'Contagem por armário', referenceDate: '2026-11-13',
+    items: [pencil, tape, clip].map((materialId) => ({ materialId, governmentQuantity: 1 })),
+  })
+  assert.equal(check.status, 201, check.text)
+  const detail = (await get(`/warehouse/inventory-checks/${check.body.id}`, admin)).body.check
+  assert.deepEqual(
+    detail.items.map((item: { location: string; material: string }) => `${item.location}: ${item.material}`),
+    ['Armário 1: Clipe', 'Armário 1: Fita adesiva', 'Armário 3: Lápis grafite'],
+  )
+  const byLocation = (await get('/warehouse/stock?order=location', admin)).body.items.map((item: { name: string }) => item.name)
+  assert.ok(byLocation.indexOf('Clipe') < byLocation.indexOf('Lápis grafite'))
+})
+
 test('a 021 não se desfaz com atas cadastradas', async () => {
   await assert.rejects(pool.query(schema('021_contract_instruments.rollback.sql')), /não pode ser desfeita/)
 })

@@ -39,6 +39,7 @@ export function StockTab() {
   const [items, setItems] = useState<StockItem[] | null>(null)
   const [search, setSearch] = useState('')
   const [onlyBelow, setOnlyBelow] = useState('')
+  const [order, setOrder] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [movements, setMovements] = useState<{ list: StockMovement[]; total: number; page: number; pageSize: number } | null>(null)
@@ -90,17 +91,17 @@ export function StockTab() {
 
   const load = useCallback(async () => {
     const [stock, history] = await Promise.all([
-      listStock({ search, belowMinimum: onlyBelow === 'below' }),
+      listStock({ search, belowMinimum: onlyBelow === 'below', byLocation: order === 'location' }),
       listStockMovements({ page }),
     ])
     setItems(stock.items)
     setMovements({ list: history.movements, total: history.total, page: history.page, pageSize: history.pageSize })
-  }, [search, onlyBelow, page])
+  }, [search, onlyBelow, order, page])
 
   useEffect(() => {
     let active = true
     Promise.all([
-      listStock({ search, belowMinimum: onlyBelow === 'below' }),
+      listStock({ search, belowMinimum: onlyBelow === 'below', byLocation: order === 'location' }),
       listStockMovements({ page }),
     ])
       .then(([stock, history]) => {
@@ -115,7 +116,7 @@ export function StockTab() {
     return () => {
       active = false
     }
-  }, [search, onlyBelow, page])
+  }, [search, onlyBelow, order, page])
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -211,10 +212,11 @@ export function StockTab() {
 
       <FilterBar
         label="Filtros do estoque"
-        canClear={Boolean(search || onlyBelow)}
+        canClear={Boolean(search || onlyBelow || order)}
         onClear={() => {
           setSearch('')
           setOnlyBelow('')
+          setOrder('')
         }}
       >
         <SearchField label="Pesquisar" value={search} placeholder="Nome ou código" onChange={setSearch} />
@@ -224,6 +226,13 @@ export function StockTab() {
           onChange={setOnlyBelow}
           allLabel="Todos"
           options={[{ value: 'below', label: 'Abaixo do mínimo' }]}
+        />
+        <FilterSelect
+          label="Ordem"
+          value={order}
+          onChange={setOrder}
+          allLabel="Abaixo do mínimo primeiro"
+          options={[{ value: 'location', label: 'Por localização (para contagem)' }]}
         />
       </FilterBar>
 
@@ -238,6 +247,7 @@ export function StockTab() {
                 <thead>
                   <tr>
                     <th>Material</th>
+                    <th>Localização</th>
                     <th>Estoque físico</th>
                     <th>Reservado</th>
                     <th>Disponível para distribuição</th>
@@ -259,6 +269,7 @@ export function StockTab() {
                         {item.name}
                         {item.code && <small className="central-subtext">{item.code}</small>}
                       </td>
+                      <td>{item.location ?? '—'}</td>
                       <td>
                         {item.current} {item.unit}
                         {item.belowMinimum && <span className="central-flag central-flag-late">Abaixo do mínimo</span>}
