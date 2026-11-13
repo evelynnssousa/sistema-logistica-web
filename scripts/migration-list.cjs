@@ -29,6 +29,8 @@ const migrations = [
   // Só acrescenta colunas: o marcador é uma coluna.
   { file: '022_forms_and_links', marker: 'contract_instrument_usages.stock_movement_id' },
   { file: '023_patrimony', marker: 'patrimony_assets' },
+  // Só acrescenta uma coluna e converte dados: o marcador é a coluna.
+  { file: '024_unified_agreements', marker: 'warehouse_price_agreements.instrumento_id' },
 ]
 
 module.exports = { migrations }

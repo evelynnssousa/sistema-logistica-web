@@ -490,7 +490,8 @@ export type MaterialInstrument = {
   usedPercent: number | null
   validUntil: string | null
   expired: boolean
-  items: { id: string; description: string; unit: string; unitPrice: number; balance: number }[]
+  /** byValue: item controlado em reais ("Valor global da ata"); a entrada consome o valor pago. */
+  items: { id: string; description: string; unit: string; unitPrice: number; balance: number; byValue?: boolean }[]
 }
 
 export const listMaterialInstruments = () =>
@@ -524,6 +525,8 @@ export type WarehouseFinanceSummary = {
   bySector: { sector: string; value: number; requests: number }[]
   agreements: PriceAgreement[]
   instruments?: MaterialInstrument[]
+  /** Migração 024 aplicada: as atas ficam só em Controle de Demandas → Atas e contratos. */
+  agreementsUnified?: boolean
   withoutValue: { id: string; code: string | null; name: string; unit: string; quantity: number }[]
 }
 

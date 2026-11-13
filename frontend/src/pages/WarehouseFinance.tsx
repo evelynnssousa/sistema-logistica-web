@@ -115,6 +115,9 @@ export function WarehouseFinanceTab() {
   const setField = (field: keyof PriceAgreementInput, value: string | boolean) =>
     setEditing((current) => (current ? { ...current, form: { ...current.form, [field]: value } } : current))
 
+  const unified = Boolean(summary?.agreementsUnified)
+  const instruments = summary?.instruments ?? []
+
   const periodText = summary
     ? `${new Date(summary.period.from).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })} a ${new Date(
         new Date(summary.period.to).getTime() - 1,
@@ -180,6 +183,7 @@ export function WarehouseFinanceTab() {
             </Alert>
           )}
 
+          {!unified && (
           <section className="ui-card ui-stacked" aria-labelledby="finance-agreements">
             <div className="ui-card-heading">
               <h2 id="finance-agreements">Atas cadastradas no Almoxarifado</h2>
@@ -241,14 +245,28 @@ export function WarehouseFinanceTab() {
               </div>
             )}
           </section>
+          )}
 
-          {summary.instruments && summary.instruments.length > 0 && (
-            <section className="ui-card ui-stacked" aria-labelledby="finance-instruments">
-              <h2 id="finance-instruments">Atas e contratos de materiais (Controle de Demandas)</h2>
-              <p className="demand-muted">
-                Cadastrados pelos setores no Controle de Demandas. Ao registrar uma entrada no Estoque interno, escolha a ata e o
-                item: o saldo do item baixa automaticamente.
-              </p>
+          <section className="ui-card ui-stacked" aria-labelledby="finance-instruments">
+            <div className="ui-card-heading">
+              <h2 id="finance-instruments">{unified ? 'Atas e contratos' : 'Atas e contratos de materiais (Controle de Demandas)'}</h2>
+              {unified && (
+                <Link className="maintenance-secondary-button" to="/demandas/atas/nova">
+                  <Icon name="add" size={18} />
+                  Nova ata ou contrato
+                </Link>
+              )}
+            </div>
+            <p className="demand-muted">
+              {unified
+                ? 'Todas as atas ficam em Controle de Demandas → Atas e contratos, de material, serviço, curso ou outro. Abra a ata para registrar uma utilização que não seja entrada de material (um serviço, por exemplo). Entradas no Estoque interno pela ata baixam o saldo automaticamente.'
+                : 'Cadastrados pelos setores no Controle de Demandas. Ao registrar uma entrada no Estoque interno, escolha a ata e o item: o saldo do item baixa automaticamente.'}
+            </p>
+            {instruments.length === 0 ? (
+              <EmptyState icon="scales" title="Nenhuma ata ou contrato vigente">
+                Cadastre em Controle de Demandas → Atas e contratos, com os itens e o valor de cada um.
+              </EmptyState>
+            ) : (
               <div className="data-table-wrapper">
                 <table className="data-table">
                   <thead>
@@ -259,10 +277,13 @@ export function WarehouseFinanceTab() {
                       <th>Utilizado</th>
                       <th>Saldo</th>
                       <th>Usado</th>
+                      <th>
+                        <span className="visually-hidden">Ações</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {summary.instruments.map((item) => (
+                    {instruments.map((item) => (
                       <tr key={item.id}>
                         <td>
                           {item.type === 'ata' ? 'Ata' : 'Contrato'} {item.number}
@@ -277,13 +298,18 @@ export function WarehouseFinanceTab() {
                         <td>{formatMoney(item.spent)}</td>
                         <td>{formatMoney(item.balance)}</td>
                         <td>{item.usedPercent === null ? '—' : `${item.usedPercent.toLocaleString('pt-BR')}%`}</td>
+                        <td>
+                          <Link className="central-link-button" to={`/demandas/atas/${item.id}`}>
+                            Abrir e registrar utilização
+                          </Link>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </section>
-          )}
+            )}
+          </section>
 
           <section className="ui-card ui-stacked" aria-labelledby="finance-monthly">
             <h2 id="finance-monthly">Compras e consumo por mês</h2>

@@ -51,6 +51,25 @@ const hasFinance = (finance: MovementFinance | undefined) =>
         finance.invoice || finance.commitment || finance.supplier || finance.agreementId || finance.instrumentItemId),
   )
 
+/**
+ * Atas unificadas (024): as atas ficam todas em Controle de Demandas → Atas e contratos, e as do
+ * Almoxarifado (020) só existem como histórico, convertidas.
+ */
+export async function unifiedAgreementsExist(client: Client) {
+  const { rows } = await client.query<{ present: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+                     AND table_name = 'warehouse_price_agreements' AND column_name = 'instrumento_id') AS present`,
+  )
+  return rows[0].present
+}
+
+const agreementsMoved = () =>
+  new ModuleError(
+    'As atas agora ficam em Controle de Demandas → Atas e contratos, que aceita atas de material, serviço, curso ou outro e o registro de utilização.',
+    409,
+    'AGREEMENTS_UNIFIED',
+  )
+
 async function linkSchemaExists(client: Client) {
   const { rows } = await client.query<{ present: boolean }>(
     `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
@@ -58,6 +77,10 @@ async function linkSchemaExists(client: Client) {
   )
   return rows[0].present
 }
+
+/** Item medido em reais, com valor unitário de R$ 1,00: o saldo é dinheiro, não quantidade. */
+export const isValueItem = (item: { unidade: string; valor_unitario: string | number }) =>
+  item.unidade.trim().toUpperCase() === 'R$' && Number(item.valor_unitario) === 1
 
 const brasiliaDay = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
 
@@ -102,25 +125,28 @@ export async function recordStockMovement(
 
   const finance = input.finance ?? {}
   if (finance.agreementId) {
-    const agreement = await client.query<{ ativo: boolean }>(
-      `SELECT ativo FROM public.warehouse_price_agreements WHERE id = $1`,
+    const agreement = await client.query<{ ativo: boolean; convertida: boolean }>(
+      `SELECT ativo, to_jsonb(a)->>'instrumento_id' IS NOT NULL AS convertida FROM public.warehouse_price_agreements a WHERE id = $1`,
       [finance.agreementId],
     )
     if (!agreement.rows[0]) throw new ModuleError('Ata não encontrada.', 400)
+    if (agreement.rows[0].convertida) {
+      throw conflict('Esta ata foi transferida para Atas e contratos. Escolha a ata e o item na lista.')
+    }
     if (!agreement.rows[0].ativo) throw conflict('Esta ata está encerrada. Escolha uma ata ativa.')
   }
 
   // Item de ata ou contrato: confere vigência e saldo do item, sob bloqueio, antes de gravar.
-  let instrumentItem: { instrument_id: string; valor_unitario: string } | null = null
+  let instrumentItem: { instrument_id: string; valor_unitario: string; byValue: boolean } | null = null
   if (finance.instrumentItemId) {
     if (input.type !== 'entrada') throw new ModuleError('Só a entrada pode indicar item de ata ou contrato.', 400)
     if (!(await linkSchemaExists(client))) {
       throw new ModuleError('A ligação com atas e contratos depende da migração 022, ainda não aplicada neste banco.', 409)
     }
     const item = await client.query<{
-      instrument_id: string; valor_unitario: string; ativo: boolean; encerrado: boolean; quantidade_registrada: string; usado: string | null
+      instrument_id: string; valor_unitario: string; unidade: string; ativo: boolean; encerrado: boolean; quantidade_registrada: string; usado: string | null
     }>(
-      `SELECT it.instrument_id::text AS instrument_id, it.valor_unitario, it.ativo, i.encerrado, it.quantidade_registrada,
+      `SELECT it.instrument_id::text AS instrument_id, it.valor_unitario, it.unidade, it.ativo, i.encerrado, it.quantidade_registrada,
               (SELECT sum(u.quantidade) FROM public.contract_instrument_usages u WHERE u.item_id = it.id) AS usado
          FROM public.contract_instrument_items it JOIN public.contract_instruments i ON i.id = it.instrument_id
         WHERE it.id = $1 FOR UPDATE OF it`,
@@ -130,10 +156,20 @@ export async function recordStockMovement(
     if (!row) throw new ModuleError('Item da ata ou do contrato não encontrado.', 400)
     if (row.encerrado || !row.ativo) throw conflict('Esta ata ou contrato (ou o item) está encerrado.')
     const balance = Number(row.quantidade_registrada) - Number(row.usado ?? 0)
-    if (input.quantity > balance + 1e-9) {
+    // Item controlado em reais (como o "Valor global" das atas convertidas pela 024): a entrada
+    // consome o valor pago, não a quantidade de material.
+    const byValue = isValueItem(row)
+    if (byValue) {
+      if (finance.paid === null || finance.paid === undefined || finance.paid <= 0) {
+        throw new ModuleError('Esta ata é controlada em reais: informe o valor pago da entrada.', 400)
+      }
+      if (finance.paid > balance + 0.005) {
+        throw conflict(`O valor pago é maior que o saldo da ata (R$ ${balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}).`)
+      }
+    } else if (input.quantity > balance + 1e-9) {
       throw conflict(`A quantidade é maior que o saldo do item da ata (${balance.toLocaleString('pt-BR')}).`)
     }
-    instrumentItem = row
+    instrumentItem = { ...row, byValue }
   }
 
   // Sem valor digitado, a entrada pela ata vale o preço registrado nela.
@@ -170,13 +206,14 @@ export async function recordStockMovement(
   if (instrumentItem) {
     const movementId = inserted.rows[0].id
     const document = [finance.invoice && `NF ${finance.invoice}`, finance.commitment && `Empenho ${finance.commitment}`].filter(Boolean).join(' · ')
+    const usedQuantity = instrumentItem.byValue ? cents(finance.paid!) : input.quantity
     await client.query(
       `INSERT INTO public.contract_instrument_usages
          (instrument_id, item_id, quantidade, valor_total, data_utilizacao, documento, observacao, registrado_por, stock_movement_id)
        VALUES ($1, $2, $3, $4, $5, $6, 'Entrada registrada no Almoxarifado.', $7, $8)`,
       [
-        instrumentItem.instrument_id, finance.instrumentItemId, input.quantity,
-        cents(input.quantity * Number(instrumentItem.valor_unitario)), brasiliaDay(), document || null, input.userId, movementId,
+        instrumentItem.instrument_id, finance.instrumentItemId, usedQuantity,
+        cents(usedQuantity * Number(instrumentItem.valor_unitario)), brasiliaDay(), document || null, input.userId, movementId,
       ],
     )
     await client.query(`UPDATE public.contract_instruments SET updated_at = now() WHERE id = $1`, [instrumentItem.instrument_id])
@@ -303,6 +340,8 @@ export class WarehouseFinanceRepository {
   async agreements() {
     const pool = this.poolProvider()
     await this.requireSchema(pool)
+    // Depois da 024, as convertidas aparecem só como atas do Controle de Demandas.
+    const unified = await unifiedAgreementsExist(pool)
     const result = await pool.query<AgreementRow>(
       `SELECT a.id::text AS id, a.numero, a.fornecedor, a.objeto, a.valor_total,
               to_char(a.vigencia_inicio, 'YYYY-MM-DD') AS vigencia_inicio,
@@ -311,6 +350,7 @@ export class WarehouseFinanceRepository {
                 WHERE s.ata_id = a.id AND s.tipo = 'entrada' AND s.valor_informado) AS gasto,
               (SELECT count(*)::int FROM public.stock_movements s WHERE s.ata_id = a.id AND s.tipo = 'entrada') AS entradas
          FROM public.warehouse_price_agreements a
+        ${unified ? 'WHERE a.instrumento_id IS NULL' : ''}
         ORDER BY a.ativo DESC, a.vigencia_fim DESC NULLS LAST, lower(a.numero)`,
     )
     const today = brasiliaToday()
@@ -320,6 +360,7 @@ export class WarehouseFinanceRepository {
   async saveAgreement(actor: AuthenticatedIdentity, id: string | null, input: AgreementInput) {
     return withTransaction(this.poolProvider(), async (client) => {
       await this.requireSchema(client)
+      if (await unifiedAgreementsExist(client)) throw agreementsMoved()
       try {
         let savedId = id
         if (id) {
@@ -397,7 +438,7 @@ export class WarehouseFinanceRepository {
                       ) ORDER BY it.numero_item NULLS LAST, it.descricao)
                  FROM public.contract_instrument_items it WHERE it.instrument_id = i.id AND it.ativo) AS itens
          FROM public.contract_instruments i JOIN public.demand_sectors s ON s.id = i.setor_responsavel_id
-        WHERE NOT i.encerrado AND i.categoria = 'material'
+        WHERE NOT i.encerrado AND i.categoria IN ('material', 'outro')
         ORDER BY i.vigencia_fim NULLS LAST, lower(i.numero)`,
     )
     const today = brasiliaDay()
@@ -423,6 +464,7 @@ export class WarehouseFinanceRepository {
           unit: item.unidade,
           unitPrice: Number(item.valor_unitario),
           balance: Number(item.saldo),
+          byValue: isValueItem({ unidade: item.unidade, valor_unitario: item.valor_unitario }),
         })),
       }
     })
@@ -486,6 +528,7 @@ export class WarehouseFinanceRepository {
     ])
 
     const instruments = await this.materialInstruments()
+    const unified = await unifiedAgreementsExist(pool)
     const activeInstruments = instruments.filter((item) => !item.expired)
     const purchases = monthly.rows.reduce((total, row) => total + Number(row.compras ?? 0), 0)
     const consumption = monthly.rows.reduce((total, row) => total + Number(row.consumo ?? 0), 0)
@@ -514,6 +557,8 @@ export class WarehouseFinanceRepository {
       agreementsSpent: cents(current.reduce((total, agreement) => total + agreement.spent, 0) + activeInstruments.reduce((total, item) => total + item.spent, 0)),
       agreementsBalance: cents(current.reduce((total, agreement) => total + agreement.balance, 0) + activeInstruments.reduce((total, item) => total + item.balance, 0)),
       instruments,
+      // Com a 024, não se cadastram mais atas aqui: a tela leva para Atas e contratos.
+      agreementsUnified: unified,
       monthly: monthly.rows.map((row) => ({
         month: row.mes,
         purchases: cents(Number(row.compras ?? 0)),

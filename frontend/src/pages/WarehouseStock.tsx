@@ -118,6 +118,12 @@ export function StockTab() {
     }
   }, [search, onlyBelow, order, page])
 
+  // Item controlado em reais (atas convertidas do Almoxarifado): a entrada exige o valor pago.
+  const selectedItem = agreementId.startsWith('instrumento:')
+    ? instruments.find((item) => `instrumento:${item.id}` === agreementId)?.items.find((item) => item.id === instrumentItemId)
+    : undefined
+  const paidRequired = Boolean(selectedItem?.byValue)
+
   async function submit(event: FormEvent) {
     event.preventDefault()
     setFormError('')
@@ -368,8 +374,9 @@ export function StockTab() {
             {seesValues && type === 'entrada' && (
               <>
                 <label className="maintenance-form-field">
-                  <span>Valor total pago (R$)</span>
+                  <span>Valor total pago (R$){paidRequired ? ' *' : ''}</span>
                   <input
+                    required={paidRequired}
                     type="number"
                     min="0"
                     step="0.01"
@@ -432,7 +439,9 @@ export function StockTab() {
                         .find((item) => `instrumento:${item.id}` === agreementId)
                         ?.items.map((item) => (
                           <option key={item.id} value={item.id}>
-                            {item.description} ({formatMoney(item.unitPrice)}/{item.unit}, saldo {item.balance.toLocaleString('pt-BR')})
+                            {item.byValue
+                              ? `${item.description} (saldo ${formatMoney(item.balance)})`
+                              : `${item.description} (${formatMoney(item.unitPrice)}/${item.unit}, saldo ${item.balance.toLocaleString('pt-BR')})`}
                           </option>
                         ))}
                     </select>
@@ -441,7 +450,8 @@ export function StockTab() {
                 <p id="stock-paid-hint" className="central-subtext form-grid-wide">
                   Valor total pago: o valor de toda a quantidade da entrada. Em branco, a entrada vale o preço do item da ata (se
                   escolhida) ou o custo médio atual (por exemplo, numa devolução). Com item de ata ou contrato, o saldo dele baixa
-                  automaticamente.
+                  automaticamente. Na ata controlada em reais ("Valor global da ata"), o valor pago é obrigatório e é ele que
+                  baixa do saldo.
                 </p>
               </>
             )}

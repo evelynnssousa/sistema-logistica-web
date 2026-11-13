@@ -89,7 +89,7 @@ const migrations = [
   '009_module_extensions.sql', '010_monitoring.sql', '011_delivery_forecast.sql', '012_operational_transparency.sql',
   '013_communications.sql', '014_demands.sql', '015_organizational_structure.sql', '016_driver_portal.sql',
   '017_driver_portal_settings.sql', '018_public_api_privileges.sql', '019_email_quota.sql', '020_warehouse_finance.sql',
-  '021_contract_instruments.sql', '022_forms_and_links.sql', '023_patrimony.sql',
+  '021_contract_instruments.sql', '022_forms_and_links.sql', '023_patrimony.sql', '024_unified_agreements.sql',
 ]
 
 before(async () => {
