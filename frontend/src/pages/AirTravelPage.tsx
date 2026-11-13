@@ -29,10 +29,10 @@ function AirTravelPage() {
       statusOptions={statuses}
       tripTypeOptions={Object.entries(tripLabels).map(([value, label]) => ({ value, label }))}
       columns={[
-        { label: 'Trecho', render: (request) => request.title },
+        { label: 'Trecho', sortKey: 'titulo', render: (request) => request.title },
         { label: 'Tipo', render: (request) => tripLabels[String(request.details.tipoViagem)] ?? '—' },
-        { label: 'Solicitante', render: (request) => request.requester.name },
-        { label: 'Data da solicitação', render: (request) => formatDateTime(request.createdAt) },
+        { label: 'Solicitante', sortKey: 'solicitante', render: (request) => request.requester.name },
+        { label: 'Data da solicitação', sortKey: 'criacao', render: (request) => formatDateTime(request.createdAt) },
         ...(seesTicket
           ? [{ label: 'Bilhete', render: (request: { ticketStatus?: keyof typeof ticketStatusLabels }) => ticketStatusLabels[request.ticketStatus ?? 'nao_enviado'] }]
           : []),

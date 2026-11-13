@@ -15,6 +15,8 @@ import { Alert, EmptyState, Loading } from '../../components/ui/Feedback'
 import { FilterBar, FilterSelect, SearchField } from '../../components/ui/Filters'
 import Icon from '../../components/ui/Icon'
 import { useDemands } from './useDemands'
+import SortableTh from '../../components/ui/SortableTh'
+import { useTableSort } from '../../app/tableSort'
 
 const situationTone: Record<InstrumentSituation, string> = {
   vigente: 'central-flag',
@@ -40,6 +42,15 @@ export function SituationFlag({ item }: { item: Pick<InstrumentSummary, 'situati
 export function InstrumentList() {
   const { context, options } = useDemands()
   const [items, setItems] = useState<InstrumentSummary[] | null>(null)
+  const table = useTableSort(items ?? [], {
+    numero: (item) => item.number,
+    objeto: (item) => item.subject,
+    setor: (item) => item.responsibleSector.name,
+    vigencia: (item) => item.validUntil,
+    situacao: (item) => item.situation,
+    valor: (item) => item.total,
+    saldo: (item) => item.balance,
+  })
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [type, setType] = useState('')
@@ -148,17 +159,17 @@ export function InstrumentList() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Número</th>
-                    <th>Objeto</th>
-                    <th>Setor</th>
-                    <th>Vigência</th>
-                    <th>Situação</th>
-                    <th>Valor</th>
-                    <th>Saldo</th>
+                    <SortableTh label="Número" sortKey="numero" sort={table.sort} onSort={table.onSort} />
+                    <SortableTh label="Objeto" sortKey="objeto" sort={table.sort} onSort={table.onSort} />
+                    <SortableTh label="Setor" sortKey="setor" sort={table.sort} onSort={table.onSort} />
+                    <SortableTh label="Vigência" sortKey="vigencia" sort={table.sort} onSort={table.onSort} />
+                    <SortableTh label="Situação" sortKey="situacao" sort={table.sort} onSort={table.onSort} />
+                    <SortableTh label="Valor" sortKey="valor" sort={table.sort} onSort={table.onSort} />
+                    <SortableTh label="Saldo" sortKey="saldo" sort={table.sort} onSort={table.onSort} />
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item) => (
+                  {table.sorted.map((item) => (
                     <tr key={item.id}>
                       <td>
                         <Link to={`/demandas/atas/${item.id}`}>

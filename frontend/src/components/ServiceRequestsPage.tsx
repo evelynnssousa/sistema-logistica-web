@@ -11,9 +11,13 @@ import Icon from './ui/Icon'
 import type { IconName } from './ui/Icon'
 import PageHeader from './ui/PageHeader'
 import Pagination from './ui/Pagination'
+import SortableTh from './ui/SortableTh'
+import { nextSort } from '../app/tableSort'
+import type { SortState } from '../app/tableSort'
 import StatusBadge from './ui/StatusBadge'
 
-type Column = { label: string; render: (request: ServiceRequest) => ReactNode }
+/** sortKey: coluna que o servidor sabe ordenar (requestSortColumns). Sem ela, a coluna não ordena. */
+type Column = { label: string; render: (request: ServiceRequest) => ReactNode; sortKey?: string }
 
 type ServiceRequestsPageProps = {
   module: RequestModule
@@ -57,6 +61,11 @@ function ServiceRequestsPage({
   const [status, setStatus] = useState('')
   const [tripType, setTripType] = useState('')
   const [page, setPage] = useState(1)
+  const [sort, setSort] = useState<SortState>(null)
+  const onSort = (key: string) => {
+    setSort((current) => nextSort(current, key))
+    setPage(1)
+  }
   const [data, setData] = useState<{ requests: ServiceRequest[]; total: number; pageSize: number } | null>(null)
   const [error, setError] = useState('')
   const { from, to } = period.range
@@ -71,7 +80,7 @@ function ServiceRequestsPage({
 
   useEffect(() => {
     let active = true
-    listRequests(module, { status, tripType, search: appliedSearch, from, to, page })
+    listRequests(module, { status, tripType, search: appliedSearch, from, to, page, ordem: sort?.key, direcao: sort?.direction })
       .then((result) => {
         if (!active) return
         setData(result)
@@ -85,7 +94,7 @@ function ServiceRequestsPage({
     return () => {
       active = false
     }
-  }, [module, status, tripType, appliedSearch, from, to, page])
+  }, [module, status, tripType, appliedSearch, from, to, page, sort])
 
   const filtering = Boolean(status || tripType || searchTerm) || period.isActive
   const lastPage = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1
@@ -180,13 +189,17 @@ function ServiceRequestsPage({
                 <caption className="visually-hidden">Solicitações de {pageTitle}</caption>
                 <thead>
                   <tr>
-                    <th scope="col">Protocolo</th>
-                    {columns.map((column) => (
-                      <th key={column.label} scope="col">
-                        {column.label}
-                      </th>
-                    ))}
-                    <th scope="col">Situação</th>
+                    <SortableTh label="Protocolo" sortKey="protocolo" sort={sort} onSort={onSort} />
+                    {columns.map((column) =>
+                      column.sortKey ? (
+                        <SortableTh key={column.label} label={column.label} sortKey={column.sortKey} sort={sort} onSort={onSort} />
+                      ) : (
+                        <th key={column.label} scope="col">
+                          {column.label}
+                        </th>
+                      ),
+                    )}
+                    <SortableTh label="Situação" sortKey="situacao" sort={sort} onSort={onSort} />
                     <th scope="col">
                       <span className="visually-hidden">Ações</span>
                     </th>

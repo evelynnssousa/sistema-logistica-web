@@ -20,7 +20,7 @@ import { FlightPassengerRepository } from '../database/flightPassengerRepository
 import { conflict, forbidden, notFound, sendModuleError } from '../database/moduleErrors.js'
 import { OperationsRepository } from '../database/operationsRepository.js'
 import { getDatabasePool } from '../database/pool.js'
-import { ServiceRequestRepository } from '../database/serviceRequestRepository.js'
+import { isRequestSortKey, ServiceRequestRepository } from '../database/serviceRequestRepository.js'
 import { readSystemSettings } from '../database/settingsRepository.js'
 import type { NewRequest, ServiceRequest } from '../database/serviceRequestRepository.js'
 import { missingRequiredCustomField } from '../requests/settingsRules.js'
@@ -355,6 +355,9 @@ export function registerRequestRoutes(router: Router, module: RequestModule) {
               : undefined,
           ...period,
           page: readPage(query.page),
+          sort: isRequestSortKey(query.ordem)
+            ? { key: query.ordem, direction: query.direcao === 'asc' ? 'asc' : 'desc' }
+            : undefined,
         })
       // Indicador do bilhete, só para quem atende: vem do histórico, e não muda o status.
       const identity = identityOf(response)

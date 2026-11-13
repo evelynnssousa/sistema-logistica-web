@@ -24,10 +24,10 @@ function MaintenancePage() {
       searchPlaceholder="Pesquisar por protocolo, descrição ou solicitante"
       statusOptions={statuses}
       columns={[
-        { label: 'Solicitação', render: (request) => request.title },
-        { label: 'Solicitante', render: (request) => request.requester.name },
+        { label: 'Solicitação', sortKey: 'titulo', render: (request) => request.title },
+        { label: 'Solicitante', sortKey: 'solicitante', render: (request) => request.requester.name },
         { label: 'Setor', render: (request) => request.sector ?? '—' },
-        { label: 'Data da solicitação', render: (request) => formatDateTime(request.createdAt) },
+        { label: 'Data da solicitação', sortKey: 'criacao', render: (request) => formatDateTime(request.createdAt) },
       ]}
       extraAction={{ to: '/manutencao/equipamentos', label: 'Equipamentos', icon: 'maintenance', permission: 'maintenance:update' }}
       createPermission="maintenance:create"
