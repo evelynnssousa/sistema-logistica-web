@@ -28,6 +28,7 @@ import { ApiError } from '../auth/apiClient'
 import { useAuthenticatedUser, useLogout } from '../auth/UserContext'
 import { Alert, EmptyState, Loading } from '../components/ui/Feedback'
 import Icon from '../components/ui/Icon'
+import InstallAppCard from '../components/InstallAppCard'
 import Modal from '../components/ui/Modal'
 import Pagination from '../components/ui/Pagination'
 import StatusBadge from '../components/ui/StatusBadge'
@@ -743,6 +744,7 @@ function DriverPortalPage() {
       </nav>
 
       <main className="driver-content">
+        <InstallAppCard />
         {error && <Alert tone="error">{error}</Alert>}
         {!profile && !error && <Loading label="Carregando o portal..." />}
         {profile && !profile.linked && (

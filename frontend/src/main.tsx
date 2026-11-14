@@ -9,6 +9,11 @@ import '@fontsource/inter/latin-700.css'
 import '@fontsource/inter/latin-800.css'
 import './index.css'
 import App from './App.tsx'
+import { registerServiceWorker, startInstallListener } from './app/installPrompt'
+
+// Instalável no celular e com as telas disponíveis mesmo com sinal ruim (13/11/2026).
+startInstallListener()
+registerServiceWorker()
 
 /*
  * Depois de uma nova publicação, quem estava com a versão anterior aberta pode pedir uma tela que
