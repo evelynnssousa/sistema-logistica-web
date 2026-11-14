@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import logoJucesp from '../assets/logoJucespNovo.png'
 import { requestPasswordRecovery, resetPassword, resetPasswordWithLink } from '../auth/auth'
 import '../App.css'
+import AuthBackButton from '../components/AuthBackButton'
 import AuthBrand from '../components/AuthBrand'
 import PasswordField from '../components/PasswordField'
 
@@ -75,6 +76,7 @@ function PasswordRecoveryPage({ onBackToLogin, linkToken = null }: PasswordRecov
     <main className="login-page auth-split">
       <AuthBrand />
       <section className="login-card">
+        <AuthBackButton onClick={onBackToLogin} disabled={loading} label="Voltar para o login" />
         <img
           className="login-logo"
           src={logoJucesp}
@@ -184,11 +186,6 @@ function PasswordRecoveryPage({ onBackToLogin, linkToken = null }: PasswordRecov
           </form>
         )}
 
-        <p className="login-register-link">
-          <button type="button" onClick={onBackToLogin} disabled={loading}>
-            Voltar ao login
-          </button>
-        </p>
         <p className="login-footer">
           O {linkToken ? 'link' : 'código'} expira em 10 minutos e só pode ser usado uma vez.
         </p>

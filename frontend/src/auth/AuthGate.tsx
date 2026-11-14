@@ -197,6 +197,7 @@ function AuthGate({ children }: AuthGateProps) {
       return (
         <RegistrationPage
           onBackToLogin={() => setAuthView('login')}
+          onBack={() => setAuthView('welcome')}
         />
       )
     }

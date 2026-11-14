@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { getPublicScreen } from '../api/configApi'
 import { login } from '../auth/auth'
 import logoJucesp from '../assets/logoJucespNovo.png'
+import AuthBackButton from '../components/AuthBackButton'
 import AuthBrand from '../components/AuthBrand'
 import PasswordField from '../components/PasswordField'
 import '../App.css'
@@ -59,6 +60,7 @@ function LoginPage({ notice = '', onLogin, onRegister, onRecoverPassword, onBack
     <main className="login-page auth-split">
       <AuthBrand />
       <section className="login-card">
+        {onBack && <AuthBackButton onClick={onBack} disabled={loading} label="Voltar para a página inicial" />}
         <img
           className="login-logo"
           src={logoJucesp}
@@ -144,13 +146,6 @@ function LoginPage({ notice = '', onLogin, onRegister, onRecoverPassword, onBack
         <p className="login-footer">
           Acesso restrito a usuários autorizados.
         </p>
-        {onBack && (
-          <p className="login-register-link">
-            <button type="button" onClick={onBack} disabled={loading}>
-              ← Página inicial, dúvidas e contato
-            </button>
-          </p>
-        )}
       </section>
     </main>
   )
