@@ -3,7 +3,10 @@ import { ExtraFields } from '../../components/ExtraFields'
 import { useSystemInfo } from '../../app/useSystemInfo'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { addInstrumentItems } from '../../api/instrumentsApi'
+import type { ImportedSheet } from '../../api/instrumentsApi'
+import ImportedItemsPreview from './ImportedItemsPreview'
 import {
   createInstrument,
   fetchInstrument,
@@ -44,13 +47,32 @@ export function InstrumentForm() {
   const responsibleOptions = options.sectors.filter((sector) => context.directorate || ownSectors.has(sector.id))
   const { contracts } = useSystemInfo()
   const instrumentForm = useManagedForm('contractInstrument')
+  // Vindo do robô de atas: os dados lidos da planilha preenchem o formulário, para conferir.
+  const imported = (useLocation().state as { imported?: ImportedSheet } | null)?.imported
+  const plain = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+  const importedSector = imported?.fields.sectorName
+    ? responsibleOptions.find((sector) => plain(sector.name) === plain(imported.fields.sectorName ?? ''))
+    : undefined
   const [form, setForm] = useState<InstrumentInput | null>(() =>
     instrumentId
       ? null
       : {
           ...empty,
-          noticeDays: String(contracts.defaultNoticeDays),
-          responsibleSectorId: responsibleOptions.length === 1 ? responsibleOptions[0].id : '',
+          noticeDays: String(imported?.fields.noticeDays ?? contracts.defaultNoticeDays),
+          responsibleSectorId: importedSector?.id ?? (responsibleOptions.length === 1 ? responsibleOptions[0].id : ''),
+          ...(imported
+            ? {
+                type: imported.fields.type ?? 'ata',
+                number: imported.fields.number ?? '',
+                subject: imported.fields.subject ?? '',
+                category: imported.fields.category ?? 'material',
+                supplier: imported.fields.supplier ?? '',
+                process: imported.fields.process ?? '',
+                total: imported.fields.total === null ? '' : String(imported.fields.total),
+                validFrom: imported.fields.validFrom ?? '',
+                validUntil: imported.fields.validUntil ?? '',
+              }
+            : {}),
         },
   )
   const [error, setError] = useState('')
@@ -111,6 +133,14 @@ export function InstrumentForm() {
         navigate(`/demandas/atas/${instrumentId}`)
       } else {
         const created = await createInstrument(form)
+        if (imported && imported.items.length > 0) {
+          try {
+            await addInstrumentItems(created.id, imported.items)
+          } catch (err) {
+            // A ata já existe: os itens podem ser importados de novo na tela dela.
+            window.alert(`A ata foi criada, mas os itens não foram gravados: ${errorMessage(err, 'erro ao gravar.')} Use "Importar itens do Excel" na ata.`)
+          }
+        }
         navigate(`/demandas/atas/${created.id}`)
       }
     } catch (err) {
@@ -220,6 +250,17 @@ export function InstrumentForm() {
           values={form.customFields ?? {}}
           onChange={(values) => set('customFields', values)}
         />
+        {!instrumentId && imported && (
+          <div className="form-grid-wide">
+            <h3>Itens que serão cadastrados junto</h3>
+            {imported.fields.sectorName && !importedSector && (
+              <p className="demand-muted">
+                O setor "{imported.fields.sectorName}" da planilha não está entre os seus setores: escolha o setor responsável acima.
+              </p>
+            )}
+            <ImportedItemsPreview items={imported.items} warnings={imported.warnings} total={imported.itemsTotal} />
+          </div>
+        )}
         {instrumentId && (
           <label className="parameter-check form-grid-wide">
             <input type="checkbox" checked={form.closed} onChange={(event) => set('closed', event.target.checked)} />

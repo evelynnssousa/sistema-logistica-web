@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import type { ChangeEvent } from 'react'
+import { instrumentTemplateUrl, previewInstrumentSheet } from '../../api/instrumentsApi'
 import {
   formatBRL,
   formatDay,
@@ -52,6 +54,24 @@ export function InstrumentList() {
     saldo: (item) => item.balance,
   })
   const [error, setError] = useState('')
+  const [reading, setReading] = useState(false)
+  const navigate = useNavigate()
+
+  // Robô de atas: lê a planilha e abre o formulário de nova ata já preenchido, para conferir.
+  async function importSheet(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setReading(true)
+    setError('')
+    try {
+      const imported = await previewInstrumentSheet(file)
+      navigate('/demandas/atas/nova', { state: { imported } })
+    } catch (err) {
+      setError(errorMessage(err, 'Não foi possível ler a planilha.'))
+      setReading(false)
+    }
+  }
   const [search, setSearch] = useState('')
   const [type, setType] = useState('')
   const [category, setCategory] = useState('')
@@ -87,10 +107,21 @@ export function InstrumentList() {
           ele. Ao entrar no prazo de aviso, o sistema abre uma demanda de renovação para o setor responsável.
         </p>
         {context.canCreate && (
-          <Link className="maintenance-primary-button" to="/demandas/atas/nova">
-            <Icon name="add" size={18} />
-            Nova ata ou contrato
-          </Link>
+          <>
+            <a className="maintenance-secondary-button" href={instrumentTemplateUrl} download>
+              <Icon name="download" size={18} />
+              Baixar modelo em Excel
+            </a>
+            <label className={`maintenance-secondary-button${reading ? ' is-busy' : ''}`}>
+              <Icon name="robot" size={18} />
+              {reading ? 'Lendo a planilha...' : 'Importar do Excel'}
+              <input type="file" className="visually-hidden" accept=".xlsx,.ods,.csv,.xls" disabled={reading} onChange={(event) => void importSheet(event)} />
+            </label>
+            <Link className="maintenance-primary-button" to="/demandas/atas/nova">
+              <Icon name="add" size={18} />
+              Nova ata ou contrato
+            </Link>
+          </>
         )}
       </div>
 

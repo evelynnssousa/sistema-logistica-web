@@ -23,7 +23,10 @@ import {
   instrumentTypes,
 } from '../demands/instrumentRules.js'
 import type { InstrumentSituation } from '../demands/instrumentRules.js'
+import { instrumentTemplate, parseInstrumentSheet } from '../demands/instrumentSpreadsheet.js'
 import { requireCsrf } from '../middleware/requireCsrf.js'
+import { readSpreadsheet, SpreadsheetError, spreadsheetLimits } from '../reports/spreadsheetReader.js'
+import { renderWorkbook } from '../reports/xlsxDocument.js'
 import { recordTechnicalEvent } from '../monitoring/technicalEvents.js'
 import type { AttachmentKind } from '../requests/settingsRules.js'
 import {
@@ -49,6 +52,7 @@ const attachmentUsage = new AttachmentRepository()
 router.use('/demand-instruments', requireAuth, requireCsrf)
 
 const hardLimit = express.raw({ type: () => true, limit: '101mb' })
+const sheetBody = express.raw({ type: () => true, limit: spreadsheetLimits.maxFileBytes + 1024 })
 
 type Handler = (request: Request, response: Response) => Promise<void>
 
@@ -202,6 +206,43 @@ router.get(
   }),
 )
 
+// ---------------------------------------------------------------------------
+// Robô de atas pelo Excel (14/11/2026): modelo e leitura. A leitura não grava nada: a tela
+// mostra o resultado, a pessoa confere, e o cadastro segue pelas rotas de sempre.
+// ---------------------------------------------------------------------------
+router.get(
+  '/demand-instruments/template',
+  guarded(async (_request, response) => {
+    await requireContext(response)
+    response
+      .set('Content-Disposition', 'attachment; filename="modelo-ata-slm.xlsx"')
+      .type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .send(renderWorkbook(instrumentTemplate()))
+  }),
+)
+
+router.post(
+  '/demand-instruments/import/preview',
+  sheetBody,
+  guarded(async (request, response) => {
+    await requireContext(response)
+    const content = request.body
+    if (!Buffer.isBuffer(content) || content.length === 0) throw new RequestValidationError('Envie a planilha.')
+    let fileName: string
+    try {
+      fileName = decodeURIComponent(String(request.get('x-file-name') ?? '')).slice(0, 200)
+    } catch {
+      throw new RequestValidationError('Informe um nome de arquivo válido.')
+    }
+    try {
+      response.json({ success: true, ...parseInstrumentSheet(readSpreadsheet(content, fileName)) })
+    } catch (error) {
+      if (error instanceof SpreadsheetError) throw new RequestValidationError(error.message)
+      throw error
+    }
+  }),
+)
+
 router.get(
   '/demand-instruments/:instrumentId',
   guarded(async (request, response) => {
@@ -261,6 +302,28 @@ router.post(
     const { id, identity } = await loadWith(response, request, 'edit')
     const itemId = await instruments.saveItem(identity, id, null, readItem(asBody(request.body)))
     response.status(201).json({ success: true, id: itemId })
+  }),
+)
+
+/** Vários itens de uma vez (robô de atas), na mesma transação: ou entram todos, ou nenhum. */
+router.post(
+  '/demand-instruments/:instrumentId/items/bulk',
+  guarded(async (request, response) => {
+    const { id, identity } = await loadWith(response, request, 'edit')
+    const list = asBody(request.body).items
+    if (!Array.isArray(list) || list.length === 0 || list.length > 500) {
+      throw new RequestValidationError('Envie de 1 a 500 itens.')
+    }
+    const items = list.map((raw, index) => {
+      try {
+        return readItem(asBody(raw))
+      } catch (error) {
+        if (error instanceof RequestValidationError) throw new RequestValidationError(`Item ${index + 1}: ${error.message}`)
+        throw error
+      }
+    })
+    const created = await instruments.addItems(identity, id, items)
+    response.status(201).json({ success: true, created })
   }),
 )
 
