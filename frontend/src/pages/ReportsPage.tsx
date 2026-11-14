@@ -14,7 +14,8 @@ import { useHasPermission } from '../auth/UserContext'
 import { usePeriodFilter } from '../app/period'
 import { useCatalog } from '../app/useCatalog'
 import StatCard from '../components/StatCard'
-import { BarChart, MonthlyChart } from '../components/ui/Charts'
+import { BarChart } from '../components/ui/Charts'
+import RequestsTrendChart from '../components/RequestsTrendChart'
 import type { ChartRow } from '../components/ui/Charts'
 import { Alert, EmptyState, Loading } from '../components/ui/Feedback'
 import { FilterBar, FilterSelect, PeriodFields } from '../components/ui/Filters'
@@ -334,11 +335,13 @@ function ReportsPage() {
 
           <div className="ui-grid-2">
             <section className="ui-card reports-chart" aria-labelledby="report-period">
-              <h2 id="report-period">Solicitações por mês</h2>
               {report.byPeriod.length === 0 ? (
-                <EmptyState icon="reports" title="Sem dados para exibir" />
+                <>
+                  <h2 id="report-period">Solicitações por mês</h2>
+                  <EmptyState icon="reports" title="Sem dados para exibir" />
+                </>
               ) : (
-                <MonthlyChart rows={report.byPeriod} />
+                <RequestsTrendChart headingId="report-period" byPeriod={report.byPeriod} byDay={report.byDay} />
               )}
             </section>
             <section className="ui-card reports-chart" aria-labelledby="report-status">

@@ -83,7 +83,9 @@ router.get('/reports/summary', requirePermission('reports:read'), async (request
         ? warehouse.topMaterials({ from: filters.from ?? null, to: filters.to ?? null })
         : Promise.resolve([]),
     ])
-    response.json({ success: true, ...summary, byPeriod, bySector, materials })
+    // Mesmo gráfico do painel: com um mês só de dados, as linhas mostram dia a dia.
+    const byDay = byPeriod.length === 1 ? await insights.byDay(identity, filters, byPeriod[0].month) : null
+    response.json({ success: true, ...summary, byPeriod, byDay, bySector, materials })
   } catch (error) {
     sendModuleError(response, error)
   }
