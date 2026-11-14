@@ -116,7 +116,7 @@ function oneOf<T extends string>(options: readonly T[], value: unknown, label: s
 }
 
 /** Número com até "decimals" casas; aceita vírgula. */
-function decimal(value: unknown, label: string, { required = true, decimals = 2, positive = false } = {}) {
+export function decimal(value: unknown, label: string, { required = true, decimals = 2, positive = false } = {}) {
   if (value === undefined || value === null || value === '') {
     if (required) throw new RequestValidationError(`Informe ${label}.`)
     return null
@@ -131,7 +131,7 @@ function decimal(value: unknown, label: string, { required = true, decimals = 2,
   return Math.round(number * factor) / factor
 }
 
-function day(value: unknown, label: string, required = false) {
+export function day(value: unknown, label: string, required = false) {
   if (value === undefined || value === null || value === '') {
     if (required) throw new RequestValidationError(`Informe ${label}.`)
     return null
@@ -142,7 +142,7 @@ function day(value: unknown, label: string, required = false) {
   return value
 }
 
-function readInstrument(body: Record<string, unknown>): InstrumentInput {
+export function readInstrument(body: Record<string, unknown>): InstrumentInput {
   const validFrom = day(body.validFrom, 'A data de início da vigência')
   const validUntil = day(body.validUntil, 'A data de fim da vigência')
   if (validFrom && validUntil && validUntil < validFrom) {
@@ -300,7 +300,7 @@ router.post(
   '/demand-instruments/:instrumentId/items',
   guarded(async (request, response) => {
     const { id, identity } = await loadWith(response, request, 'edit')
-    const itemId = await instruments.saveItem(identity, id, null, readItem(asBody(request.body)))
+    const itemId = await instruments.saveItem(identity, id, null, readInstrumentItem(asBody(request.body)))
     response.status(201).json({ success: true, id: itemId })
   }),
 )
@@ -316,7 +316,7 @@ router.post(
     }
     const items = list.map((raw, index) => {
       try {
-        return readItem(asBody(raw))
+        return readInstrumentItem(asBody(raw))
       } catch (error) {
         if (error instanceof RequestValidationError) throw new RequestValidationError(`Item ${index + 1}: ${error.message}`)
         throw error
@@ -331,12 +331,12 @@ router.put(
   '/demand-instruments/:instrumentId/items/:itemId',
   guarded(async (request, response) => {
     const { id, identity } = await loadWith(response, request, 'edit')
-    await instruments.saveItem(identity, id, idParam(request, 'itemId'), readItem(asBody(request.body)))
+    await instruments.saveItem(identity, id, idParam(request, 'itemId'), readInstrumentItem(asBody(request.body)))
     response.json({ success: true })
   }),
 )
 
-function readItem(body: Record<string, unknown>) {
+export function readInstrumentItem(body: Record<string, unknown>) {
   return {
     itemNumber: optionalText(body.itemNumber, 'Número do item', 20),
     description: requiredText(body.description, 'a descrição do item', { min: 2, max: 500 }),

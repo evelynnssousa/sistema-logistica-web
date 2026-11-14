@@ -970,3 +970,31 @@ a.ui-card:hover,
     grid-column: 1 / -1;
   }
 }
+
+/* Dados de demonstração: o andamento, item por item */
+.demo-data-steps {
+  display: grid;
+  gap: 4px;
+  max-height: 320px;
+  margin: 0;
+  padding: 10px 12px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  list-style: none;
+  font-size: 0.86rem;
+}
+
+.demo-data-steps li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.demo-data-steps .is-ok svg {
+  color: #0a7a0a;
+}
+
+.demo-data-steps .is-failed {
+  color: #b42318;
+}
