@@ -40,6 +40,50 @@ function fakeCpf(seed: number) {
   return [...base, first, second].join('')
 }
 
+type FormField = {
+  id: string
+  label: string
+  type: string
+  required: boolean
+  active: boolean
+  options: string[]
+  catalog: string | null
+  minLength: number | null
+  min: number | null
+  validation: string
+  visibleTo: 'all' | 'staff'
+  visibleWhen: { field: string; equals: string } | null
+}
+
+// Campos padrão que o Gerenciador de formulários pode tornar obrigatórios, e o nome de cada um no envio.
+const standardKeys: Record<string, Record<string, string>> = {
+  maintenance: { sala: 'sala', dataPreferencial: 'dataPreferencial', observacoes: 'observacoes' },
+  fleet: { floor: 'andarId', returnAt: 'dataHoraRetorno', vehicle: 'veiculo', passengerNames: 'passageiros', notes: 'observacoes' },
+  airTravel: { requesterRoom: 'sala', baggage: 'bagagem', notes: 'observacoes' },
+}
+
+/** Um valor de exemplo que passa nas regras do campo. */
+function sampleValue(field: FormField, catalogs: Record<string, { id: string; active: boolean }[]>) {
+  if (field.catalog) return catalogs[field.catalog]?.find((item) => item.active)?.id ?? ''
+  if (field.options.length > 0) return field.options[0]
+  const pad = (text: string) => (field.minLength && text.length < field.minLength ? text.padEnd(field.minLength, '.') : text)
+  switch (field.type) {
+    case 'number': return String(Math.max(field.min ?? 1, 1))
+    case 'email': return 'demonstracao@jucesp.sp.gov.br'
+    case 'phone': return '(11) 3468-3000'
+    case 'date': return day(1)
+    case 'time': return '10:00'
+    case 'dateTime': return at(1, 10).slice(0, 16)
+    case 'boolean':
+    case 'checkbox': return 'true'
+    case 'attachment': return 'documento-demonstracao.pdf'
+  }
+  if (field.validation === 'digits') return pad('12345')
+  if (field.validation === 'phone') return '(11) 3468-3000'
+  if (field.validation === 'email') return 'demonstracao@jucesp.sp.gov.br'
+  return pad('Informação de demonstração')
+}
+
 export async function createDemoData(onStep: (step: DemoStep) => void) {
   const step = async <T>(label: string, run: () => Promise<T>): Promise<T | null> => {
     try {
@@ -58,12 +102,50 @@ export async function createDemoData(onStep: (step: DemoStep) => void) {
   type Option = { id: string; label: string; active: boolean }
   const catalog = (await get<{ catalog: Record<string, Option[]> }>('/settings/catalog')).catalog
   async function option(category: string, label: string, acronym?: string) {
-    const found = catalog[category]?.find((item) => item.label.toLowerCase() === label.toLowerCase())
+    // Só uma opção ativa serve: setor ou andar desativado é recusado no cadastro.
+    const same = catalog[category]?.filter((item) => item.label.toLowerCase().startsWith(label.toLowerCase())) ?? []
+    const found = same.find((item) => item.active)
     if (found) return found.id
+    if (same.length > 0) {
+      label = `${label} (demonstração)`
+      acronym = undefined
+    }
+    const again = catalog[category]?.find((item) => item.label.toLowerCase() === label.toLowerCase() && item.active)
+    if (again) return again.id
     const created = await send<{ option: Option }>(`/settings/catalog/${category}`, 'POST', { label, acronym })
     catalog[category] = [...(catalog[category] ?? []), created.option]
     return created.option.id
   }
+  // Formulários editados no Gerenciador: campos obrigatórios a mais recebem um valor de exemplo.
+  const forms = new Map<string, FormField[]>()
+  async function formOf(key: string) {
+    if (!forms.has(key)) {
+      const content = await get<{ content?: { fields?: FormField[] } }>(`/forms/managed/${key}`).catch(() => null)
+      forms.set(key, content?.content?.fields ?? [])
+    }
+    return forms.get(key)!
+  }
+  /** Completa o corpo do envio com o que o formulário publicado exige. */
+  async function fill<T extends Record<string, unknown>>(key: string, body: T, defaults: Record<string, unknown> = {}): Promise<T> {
+    const fields = await formOf(key)
+    const filled: Record<string, unknown> = { ...body }
+    const custom: Record<string, string> = { ...((body.customFields as Record<string, string> | undefined) ?? {}) }
+    for (const field of fields) {
+      if (!field.active || !field.required || field.visibleTo === 'staff' || field.visibleWhen) continue
+      if (field.id.startsWith('custom-')) {
+        if (!custom[field.id]) custom[field.id] = sampleValue(field, catalog)
+        continue
+      }
+      const bodyKey = standardKeys[key]?.[field.id]
+      if (!bodyKey) continue
+      const current = filled[bodyKey]
+      if (current === undefined || current === null || current === '' || (Array.isArray(current) && current.length === 0)) {
+        filled[bodyKey] = defaults[bodyKey] ?? 'Informação de demonstração'
+      }
+    }
+    return { ...filled, customFields: custom } as unknown as T
+  }
+
   const floors = await step('Listas: andares', async () => ({
     terreo: await option('floors', 'Térreo'),
     primeiro: await option('floors', '1º andar'),
@@ -104,7 +186,7 @@ export async function createDemoData(onStep: (step: DemoStep) => void) {
   ] as const
   for (const [index, item] of maintenance.entries()) {
     await step(`Manutenção ${index + 1}: ${item.local}`, async () => {
-      const created = await send<{ id: string }>('/maintenance/requests', 'POST', {
+      const created = await send<{ id: string }>('/maintenance/requests', 'POST', await fill('maintenance', {
         andarId: floors?.[item.andar],
         tipoServicoId: services?.[item.tipo],
         localServico: item.local,
@@ -112,7 +194,7 @@ export async function createDemoData(onStep: (step: DemoStep) => void) {
         descricao: item.descricao,
         dataPreferencial: at(index + 2, 9),
         prioridade: index === 0 ? 'alta' : 'normal',
-      })
+      }, { observacoes: 'Pedido de demonstração.' }))
       const path = `/maintenance/requests/${created.id}`
       if (item.fluxo === 'aguardar') return
       await send(`${path}/schedule`, 'POST', { dataAgendada: at(index - 2, 9), dataFim: at(index - 2, 11), motivoCodigo: 'outro', comentario: 'Melhor horário disponível da equipe.', confirmarConflito: true })
@@ -137,7 +219,7 @@ export async function createDemoData(onStep: (step: DemoStep) => void) {
       { placa: 'EKT-7B45', modelo: 'Volkswagen Gol', identificacao: 'Gol branco', kmAtual: 91530 },
     ]
     for (const vehicle of list) {
-      if (!plates.has(vehicle.placa)) await send('/fleet/vehicles', 'POST', vehicle)
+      if (!plates.has(vehicle.placa)) await send('/fleet/vehicles', 'POST', await fill('vehicle', vehicle))
     }
   })
   const drivers = await step('Frota: motoristas', async () => {
@@ -145,7 +227,7 @@ export async function createDemoData(onStep: (step: DemoStep) => void) {
     const ids: string[] = []
     for (const [name, registration] of [['Carlos Pereira (demonstração)', '1001'], ['Márcia Lima (demonstração)', '1002']]) {
       const found = existing.drivers.find((driver) => driver.name === name)
-      ids.push(found ? found.id : (await send<{ id: string }>('/fleet/drivers', 'POST', { name, registration, active: true, userId: null })).id)
+      ids.push(found ? found.id : (await send<{ id: string }>('/fleet/drivers', 'POST', await fill('driver', { name, registration, active: true, userId: null }))).id)
     }
     return ids
   })
@@ -159,7 +241,7 @@ export async function createDemoData(onStep: (step: DemoStep) => void) {
   ] as const
   for (const [index, trip] of trips.entries()) {
     await step(`Frota ${index + 1}: ${trip.destino}`, async () => {
-      const created = await send<{ id: string }>('/fleet/requests', 'POST', {
+      const created = await send<{ id: string }>('/fleet/requests', 'POST', await fill('fleet', {
         origem: trip.origem,
         destino: trip.destino,
         dataHora: at(index - 1, 9 + index),
@@ -167,7 +249,7 @@ export async function createDemoData(onStep: (step: DemoStep) => void) {
         finalidade: trip.finalidade,
         passageiros: [{ nome: index % 2 ? 'Ana Souza (fictícia)' : 'Bruno Alves (fictício)' }],
         ...(trip.veiculo ? { veiculo: trip.veiculo } : {}),
-      })
+      }, { andarId: floors?.terreo, veiculo: 'Spin prata FJC-2A31', observacoes: 'Pedido de demonstração.' }))
       const path = `/fleet/requests/${created.id}`
       if (trip.fluxo === 'aguardar') return
       if (trip.fluxo === 'cancelar') {
@@ -196,7 +278,7 @@ export async function createDemoData(onStep: (step: DemoStep) => void) {
     await step(`Passagem ${index + 1}: ${flight.ida[0]} → ${flight.ida[1]}`, async () => {
       const out = day(index * 4 + 10)
       const back = day(index * 4 + 12)
-      const created = await send<{ id: string }>('/flights/requests', 'POST', {
+      const created = await send<{ id: string }>('/flights/requests', 'POST', await fill('airTravel', {
         andarId: floors?.segundo,
         tipoViagem: flight.tipo,
         ida: { origem: flight.ida[0], destino: flight.ida[1], data: out, horario: '08:00' },
@@ -205,7 +287,7 @@ export async function createDemoData(onStep: (step: DemoStep) => void) {
         motivo: flight.motivo,
         observacoes: flight.motivo,
         passageiros: [{ nome: flight.nome, cpf: fakeCpf(index + 1), dataNascimento: `198${index}-0${index + 1}-15` }],
-      })
+      }, { sala: 'Sala 20', observacoes: 'Pedido de demonstração.' }))
       const path = `/flights/requests/${created.id}`
       if (flight.ate === 'em_cotacao') return
       await send(`${path}/advance`, 'POST', { status: 'aguardando_aprovacao', comentario: 'Cotação enviada para aprovação.' })
@@ -232,7 +314,7 @@ export async function createDemoData(onStep: (step: DemoStep) => void) {
       const id =
         found?.id ??
         (
-          await send<{ id: string }>('/warehouse/materials', 'POST', {
+          await send<{ id: string }>('/warehouse/materials', 'POST', await fill('material', {
             code: item.code,
             name: item.name,
             description: `${item.name} (cadastro de demonstração).`,
@@ -240,7 +322,7 @@ export async function createDemoData(onStep: (step: DemoStep) => void) {
             categoryId: materialCategories?.[item.category],
             active: true,
             location: 'Almoxarifado central, prateleira A',
-          })
+          }))
         ).id
       ids.push(id)
       if (!found) {
@@ -267,10 +349,10 @@ export async function createDemoData(onStep: (step: DemoStep) => void) {
         { materialId: materials[index % materials.length], requested: 2 + index },
         { materialId: materials[(index + 1) % materials.length], requested: 1 + (index % 3) },
       ]
-      const created = await send<{ id: string }>('/warehouse/requests', 'POST', {
+      const created = await send<{ id: string }>('/warehouse/requests', 'POST', await fill('warehouseRequest', {
         note: ['Reposição mensal do setor.', 'Material para o mutirão de atendimento.', 'Pedido para a nova estação de trabalho.', 'Itens de limpeza da copa.', 'Material para o curso interno.'][index],
         items,
-      })
+      }))
       const path = `/warehouse/requests/${created.id}`
       if (flow === 'pendente') return
       await send(`${path}/status`, 'POST', { status: 'em_analise', comment: 'Conferindo a disponibilidade.' })
@@ -283,7 +365,7 @@ export async function createDemoData(onStep: (step: DemoStep) => void) {
       await send(`${path}/items`, 'PUT', { items: items.map((item) => ({ ...item, fulfilled: item.requested })) })
       await send(`${path}/status`, 'POST', { status: 'atendido', comment: 'Itens separados para retirada.' })
       if (flow === 'entregar') {
-        await send(`${path}/deliver`, 'POST', { receivedBy: 'Fernanda Dias (fictícia)', comment: 'Entregue no setor.', deliveredDate: day(0), deliveryNote: 'Conferido na entrega.' })
+        await send(`${path}/deliver`, 'POST', await fill('warehouseDelivery', { receivedBy: 'Fernanda Dias (fictícia)', comment: 'Entregue no setor.', deliveredDate: day(0), deliveryNote: 'Conferido na entrega.' }))
       }
     })
   }
@@ -314,7 +396,7 @@ export async function createDemoData(onStep: (step: DemoStep) => void) {
   for (const [index, demand] of demands.entries()) {
     await step(`Demanda ${index + 1}: ${demand.title}`, async () => {
       if (!demandSectors) throw new Error('Sem setores do Controle de Demandas.')
-      const created = await send<{ id: string }>('/admin/test-data/demo/demand', 'POST', {
+      const created = await send<{ id: string }>('/admin/test-data/demo/demand', 'POST', await fill('demand', {
         title: demand.title,
         description: demand.description,
         categoryId: category(index),
@@ -339,7 +421,7 @@ export async function createDemoData(onStep: (step: DemoStep) => void) {
         waitingFor: '',
         suspensionReason: '',
         resumeDate: null,
-      })
+      }))
       for (const [position, title] of demand.steps.entries()) {
         await send('/admin/test-data/demo/subtask', 'POST', {
           demandId: created.id,
@@ -362,7 +444,7 @@ export async function createDemoData(onStep: (step: DemoStep) => void) {
   for (const agreement of agreements) {
     await step(`Ata/contrato ${agreement.number}: ${agreement.subject}`, async () => {
       if (!demandSectors) throw new Error('Sem setores do Controle de Demandas.')
-      const created = await send<{ id: string }>('/admin/test-data/demo/instrument', 'POST', {
+      const created = await send<{ id: string }>('/admin/test-data/demo/instrument', 'POST', await fill('contractInstrument', {
         type: agreement.type,
         number: agreement.number,
         subject: agreement.subject,
@@ -378,7 +460,7 @@ export async function createDemoData(onStep: (step: DemoStep) => void) {
         noticeDays: '60',
         closed: false,
         notes: 'Cadastro de demonstração.',
-      })
+      }))
       for (const [position, [description, unit, registered, unitPrice]] of agreement.items.entries()) {
         await send('/admin/test-data/demo/instrument-item', 'POST', {
           instrumentId: created.id,
@@ -410,6 +492,9 @@ export async function createDemoData(onStep: (step: DemoStep) => void) {
   ] as const
   for (const asset of assets) {
     await step(`Patrimônio ${asset.number}: ${asset.description}`, async () => {
+      // Já criado num clique anterior: fica como está.
+      const existing = await get<{ asset: unknown }>(`/patrimony/lookup?number=${asset.number}`)
+      if (existing.asset) return
       await send('/patrimony/assets', 'POST', {
         number: asset.number,
         description: asset.description,
