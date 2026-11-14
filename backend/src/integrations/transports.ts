@@ -63,7 +63,7 @@ export function createResendTransport(
    */
   guard: (addresses: readonly string[]) => readonly string[] = () => [],
   /** Resend (padrão) ou Brevo, que usa o mesmo formato de cliente (emailProvider.ts). */
-  providerName: 'resend' | 'brevo' = 'resend',
+  providerName: 'resend' | 'brevo' | 'microsoft' = 'resend',
 ): EmailTransport {
   return {
     provider: providerName,

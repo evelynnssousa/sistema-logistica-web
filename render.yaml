@@ -38,8 +38,10 @@ services:
         sync: false
       - key: RESEND_FROM
         sync: false
-      # Provedor de e-mail: "resend" (padrão) ou "brevo" (homologação sem domínio próprio, com o
-      # remetente confirmado no Brevo). EMAIL_FROM vale para os dois; RESEND_FROM continua aceito.
+      # Provedor de e-mail: "resend" (padrão), "brevo" (homologação sem domínio próprio, com o
+      # remetente confirmado no Brevo) ou "microsoft" (caixa institucional pelo Microsoft 365, com
+      # o aplicativo da TI em GRAPH_TENANT_ID, GRAPH_CLIENT_ID e GRAPH_CLIENT_SECRET ou certificado).
+      # EMAIL_FROM vale para todos; RESEND_FROM continua aceito.
       - key: EMAIL_PROVIDER
         sync: false
       - key: BREVO_API_KEY
