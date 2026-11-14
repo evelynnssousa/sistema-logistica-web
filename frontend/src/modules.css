@@ -1257,3 +1257,61 @@
 .help-page .public-news li::before {
   box-shadow: 0 0 0 4px var(--surface, #fff);
 }
+
+/* Manuais em PDF (Configurações → Página inicial) */
+.public-manuals {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.public-manuals a {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  height: 100%;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border, #e4e9f0);
+  border-radius: 14px;
+  background: var(--surface, #fff);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.public-manuals a:hover {
+  border-color: var(--institutional, #034ea2);
+  box-shadow: 0 8px 20px rgb(3 78 162 / 10%);
+}
+
+.public-manuals a:focus-visible {
+  outline: 3px solid var(--institutional, #034ea2);
+  outline-offset: 3px;
+}
+
+.public-manual-icon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--institutional-soft, #e8f0fa);
+  color: var(--institutional, #034ea2);
+}
+
+.public-manual-text {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.public-manual-text strong {
+  color: var(--heading, #17365d);
+}
+
+.public-manual-text small {
+  color: var(--text-muted, #5b6472);
+}

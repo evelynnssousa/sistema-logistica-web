@@ -714,7 +714,10 @@ export type SystemSettings = {
   contracts: { defaultNoticeDays: number; lowBalancePercent: number }
   retention?: { months: number; noticeDays: number; sectorId: string | null }
   texts: { loginMessage: string; homeMessage: string }
-  publicPage?: import('./configApi').PublicPageContent & { team: { name: string; role: string; photoId: string | null }[] }
+  publicPage?: import('./configApi').PublicPageContent & {
+    team: { name: string; role: string; photoId: string | null }[]
+    manuals?: { title: string; audience: string; fileId: string; fileName: string; sizeBytes: number }[]
+  }
   profileDefaults: Record<'requester' | 'slm_operator', { add: string[]; remove: string[] }>
 }
 

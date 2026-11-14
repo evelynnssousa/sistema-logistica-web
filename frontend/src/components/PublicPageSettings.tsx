@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { uploadTeamPhoto } from '../api/configApi'
+import { uploadManual, uploadTeamPhoto } from '../api/configApi'
 import { errorMessage } from '../api/modulesApi'
 import { saveParameters } from '../api/operationsApi'
 import type { SystemSettings } from '../api/operationsApi'
@@ -8,7 +8,7 @@ import { Alert } from './ui/Feedback'
 
 /**
  * Configurações → Página inicial: textos sobre a JUCESP e a SLM, contato, perguntas frequentes,
- * equipe (com foto) e novidades. A página é pública: só o que pode ser visto por qualquer pessoa.
+ * equipe (com foto), manuais em PDF e novidades. A página é pública: só o que pode ser visto por qualquer pessoa.
  */
 
 type PageValue = NonNullable<SystemSettings['publicPage']>
@@ -28,9 +28,14 @@ async function shrinkPhoto(file: File): Promise<Blob> {
   )
 }
 
+type Manual = NonNullable<PageValue['manuals']>[number]
+
+const fileSize = (bytes: number) =>
+  bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
+
 const emptyPage: PageValue = {
   heroTitle: '', heroText: '', aboutOrgan: '', aboutSlm: '', serviceHours: '', location: '', contactEmail: '',
-  faq: [], team: [], news: [],
+  faq: [], team: [], news: [], manuals: [],
 }
 
 function move<T>(list: readonly T[], index: number, offset: number) {
@@ -46,6 +51,9 @@ export function PublicPageCard({ value, canManage }: { value: PageValue | undefi
   const [team, setTeam] = useState<Member[]>(
     (value?.team ?? []).map((member) => ({ ...member, photoUrl: member.photoId ? `/api/public/team-photos/${member.photoId}` : null })),
   )
+  const [manuals, setManuals] = useState<Manual[]>(value?.manuals ?? [])
+  const [manualError, setManualError] = useState('')
+  const [sendingManual, setSendingManual] = useState<number | null>(null)
   const [photoError, setPhotoError] = useState('')
   const [uploading, setUploading] = useState<number | null>(null)
   const text = (key: 'heroTitle' | 'heroText' | 'aboutOrgan' | 'aboutSlm' | 'serviceHours' | 'location' | 'contactEmail') =>
@@ -65,6 +73,28 @@ export function PublicPageCard({ value, canManage }: { value: PageValue | undefi
     }
   }
 
+  async function chooseManual(index: number, file: File | undefined) {
+    if (!file) return
+    setManualError('')
+    if (file.type && file.type !== 'application/pdf') {
+      setManualError('O manual precisa ser um arquivo PDF.')
+      return
+    }
+    setSendingManual(index)
+    try {
+      const sent = await uploadManual(file)
+      setManuals((current) =>
+        current.map((manual, position) =>
+          position === index ? { ...manual, fileId: sent.fileId, fileName: sent.fileName, sizeBytes: sent.sizeBytes } : manual,
+        ),
+      )
+    } catch (err) {
+      setManualError(errorMessage(err, 'Não foi possível enviar o manual.'))
+    } finally {
+      setSendingManual(null)
+    }
+  }
+
   return (
     <Card
       title="Página inicial e Ajuda"
@@ -74,6 +104,7 @@ export function PublicPageCard({ value, canManage }: { value: PageValue | undefi
         saveParameters('publicPage', {
           ...form,
           team: team.map(({ name, role, photoId }) => ({ name, role, photoId })),
+          manuals,
         })
       }
     >
@@ -189,6 +220,79 @@ export function PublicPageCard({ value, canManage }: { value: PageValue | undefi
       ))}
       <button type="button" className="maintenance-secondary-button" disabled={team.length >= 40} onClick={() => setTeam([...team, { name: '', role: '', photoId: null, photoUrl: null }])}>
         Acrescentar integrante
+      </button>
+
+      <h4>Manuais</h4>
+      <p className="management-hint">
+        Um PDF por manual (por exemplo, um para cada perfil), com até 25 MB. Eles aparecem na página inicial e na Ajuda, para
+        qualquer pessoa baixar, depois de salvar esta seção. Para trocar um manual por uma versão nova, envie o novo arquivo
+        no mesmo item.
+      </p>
+      {manualError && <Alert tone="error">{manualError}</Alert>}
+      {manuals.map((manual, index) => (
+        <div className="public-settings-item" key={index}>
+          <div className="robot-columns">
+            <label className="maintenance-form-field">
+              <span>Título</span>
+              <input
+                required
+                maxLength={120}
+                placeholder="Ex.: Manual do Solicitante"
+                value={manual.title}
+                onChange={(event) => setManuals(manuals.map((entry, position) => (position === index ? { ...entry, title: event.target.value } : entry)))}
+              />
+            </label>
+            <label className="maintenance-form-field">
+              <span>Para quem (opcional)</span>
+              <input
+                maxLength={80}
+                placeholder="Ex.: Solicitante"
+                value={manual.audience}
+                onChange={(event) => setManuals(manuals.map((entry, position) => (position === index ? { ...entry, audience: event.target.value } : entry)))}
+              />
+            </label>
+            <label className="maintenance-form-field">
+              <span>{sendingManual === index ? 'Enviando o PDF...' : manual.fileId ? 'Trocar o PDF' : 'Arquivo PDF'}</span>
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                disabled={sendingManual !== null}
+                onChange={(event) => {
+                  void chooseManual(index, event.target.files?.[0])
+                  event.target.value = ''
+                }}
+              />
+            </label>
+          </div>
+          <p className="management-hint">
+            {manual.fileId ? (
+              <>
+                Arquivo: <strong>{manual.fileName}</strong> ({fileSize(manual.sizeBytes)})
+              </>
+            ) : (
+              'Nenhum arquivo enviado ainda.'
+            )}
+          </p>
+          <div className="robot-actions">
+            <button type="button" className="maintenance-secondary-button" onClick={() => setManuals(move(manuals, index, -1))}>
+              Subir
+            </button>
+            <button type="button" className="maintenance-secondary-button" onClick={() => setManuals(move(manuals, index, 1))}>
+              Descer
+            </button>
+            <button type="button" className="maintenance-secondary-button" onClick={() => setManuals(manuals.filter((_, position) => position !== index))}>
+              Remover
+            </button>
+          </div>
+        </div>
+      ))}
+      <button
+        type="button"
+        className="maintenance-secondary-button"
+        disabled={manuals.length >= 12}
+        onClick={() => setManuals([...manuals, { title: '', audience: '', fileId: '', fileName: '', sizeBytes: 0 }])}
+      >
+        Acrescentar manual
       </button>
 
       <h4>Novidades</h4>

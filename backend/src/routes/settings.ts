@@ -7,7 +7,7 @@ import type { Request, Response } from 'express'
 import type { AuthenticatedIdentity } from '../auth/roles.js'
 import { requireAuth } from '../auth/sessionRuntime.js'
 import { refreshAdminSettings } from '../database/adminSettingsRuntime.js'
-import { prunePublicPagePhotos } from './publicPage.js'
+import { attachManualFiles, prunePublicPageManuals, prunePublicPagePhotos } from './publicPage.js'
 import { activeAnnouncement } from '../requests/adminSettingsRules.js'
 import { CatalogRepository, isCatalogCategory } from '../database/catalogRepository.js'
 import type { CatalogCategory } from '../database/catalogRepository.js'
@@ -275,12 +275,17 @@ router.put('/settings/parameters/:section', requirePermission('settings:manage')
   try {
     const section = String(request.params.section)
     if (!isSettingsSection(section)) throw notFound()
-    const value = validateSettings(section, request.body, Object.keys(eventCatalog))
+    let value = validateSettings(section, request.body, Object.keys(eventCatalog))
+    if (section === 'publicPage') {
+      const page = value as { manuals: { fileId: string; fileName: string; sizeBytes: number; title: string; audience: string }[] }
+      value = { ...page, manuals: await attachManualFiles(page.manuals) } as typeof value
+    }
     await parameters.save(response.locals.authenticatedUser as AuthenticatedIdentity, section, value)
     // Permissões padrão valem já na próxima requisição de cada pessoa.
     if (section === 'profileDefaults') await refreshAdminSettings()
     if (section === 'publicPage') {
       await prunePublicPagePhotos((value as { team: { photoId: string | null }[] }).team.map((member) => member.photoId).filter((id): id is string => Boolean(id)))
+      await prunePublicPageManuals((value as { manuals: { fileId: string }[] }).manuals.map((manual) => manual.fileId))
     }
     response.json({ success: true, value })
   } catch (error) {
