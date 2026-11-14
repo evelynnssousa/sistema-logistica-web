@@ -5,14 +5,17 @@ import { isManagedFieldVisible } from '../app/requestForm'
 import { register } from '../auth/auth'
 import logoJucesp from '../assets/logoJucespNovo.png'
 import '../App.css'
+import AuthBackButton from '../components/AuthBackButton'
 import AuthBrand from '../components/AuthBrand'
 import PasswordField from '../components/PasswordField'
 
 type RegistrationPageProps = {
   onBackToLogin: () => void
+  /** Volta à página inicial. */
+  onBack: () => void
 }
 
-function RegistrationPage({ onBackToLogin }: RegistrationPageProps) {
+function RegistrationPage({ onBackToLogin, onBack }: RegistrationPageProps) {
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [sector, setSector] = useState('')
@@ -91,6 +94,7 @@ function RegistrationPage({ onBackToLogin }: RegistrationPageProps) {
     <main className="login-page auth-split">
       <AuthBrand />
       <section className="login-card">
+        <AuthBackButton onClick={onBack} disabled={loading} label="Voltar para a página inicial" />
         <img
           className="login-logo"
           src={logoJucesp}

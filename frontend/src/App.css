@@ -2977,3 +2977,36 @@ body,
   background: #ffffff;
   color: #b42318;
 }
+
+/* Botão "Voltar" no topo das telas de acesso */
+.auth-back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin: 0 0 12px;
+  padding: 6px 12px 6px 8px;
+  border: 1px solid var(--border, #d5dbe3);
+  border-radius: 999px;
+  background: var(--surface, #fff);
+  color: var(--institutional, #034EA2);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-back-button:hover:not(:disabled) {
+  border-color: var(--institutional, #034EA2);
+  background: var(--surface-muted, #f1f6fc);
+}
+
+.auth-back-button:focus-visible {
+  outline: 2px solid #034EA2;
+  outline-offset: 3px;
+}
+
+.auth-back-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
