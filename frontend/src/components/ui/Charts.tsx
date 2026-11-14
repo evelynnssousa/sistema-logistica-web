@@ -114,7 +114,24 @@ export function LineChart({ months, series, granularity = 'month' }: { months: s
         ))}
       </ul>
       <div className="ui-line-plot">
-        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Solicitações por ${unit} e por módulo, de ${labelOf(months[0])} a ${labelOf(months[months.length - 1])}. Os valores estão na tabela abaixo.`}>
+        {/* Um só ponto de foco: as setas do teclado andam pelos meses ou dias (alvos grandes no toque). */}
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          role="img"
+          tabIndex={0}
+          className="ui-line-svg"
+          aria-label={`Solicitações por ${unit} e por módulo, de ${labelOf(months[0])} a ${labelOf(months[months.length - 1])}. Use as setas para ver cada ${unit}. Os valores também estão na tabela abaixo.`}
+          onFocus={() => setActive((current) => current ?? months.length - 1)}
+          onBlur={() => setActive(null)}
+          onKeyDown={(event) => {
+            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+            event.preventDefault()
+            setActive((current) => {
+              const start = current ?? months.length - 1
+              return Math.min(months.length - 1, Math.max(0, start + (event.key === 'ArrowRight' ? 1 : -1)))
+            })
+          }}
+        >
           {ticks.map((tick) => (
             <g key={tick}>
               <line className="ui-line-grid" x1={pad.left} x2={pad.left + plotWidth} y1={y(tick)} y2={y(tick)} />
@@ -161,12 +178,9 @@ export function LineChart({ months, series, granularity = 'month' }: { months: s
               y={pad.top}
               width={plotWidth / Math.max(1, months.length - 1)}
               height={plotHeight}
-              tabIndex={0}
-              aria-label={`${labelOf(month)}: ${series.map((line) => `${line.label} ${line.values[index]}`).join(', ')}`}
+              aria-hidden="true"
               onMouseEnter={() => setActive(index)}
               onMouseLeave={() => setActive(null)}
-              onFocus={() => setActive(index)}
-              onBlur={() => setActive(null)}
             />
           ))}
         </svg>

@@ -856,9 +856,10 @@ a.ui-card:hover,
   cursor: crosshair;
 }
 
-.ui-line-hit:focus-visible {
-  outline: none;
-  fill: rgb(3 78 162 / 6%);
+.ui-line-svg:focus-visible {
+  outline: 3px solid var(--institutional);
+  outline-offset: 4px;
+  border-radius: 6px;
 }
 
 .ui-line-tooltip {
