@@ -1,4 +1,5 @@
 import '../loadEnvironment.js'
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '../auth/passwordPolicy.js'
 import { createInterface } from 'node:readline/promises'
 import { stdin, stdout } from 'node:process'
 import { getDatabasePool } from '../database/pool.js'
@@ -14,11 +15,11 @@ async function main() {
     .toLowerCase()
   terminal.close()
 
-  const password = await readHiddenPassword('Nova senha (mínimo 12 caracteres): ')
+  const password = await readHiddenPassword(`Nova senha (mínimo ${PASSWORD_MIN_LENGTH} caracteres): `)
   const confirmation = await readHiddenPassword('Confirme a nova senha: ')
 
-  if (password.length < 12 || password.length > 512) {
-    throw new Error('A senha deve ter entre 12 e 512 caracteres.')
+  if (password.length < PASSWORD_MIN_LENGTH || password.length > PASSWORD_MAX_LENGTH) {
+    throw new Error(`A senha deve ter entre ${PASSWORD_MIN_LENGTH} e ${PASSWORD_MAX_LENGTH} caracteres.`)
   }
 
   if (password !== confirmation) {

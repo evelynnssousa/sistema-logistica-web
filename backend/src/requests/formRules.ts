@@ -1,4 +1,5 @@
 import { RequestValidationError } from './validation.js'
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '../auth/passwordPolicy.js'
 
 /**
  * Formulários administráveis. O que sustenta o funcionamento do módulo fica protegido aqui, no
@@ -126,8 +127,8 @@ export const defaultForms: Record<ManagedForm, ManagedFormContent> = {
       fixed('fullName', 'Nome completo', 'shortText', { minLength: 2, maxLength: 120 }),
       fixed('email', 'E-mail institucional', 'email', { maxLength: 254, validation: 'email' }),
       fixed('sector', 'Setor', 'shortText', { minLength: 2, maxLength: 120 }),
-      fixed('password', 'Senha', 'shortText', { section: 'acesso', minLength: 12, maxLength: 512 }),
-      fixed('passwordConfirmation', 'Confirme a senha', 'shortText', { section: 'acesso', minLength: 12, maxLength: 512 }),
+      fixed('password', 'Senha', 'shortText', { section: 'acesso', minLength: PASSWORD_MIN_LENGTH, maxLength: PASSWORD_MAX_LENGTH }),
+      fixed('passwordConfirmation', 'Confirme a senha', 'shortText', { section: 'acesso', minLength: PASSWORD_MIN_LENGTH, maxLength: PASSWORD_MAX_LENGTH }),
     ],
   },
   maintenance: {

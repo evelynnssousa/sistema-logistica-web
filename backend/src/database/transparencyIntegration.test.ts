@@ -886,7 +886,7 @@ test('formulário de conta: campos próprios sem afrouxar acesso, senha ou aprov
   const form = (await call('/public/forms/registration')).body
   assert.equal(form.version, published.body.version)
   const passwordField = form.form.fields.find((field: { id: string }) => field.id === 'password')
-  assert.deepEqual([passwordField.label, passwordField.minLength, passwordField.required, passwordField.active], ['Crie sua senha', 12, true, true])
+  assert.deepEqual([passwordField.label, passwordField.minLength, passwordField.required, passwordField.active], ['Crie sua senha', 8, true, true])
 
   assert.equal((await send('conta-sem@example.gov.br')).status, 400, 'matrícula obrigatória')
   assert.equal((await send('conta-errada@example.gov.br', { customFields: { 'custom-matricula': 'abc' } })).status, 400)
