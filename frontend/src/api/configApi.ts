@@ -216,8 +216,25 @@ export const getTestDataInfo = (groups: readonly string[]) =>
   apiRequest<Envelope & TestDataInfo>(`/admin/test-data${groups.length ? `?groups=${encodeURIComponent(groups.join(','))}` : ''}`)
 
 /** Baixa a cópia em JSON e devolve a impressão digital que autoriza a limpeza. */
-export async function downloadTestDataCopy(groups: readonly string[]) {
-  const response = await fetch(`/api/admin/test-data/copy?groups=${encodeURIComponent(groups.join(','))}`, { credentials: 'include' })
+export const downloadTestDataCopy = (groups: readonly string[]) =>
+  downloadCopy(`/api/admin/test-data/copy?groups=${encodeURIComponent(groups.join(','))}`)
+
+// Excluir uma solicitação ou um pedido de materiais (14/11/2026), só para o Administrador.
+export type DeletableKind = 'solicitacao' | 'pedido-material'
+
+export const getRecordDeletion = (kind: DeletableKind, id: string) =>
+  apiRequest<Envelope & { environment: TestDataInfo['environment']; confirmation: string; preview: { total: number; files: number } }>(
+    `/admin/test-data/record/${kind}/${id}`,
+  )
+export const downloadRecordCopy = (kind: DeletableKind, id: string) => downloadCopy(`/api/admin/test-data/record/${kind}/${id}/copy`)
+export const deleteRecord = (kind: DeletableKind, id: string, body: { fingerprint: string; confirmation: string }) =>
+  apiRequest<Envelope & { total: number; filesFailed: number }>(`/admin/test-data/record/${kind}/${id}/purge`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+
+async function downloadCopy(path: string) {
+  const response = await fetch(path, { credentials: 'include' })
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as { message?: string }
     throw new Error(body.message ?? 'Não foi possível baixar a cópia.')

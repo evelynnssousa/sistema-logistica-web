@@ -23,6 +23,7 @@ import { useHasPermission } from '../auth/UserContext'
 import { Alert, Loading } from '../components/ui/Feedback'
 import Icon from '../components/ui/Icon'
 import PageHeader from '../components/ui/PageHeader'
+import DeleteRecordButton from '../components/DeleteRecordButton'
 import StatusBadge from '../components/ui/StatusBadge'
 import RequestTimeline from '../components/RequestTimeline'
 import RequestManagement from '../components/RequestManagement'
@@ -825,6 +826,7 @@ function RequestDetailPage({ module }: { module: RequestModule }) {
               <Icon name="back" size={18} weight="bold" />
               Voltar
             </Link>
+            <DeleteRecordButton kind="solicitacao" id={request.id} afterPath={paths[module]} />
           </>
         }
       />

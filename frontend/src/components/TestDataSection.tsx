@@ -124,6 +124,18 @@ function TestDataSection() {
           ))}
         </fieldset>
 
+        {!preview && (
+          <>
+            <Alert tone="info">
+              Marque acima o que limpar. Em seguida aparecem: quantos registros saem, o botão <strong>Baixar a cópia</strong> e o
+              campo da frase de confirmação. O botão <strong>Apagar</strong> é liberado depois desses passos. Para excluir uma
+              solicitação só, use o botão <strong>Excluir</strong> no detalhe dela.
+            </Alert>
+            <button type="button" className="ui-button-danger" disabled>
+              Apagar registros
+            </button>
+          </>
+        )}
         {preview && (
           <>
             <h3>2. O que vai sair</h3>

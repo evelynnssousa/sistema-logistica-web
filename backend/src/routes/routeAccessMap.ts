@@ -263,6 +263,9 @@ export const routeAccessMap: readonly RouteAccess[] = [
   { method: 'GET', path: '/admin/test-data', access: 'permission', requires: ['settings:manage'], administratorOnly: true },
   { method: 'GET', path: '/admin/test-data/copy', access: 'permission', requires: ['settings:manage'], administratorOnly: true },
   { method: 'POST', path: '/admin/test-data/purge', access: 'permission', requires: ['settings:manage'], administratorOnly: true },
+  { method: 'GET', path: '/admin/test-data/record/:kind/:recordId', access: 'permission', requires: ['settings:manage'], administratorOnly: true },
+  { method: 'GET', path: '/admin/test-data/record/:kind/:recordId/copy', access: 'permission', requires: ['settings:manage'], administratorOnly: true },
+  { method: 'POST', path: '/admin/test-data/record/:kind/:recordId/purge', access: 'permission', requires: ['settings:manage'], administratorOnly: true },
 
   // Patrimônio (023): tudo exige patrimony:manage (Administrador e Operador SLM da equipe SLM).
   { method: 'GET', path: '/patrimony/options', access: 'permission', requires: ['patrimony:manage'] },

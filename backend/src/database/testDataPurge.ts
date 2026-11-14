@@ -77,6 +77,29 @@ type Step =
 
 const serviceTypes: Partial<Record<PurgeGroup, string>> = { maintenance: 'manutencao', fleet: 'frota', flights: 'passagem' }
 
+/** Uma solicitação ou um pedido de materiais, excluído pelo botão do detalhe (14/11/2026). */
+export type SingleRecord = { table: 'service_requests' | 'material_requests'; id: string }
+
+/**
+ * O grupo do registro, para o plano de limpeza: o mesmo da limpeza geral, restrito a ele. Devolve
+ * também o protocolo, que é a frase de confirmação. Nulo se o registro não existe.
+ */
+export async function singleRecordScope(client: Pick<PoolClient, 'query'>, only: SingleRecord) {
+  if (only.table === 'material_requests') {
+    const { rows } = await client.query<{ protocolo: string | null }>(
+      `SELECT to_jsonb(r)->>'protocolo_codigo' AS protocolo FROM public.material_requests r WHERE id = $1`,
+      [only.id],
+    )
+    return rows[0] ? { group: 'warehouse_requests' as PurgeGroup, protocol: rows[0].protocolo } : null
+  }
+  const { rows } = await client.query<{ tipo: string; protocolo: string | null }>(
+    `SELECT tipo, to_jsonb(r)->>'protocolo_codigo' AS protocolo FROM public.service_requests r WHERE id = $1`,
+    [only.id],
+  )
+  const group = rows[0] && (Object.entries(serviceTypes).find(([, type]) => type === rows[0].tipo)?.[0] as PurgeGroup | undefined)
+  return group ? { group, protocol: rows[0].protocolo } : null
+}
+
 /** Funções de gatilho que protegem o histórico. Só elas são desligadas, e só durante a limpeza. */
 const protectiveFunctions = [
   'reject_history_change', 'reject_integration_record_change', 'protect_flight_quote', 'protect_manual_email',
@@ -100,7 +123,7 @@ async function columnExists(client: Client, table: string, column: string) {
  * Preenche as listas temporárias de identificadores (apagadas no fim da transação) e devolve as
  * etapas, na ordem em que podem ser apagadas sem ferir nenhum vínculo.
  */
-async function prepare(client: Client, groups: ReadonlySet<PurgeGroup>): Promise<Step[]> {
+async function prepare(client: Client, groups: ReadonlySet<PurgeGroup>, only: SingleRecord | null = null): Promise<Step[]> {
   const has = (table: string) => tableExists(client, table)
   const temp = async (name: string, select: string, parameters: unknown[] = []) => {
     await client.query(`CREATE TEMP TABLE ${name} (id uuid PRIMARY KEY) ON COMMIT DROP`)
@@ -108,8 +131,17 @@ async function prepare(client: Client, groups: ReadonlySet<PurgeGroup>): Promise
   }
   const types = Object.entries(serviceTypes).filter(([group]) => groups.has(group as PurgeGroup)).map(([, type]) => type)
 
-  await temp('purge_sr', types.length ? `SELECT id FROM public.service_requests WHERE tipo = ANY($1::text[])` : '', types.length ? [types] : [])
-  await temp('purge_mr', groups.has('warehouse_requests') ? `SELECT id FROM public.material_requests` : '')
+  // Uma solicitação só (botão Excluir no detalhe): as listas levam só ela; o resto do plano é o mesmo.
+  if (only?.table === 'service_requests') {
+    await temp('purge_sr', `SELECT id FROM public.service_requests WHERE id = $1`, [only.id])
+  } else {
+    await temp('purge_sr', !only && types.length ? `SELECT id FROM public.service_requests WHERE tipo = ANY($1::text[])` : '', !only && types.length ? [types] : [])
+  }
+  if (only?.table === 'material_requests') {
+    await temp('purge_mr', `SELECT id FROM public.material_requests WHERE id = $1`, [only.id])
+  } else {
+    await temp('purge_mr', !only && groups.has('warehouse_requests') ? `SELECT id FROM public.material_requests` : '')
+  }
   await temp('purge_dm', groups.has('demands') && (await has('demands')) ? `SELECT id FROM public.demands` : '')
   await temp('purge_ds', groups.has('demands') && (await has('demand_series')) ? `SELECT id FROM public.demand_series` : '')
   await temp('purge_ic', groups.has('warehouse_stock') ? `SELECT id FROM public.inventory_checks` : '')
@@ -308,18 +340,18 @@ export class TestDataPurge {
   }
 
   /** Quantos registros sairiam de cada tabela, sem baixar o conteúdo. */
-  async preview(groups: ReadonlySet<PurgeGroup>) {
+  async preview(groups: ReadonlySet<PurgeGroup>, only: SingleRecord | null = null) {
     return this.inRolledBack(async (client) => {
-      const steps = await prepare(client, groups)
+      const steps = await prepare(client, groups, only)
       const { counts, fingerprint, storageKeys } = await snapshot(client, steps)
       return { counts, total: Object.values(counts).reduce((sum, value) => sum + value, 0), fingerprint, files: storageKeys.length }
     })
   }
 
   /** A cópia completa, em JSON, com a impressão digital que autoriza a limpeza. */
-  async exportCopy(groups: ReadonlySet<PurgeGroup>) {
+  async exportCopy(groups: ReadonlySet<PurgeGroup>, only: SingleRecord | null = null) {
     return this.inRolledBack(async (client) => {
-      const steps = await prepare(client, groups)
+      const steps = await prepare(client, groups, only)
       const { tables, counts, fingerprint } = await snapshot(client, steps)
       return {
         format: 'slm-limpeza-de-teste-v1',
@@ -335,12 +367,15 @@ export class TestDataPurge {
 
   async purge(
     actor: AuthenticatedIdentity,
-    input: { groups: ReadonlySet<PurgeGroup>; fingerprint: string; confirmation: string },
+    input: { groups: ReadonlySet<PurgeGroup>; fingerprint: string; confirmation: string; only?: SingleRecord | null; phrase?: string },
     removeFile: ((key: string) => Promise<void>) | null,
   ) {
     const environment = databaseEnvironment(this.poolProvider())
-    if (input.confirmation.trim() !== confirmationPhrases[environment]) {
-      throw new ModuleError(`Digite exatamente: ${confirmationPhrases[environment]}`, 400)
+    const only = input.only ?? null
+    // Uma solicitação só: a frase é o protocolo dela, conferido por quem chama.
+    const phrase = only ? input.phrase ?? '' : confirmationPhrases[environment]
+    if (!phrase || input.confirmation.trim().toUpperCase() !== phrase.toUpperCase()) {
+      throw new ModuleError(`Digite exatamente: ${phrase}`, 400)
     }
     const client = await this.poolProvider().connect()
     let storageKeys: string[] = []
@@ -349,7 +384,7 @@ export class TestDataPurge {
       await client.query('BEGIN')
       // Uma limpeza por vez; e nada de novo entra nas tabelas tocadas até o fim.
       await client.query(`SELECT pg_advisory_xact_lock(hashtext('slm:test-data-purge'))`)
-      const steps = await prepare(client, input.groups)
+      const steps = await prepare(client, input.groups, only)
       const tables = [...new Set(steps.map((step) => step.table))]
       for (const table of tables) await client.query(`LOCK TABLE public.${quote(table)} IN SHARE ROW EXCLUSIVE MODE`)
       const copy = await snapshot(client, steps)
@@ -377,7 +412,8 @@ export class TestDataPurge {
       for (const trigger of triggers) {
         await client.query(`ALTER TABLE public.${quote(trigger.tabela)} ENABLE TRIGGER ${quote(trigger.gatilho)}`)
       }
-      const counters = await recalculateCounters(client)
+      // Exclusão de uma só: a numeração não volta, para nenhum protocolo ser reaproveitado.
+      const counters = only ? [] : await recalculateCounters(client)
       result = { counts: copy.counts, total: Object.values(copy.counts).reduce((sum, value) => sum + value, 0), counters }
       await insertAuthAuditEvent(client, {
         actorUserId: actor.userId,
@@ -386,6 +422,7 @@ export class TestDataPurge {
         sessionId: actor.userId,
         eventType: 'test_data_purged',
         details: {
+          ...(only ? { scope: 'single', protocol: phrase, kind: only.table } : {}),
           groups: [...input.groups],
           total: String(result.total),
           database: environment,

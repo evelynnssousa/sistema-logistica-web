@@ -30,6 +30,7 @@ import { useHasPermission } from '../auth/UserContext'
 import { Alert, Loading } from '../components/ui/Feedback'
 import Icon from '../components/ui/Icon'
 import PageHeader from '../components/ui/PageHeader'
+import DeleteRecordButton from '../components/DeleteRecordButton'
 import StatusBadge from '../components/ui/StatusBadge'
 import AttachmentsPanel from '../components/AttachmentsPanel'
 import ReportExport from '../components/ReportExport'
@@ -204,6 +205,7 @@ function WarehouseRequestPage() {
               <Icon name="back" size={18} weight="bold" />
               Voltar
             </Link>
+            <DeleteRecordButton kind="pedido-material" id={request.id} afterPath="/almoxarifado/solicitacoes" />
           </>
         }
       />

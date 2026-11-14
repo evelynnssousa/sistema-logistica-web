@@ -202,6 +202,35 @@ test('limpar só a Manutenção: a Frota fica, a numeração da Manutenção vol
   assert.deepEqual(audit.rows[0].details.groups, ['maintenance'])
 })
 
+test('excluir uma solicitação: só ela sai, com cópia, protocolo digitado e sem reaproveitar o número', async () => {
+  const keep = await seedRequest('manutencao')
+  const gone = await seedRequest('manutencao')
+  const path = `/admin/test-data/record/solicitacao/${gone.id}`
+
+  assert.equal((await get(path, requester)).status, 403)
+  assert.equal((await get('/admin/test-data/record/solicitacao/00000000-0000-0000-0000-000000000000', admin)).status, 404)
+  const info = await get(path, admin)
+  assert.equal(info.status, 200, info.text)
+  assert.equal(info.body.confirmation, gone.codigo)
+  assert.equal(info.body.preview.counts.service_requests, 1)
+
+  const copy = await get(`${path}/copy`, admin)
+  const file = JSON.parse(copy.text)
+  assert.deepEqual(file.tables.service_requests.map((row: { id: string }) => row.id), [gone.id])
+  assert.equal((await post(`${path}/purge`, admin, { fingerprint: file.fingerprint, confirmation: 'APAGAR DADOS DE TESTE' })).status, 400)
+  const done = await post(`${path}/purge`, admin, { fingerprint: file.fingerprint, confirmation: gone.codigo.toLowerCase() })
+  assert.equal(done.status, 200, done.text)
+  assert.equal(done.body.total > 0, true)
+
+  const left = await pool.query(`SELECT id FROM public.service_requests WHERE id = ANY($1::uuid[])`, [[keep.id, gone.id]])
+  assert.deepEqual(left.rows.map((row) => row.id), [keep.id])
+  // O número da excluída não volta: a próxima segue adiante.
+  const next = await seedRequest('manutencao')
+  assert.notEqual(next.codigo, gone.codigo)
+  const audit = await pool.query(`SELECT details FROM public.auth_audit_events WHERE action = 'settings.test_data_purged' AND details->>'scope' = 'single'`)
+  assert.equal(audit.rows[0]?.details.protocol, gone.codigo)
+})
+
 test('limpar tudo: zera solicitações, pedidos, patrimônio e a numeração', async () => {
   const all = ['maintenance', 'fleet', 'flights', 'warehouse_requests', 'warehouse_stock', 'demands', 'patrimony']
   const copy = JSON.parse((await get(`/admin/test-data/copy?groups=${all.join(',')}`, admin)).text)
