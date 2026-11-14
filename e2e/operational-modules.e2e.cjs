@@ -475,7 +475,8 @@ async function run({ playwright, baseUrl, runId, password }) {
       await requester.waitForSelector('.ui-metric')
       assert.equal(await requester.locator('.nav-item.active .nav-label').textContent(), 'Dashboard')
       assert.equal(await requester.locator('.recent-table').count(), 0)
-      await requester.waitForSelector('.ui-column')
+      // Um mês só de dados: linhas dia a dia; no dia 1 do mês, ainda as colunas.
+      await requester.waitForSelector('.ui-line-chart, .ui-column')
       await requester.waitForSelector('.report-bar')
       const firstMetric = await requester.locator('.ui-metric-value').first().textContent()
       assert.equal(firstMetric, '3', 'três solicitações da própria pessoa')
