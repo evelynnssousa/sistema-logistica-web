@@ -52,7 +52,7 @@ export const permissionGroups = [
         label: 'Consultar as solicitações do próprio setor',
         kind: 'read',
         description:
-          'Permite consultar, sem alterar, as solicitações de Manutenção, Frota e Almoxarifado abertas para o mesmo setor de lotação.',
+          'Permite consultar, sem alterar, as solicitações de Manutenção, Frota e Almoxarifado abertas para o mesmo setor da pessoa.',
         note: 'Desligada por padrão. Liga-se para todos os solicitantes em Configurações → Sistema (permissões padrão do perfil) ou para uma pessoa no cadastro dela. Passagens aéreas ficam de fora, porque têm dados pessoais dos passageiros.',
       },
       {
