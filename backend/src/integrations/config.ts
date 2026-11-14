@@ -1,4 +1,5 @@
 import { isEmailConfigured } from '../auth/email.js'
+import { emailProviderLabels, emailProviderName } from './emailProvider.js'
 import { restrictionSummary } from './recipientAllowlist.js'
 import { logSecurityEvent } from '../security/logger.js'
 import type { IntegrationModule } from './catalog.js'
@@ -90,7 +91,7 @@ export function integrationStatus(environment: Environment = process.env) {
   return {
     email: {
       mode: emailMode(environment),
-      provider: 'Resend',
+      provider: emailProviderLabels[emailProviderName(environment)],
       flagEnabled: environment.NOTIFICATION_EMAILS_ENABLED?.trim() === 'true',
       credentialsPresent: isEmailConfigured(environment),
       publicUrlPresent: Boolean(publicLink('/', environment)),

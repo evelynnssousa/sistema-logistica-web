@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg'
 import { describeError, logSecurityEvent } from '../security/logger.js'
+import { isRealProvider } from './emailProvider.js'
 
 /**
  * Cota diária do serviço de e-mail (achado A1). A recuperação de senha e a fila de notificações usam
@@ -83,7 +84,7 @@ export function quotaSettingsProblems(environment: Environment = process.env): s
  * provedores falsos dos testes não consomem cota de ninguém.
  */
 export function quotaEnforcedFor(provider: string, environment: Environment = process.env) {
-  return provider === 'resend' || quotaSettings(environment).dailyLimit !== null
+  return isRealProvider(provider) || quotaSettings(environment).dailyLimit !== null
 }
 
 type Queryable = Pick<Pool | PoolClient, 'query'>

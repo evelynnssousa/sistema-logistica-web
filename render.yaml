@@ -38,6 +38,14 @@ services:
         sync: false
       - key: RESEND_FROM
         sync: false
+      # Provedor de e-mail: "resend" (padrão) ou "brevo" (homologação sem domínio próprio, com o
+      # remetente confirmado no Brevo). EMAIL_FROM vale para os dois; RESEND_FROM continua aceito.
+      - key: EMAIL_PROVIDER
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
       # Listas de equipe, opcionais (vírgulas). Vazias: a equipe é avisada só na plataforma.
       - key: EMAIL_INTERNAL_TO_MAINTENANCE
         sync: false
