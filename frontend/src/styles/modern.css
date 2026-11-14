@@ -905,3 +905,68 @@ a.ui-card:hover,
   display: block;
   margin-bottom: 6px;
 }
+
+/* Colunas empilhadas por módulo e cores de módulo e situação (14/11/2026) */
+.ui-legend-block {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.ui-stack-dim {
+  opacity: 0.35;
+}
+
+.ui-trend-summary {
+  margin: -4px 0 10px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.ui-trend-summary strong {
+  color: var(--text);
+  font-size: 1.05rem;
+}
+
+.ui-trend-change-good {
+  color: #006300;
+  font-weight: 600;
+}
+
+.ui-trend-change-bad {
+  color: #b42318;
+  font-weight: 600;
+}
+
+.ui-bars-legend {
+  margin-bottom: 12px;
+}
+
+@media (forced-colors: active) {
+  .ui-stacked-chart path,
+  .ui-stacked-chart rect:not(.ui-line-hit) {
+    fill: CanvasText;
+  }
+}
+
+/* Barras horizontais alinhadas: a coluna do número tem largura fixa, e todas as barras começam e
+   terminam no mesmo ponto. */
+.ui-bars .report-bar {
+  grid-template-columns: minmax(110px, 38%) 1fr 6.8em;
+}
+
+.ui-bars .report-bar > strong {
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .ui-bars .report-bar {
+    grid-template-columns: 1fr 6.8em;
+    row-gap: 4px;
+  }
+
+  .ui-bars .ui-bar-label {
+    grid-column: 1 / -1;
+  }
+}
