@@ -1,10 +1,6 @@
 # sistema-logistica-web
 Sistema de Serviços de Logística e Manutenção
 
-## Manual de uso
-
-O passo a passo de cada função, com imagens, está em [`docs/manual/MANUAL.md`](docs/manual/MANUAL.md).
-
 ## Ambientes
 
 **Leia `docs/AMBIENTES.md` antes de testar qualquer coisa.** O desenvolvimento usa o Supabase real.
