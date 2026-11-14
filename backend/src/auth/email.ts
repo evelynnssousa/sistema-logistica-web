@@ -1,29 +1,28 @@
 import { randomUUID } from 'node:crypto'
-import { Resend } from 'resend'
+import type { Resend } from 'resend'
+import { createEmailClient, emailCredentials } from '../integrations/emailProvider.js'
 import { isReservedTestEmail } from './reservedTestEmails.js'
 import { RECIPIENT_OUTSIDE_TEST_LIST, realSendGuard } from '../integrations/recipientAllowlist.js'
 
 function getEmailConfiguration(
   environment: NodeJS.ProcessEnv = process.env,
 ) {
-  const apiKey = environment.RESEND_API_KEY?.trim()
-  const from = environment.RESEND_FROM?.trim()
+  const { apiKey, from, provider } = emailCredentials(environment)
 
   if (!apiKey || !from) {
     throw new Error(
-      'Configuração do Resend ausente. Verifique RESEND_API_KEY e RESEND_FROM.',
+      'Configuração do e-mail ausente. Verifique a chave do provedor (RESEND_API_KEY ou BREVO_API_KEY) e o remetente.',
     )
   }
 
-  return { apiKey, from }
+  return { apiKey, from, provider }
 }
 
 export function isEmailConfigured(
   environment: NodeJS.ProcessEnv = process.env,
 ) {
-  return Boolean(
-    environment.RESEND_API_KEY?.trim() && environment.RESEND_FROM?.trim(),
-  )
+  const { apiKey, from } = emailCredentials(environment)
+  return Boolean(apiKey && from)
 }
 
 type ResendEmails = Pick<Resend, 'emails'>
@@ -60,6 +59,8 @@ export type RecoveryMailerOptions = {
   sleep?: (ms: number) => Promise<void>
   /** Última barreira da lista de destinatários permitidos: devolve os endereços bloqueados. */
   guard?: (addresses: readonly string[]) => readonly string[]
+  /** Prefixo do código de falha (RESEND_429, BREVO_401...). */
+  codePrefix?: string
 }
 
 /**
@@ -98,7 +99,7 @@ export function createPasswordRecoveryMailer(
         const { error } = await client.emails.send({ from, to: [recipient], ...message }, { idempotencyKey })
         if (!error) return { attempts: attempt }
         const status = (error as { statusCode?: number | null }).statusCode
-        code = `RESEND_${status ?? 'ERROR'}`
+        code = `${options.codePrefix ?? 'RESEND'}_${status ?? 'ERROR'}`
         transient = isTransient(status)
       } catch {
         code = 'NETWORK'
@@ -179,8 +180,8 @@ function escapeHtml(text: string) {
 }
 
 function configuredMailer() {
-  const { apiKey, from } = getEmailConfiguration()
-  return createPasswordRecoveryMailer(new Resend(apiKey), from, { guard: realSendGuard() })
+  const { from, provider } = getEmailConfiguration()
+  return createPasswordRecoveryMailer(createEmailClient(), from, { guard: realSendGuard(), codePrefix: provider.toUpperCase() })
 }
 
 export async function sendPasswordRecoveryCode(

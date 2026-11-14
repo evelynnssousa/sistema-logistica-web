@@ -171,16 +171,32 @@ export function checkEnvironment(
 
   findings.push(...checkAttachmentStorage(environment, root))
 
-  const resendKey = value(environment, 'RESEND_API_KEY')
-  const resendFrom = value(environment, 'RESEND_FROM')
+  // Provedor de e-mail (14/11/2026): Resend (padrão) ou Brevo, por EMAIL_PROVIDER.
+  const provider = value(environment, 'EMAIL_PROVIDER').toLowerCase() === 'brevo' ? 'brevo' : 'resend'
+  const rawProvider = value(environment, 'EMAIL_PROVIDER')
+  if (rawProvider && !['resend', 'brevo'].includes(rawProvider.toLowerCase())) {
+    add('EMAIL_PROVIDER', 'erro', 'Valor desconhecido: use "resend" ou "brevo". Valendo o Resend.')
+  }
+  const keyName = provider === 'brevo' ? 'BREVO_API_KEY' : 'RESEND_API_KEY'
+  const resendKey = value(environment, keyName)
+  const resendFrom = value(environment, 'EMAIL_FROM') || value(environment, 'RESEND_FROM')
+  const fromName = value(environment, 'EMAIL_FROM') ? 'EMAIL_FROM' : 'RESEND_FROM'
   if (!resendKey || !resendFrom) {
-    add('RESEND_API_KEY / RESEND_FROM', 'aviso', 'Ausentes: nenhum e-mail sai, nem o de recuperação de senha.')
+    add(provider === 'resend' ? 'RESEND_API_KEY / RESEND_FROM' : 'BREVO_API_KEY / EMAIL_FROM', 'aviso', 'Ausentes: nenhum e-mail sai, nem o de recuperação de senha.')
   } else if (!emailAddress.test(senderAddress(resendFrom))) {
-    add('RESEND_FROM', 'erro', 'Remetente fora do formato "endereco@dominio" ou "Nome <endereco@dominio>".')
-  } else if (!resendKey.startsWith('re_')) {
+    add(fromName, 'erro', 'Remetente fora do formato "endereco@dominio" ou "Nome <endereco@dominio>".')
+  } else if (provider === 'resend' && !resendKey.startsWith('re_')) {
     add('RESEND_API_KEY', 'aviso', 'Não tem o prefixo das chaves do Resend ("re_"). Confira a chave.')
+  } else if (provider === 'brevo' && !resendKey.startsWith('xkeysib-')) {
+    add('BREVO_API_KEY', 'aviso', 'Não tem o prefixo das chaves de API do Brevo ("xkeysib-"). Confira a chave.')
   } else {
-    add('RESEND_API_KEY / RESEND_FROM', 'ok', 'Presentes. O envio real só é comprovado pelo roteiro de homologação.')
+    add(
+      `${keyName} / ${fromName}`,
+      'ok',
+      provider === 'brevo'
+        ? 'Brevo: presentes. O remetente precisa estar confirmado no Brevo (Senders). O envio real só é comprovado pelo roteiro de homologação.'
+        : 'Presentes. O envio real só é comprovado pelo roteiro de homologação.',
+    )
   }
 
   // A mesma regra da API (auth/passwordRecovery.ts), sobre o valor sem espaços nas extremidades.
@@ -197,7 +213,7 @@ export function checkEnvironment(
   } else add('PASSWORD_RESET_PEPPER', 'ok', 'Presente.')
 
   if (value(environment, 'NOTIFICATION_EMAILS_ENABLED') === 'true' && (!resendKey || !resendFrom)) {
-    add('NOTIFICATION_EMAILS_ENABLED', 'erro', 'Ligada sem RESEND_API_KEY e RESEND_FROM: as mensagens ficam "não configuradas".')
+    add('NOTIFICATION_EMAILS_ENABLED', 'erro', `Ligada sem ${keyName} e o remetente: as mensagens ficam "não configuradas".`)
   }
 
   // Lista de destinatários de teste: só o modo e as contagens, nunca os endereços.

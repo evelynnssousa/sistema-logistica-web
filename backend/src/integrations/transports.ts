@@ -1,4 +1,5 @@
-import { Resend } from 'resend'
+import type { Resend } from 'resend'
+import { createEmailClient, emailCredentials } from './emailProvider.js'
 import { isReservedTestEmail } from '../auth/reservedTestEmails.js'
 import { RECIPIENT_OUTSIDE_TEST_LIST, realSendGuard } from './recipientAllowlist.js'
 import { emailMode } from './config.js'
@@ -61,9 +62,11 @@ export function createResendTransport(
    * bloqueados. A conferência principal acontece antes, sem consumir cota.
    */
   guard: (addresses: readonly string[]) => readonly string[] = () => [],
+  /** Resend (padrão) ou Brevo, que usa o mesmo formato de cliente (emailProvider.ts). */
+  providerName: 'resend' | 'brevo' = 'resend',
 ): EmailTransport {
   return {
-    provider: 'resend',
+    provider: providerName,
     simulated: false,
     async send(message) {
       const addresses = [message.to, ...(message.moreTo ?? []), ...message.cc]
@@ -98,7 +101,7 @@ export function createResendTransport(
 
       if (result.error) {
         const status = (result.error as { statusCode?: number | null }).statusCode
-        throw new IntegrationError(`RESEND_${status ?? 'ERROR'}`, isRetryableStatus(status))
+        throw new IntegrationError(`${providerName.toUpperCase()}_${status ?? 'ERROR'}`, isRetryableStatus(status))
       }
       return { messageId: result.data?.id ?? null }
     },
@@ -124,11 +127,8 @@ export function resolveEmailTransport(
   const mode = emailMode(environment)
   if (mode === 'simulated') return simulatedEmailTransport
   if (mode === 'provider') {
-    return createResendTransport(
-      new Resend(environment.RESEND_API_KEY!.trim()),
-      environment.RESEND_FROM!.trim(),
-      realSendGuard(environment),
-    )
+    const { provider, from } = emailCredentials(environment)
+    return createResendTransport(createEmailClient(environment), from, realSendGuard(environment), provider)
   }
   return null
 }

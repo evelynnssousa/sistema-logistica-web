@@ -1,3 +1,5 @@
+import { isRealProvider } from './emailProvider.js'
+
 /**
  * Lista de destinatários permitidos para os testes reais de e-mail na homologação.
  *
@@ -49,7 +51,7 @@ function allowlistDefined(environment: Environment) {
  */
 export function restrictionEnforcedFor(provider: string, environment: Environment = process.env) {
   if (recipientRestriction(environment).mode === 'off') return false
-  return provider === 'resend' || allowlistDefined(environment)
+  return isRealProvider(provider) || allowlistDefined(environment)
 }
 
 /** Endereços da mensagem fora da lista. Vazio: todos autorizados. */

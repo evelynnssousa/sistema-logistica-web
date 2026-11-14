@@ -298,6 +298,18 @@ Os requisitos não trazem regras de disponibilidade. Por isso, **o sistema avisa
 
 **Limites:** editar o veículo depois de agendar não repete a conferência. Não há verificação de disponibilidade da equipe como um todo. Saber se o conflito deve bloquear é uma decisão institucional.
 
+## Brevo, alternativa ao Resend (14/11/2026)
+
+Para a homologação sem domínio próprio. O Brevo aceita um **remetente confirmado por link**, sem registros de DNS. Tudo o mais é igual ao Resend: fila, lista de destinatários permitidos, cota diária, recuperação de senha e mensagens manuais.
+
+| Variável | Valor |
+|---|---|
+| `EMAIL_PROVIDER` | `brevo` (sem ela, vale o Resend) |
+| `BREVO_API_KEY` | chave de API do Brevo (`xkeysib-...`) |
+| `EMAIL_FROM` | `Nome <endereco@dominio>`, com o endereço confirmado no Brevo em **Senders** |
+
+As demais (`NOTIFICATION_EMAILS_ENABLED`, `EMAIL_RECIPIENT_ALLOWLIST`, `EMAIL_DAILY_LIMIT`...) seguem as mesmas regras. Os códigos de falha passam a começar por `BREVO_` (por exemplo `BREVO_401`, chave recusada). Limite: como o domínio do remetente não é verificado, parte das mensagens pode cair no spam ou ser recusada pelo destino, conforme a política do domínio do remetente. Para produção, prefira o Resend com domínio verificado (ou o subdomínio institucional).
+
 ## O que a TI precisa fornecer
 
 | Item | Variável | Sem isso |
