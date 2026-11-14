@@ -11,3 +11,7 @@
 # Arquivos com resumo no nome: o conteúdo nunca muda para o mesmo endereço.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+# O service worker é conferido a cada abertura, para a versão nova chegar logo.
+/sw.js
+  Cache-Control: no-cache
