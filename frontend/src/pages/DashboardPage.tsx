@@ -272,22 +272,32 @@ function DashboardPage() {
             <div className="ui-grid-2">
               {data.byPeriod.length > 0 && (
                 <section className="ui-card" aria-labelledby="chart-period">
-                  <h2 id="chart-period">Solicitações por mês</h2>
-                  {data.byPeriod.length > 1 && data.byPeriod[0].byModule ? (
-                    <LineChart
-                      months={data.byPeriod.map((row) => row.month)}
-                      series={[
-                        { key: 'maintenance', label: 'Manutenção', color: '#2a78d6' },
-                        { key: 'fleet', label: 'Frota', color: '#eb6834' },
-                        { key: 'flights', label: 'Passagens', color: '#1baf7a' },
-                      ]
-                        .map((line) => ({ ...line, values: data.byPeriod.map((row) => row.byModule?.[line.key] ?? 0) }))
-                        // Módulo sem nenhum registro no período não ganha linha zerada.
-                        .filter((line) => line.values.some((value) => value > 0))}
-                    />
-                  ) : (
-                    <MonthlyChart rows={data.byPeriod} />
-                  )}
+                  {(() => {
+                    // Dois meses ou mais: linhas mês a mês. Um mês só: linhas dia a dia (14/11/2026).
+                    const monthly = data.byPeriod.length > 1 && data.byPeriod[0].byModule
+                    const points = monthly
+                      ? data.byPeriod.map((row) => ({ key: row.month, byModule: row.byModule ?? {} }))
+                      : (data.byDay ?? []).map((row) => ({ key: row.day, byModule: row.byModule }))
+                    const series = [
+                      { key: 'maintenance', label: 'Manutenção', color: '#2a78d6' },
+                      { key: 'fleet', label: 'Frota', color: '#eb6834' },
+                      { key: 'flights', label: 'Passagens', color: '#1baf7a' },
+                    ]
+                      .map((line) => ({ ...line, values: points.map((point) => point.byModule[line.key] ?? 0) }))
+                      // Módulo sem nenhum registro no período não ganha linha zerada.
+                      .filter((line) => line.values.some((value) => value > 0))
+                    const monthName = new Date(`${data.byPeriod[0].month}-15T12:00:00`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+                    return (
+                      <>
+                        <h2 id="chart-period">{monthly || points.length === 0 ? 'Solicitações por mês' : `Solicitações por dia · ${monthName}`}</h2>
+                        {points.length > 1 && series.length > 0 ? (
+                          <LineChart months={points.map((point) => point.key)} series={series} granularity={monthly ? 'month' : 'day'} />
+                        ) : (
+                          <MonthlyChart rows={data.byPeriod} />
+                        )}
+                      </>
+                    )
+                  })()}
                 </section>
               )}
               <section className="ui-card" aria-labelledby="chart-module">

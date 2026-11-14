@@ -262,6 +262,44 @@ export class InsightsRepository {
     return [...months.values()]
   }
 
+  /**
+   * Dia a dia dentro de um mês (14/11/2026): com um mês só de dados, as linhas do painel mostram
+   * a evolução diária. Dias sem registro entram com zero, do dia 1 até hoje (ou o fim do mês).
+   */
+  async byDay(identity: AuthenticatedIdentity, filters: InsightFilters, month: string) {
+    if (!/^\d{4}-\d{2}$/.test(month)) return []
+    const scope = buildScope(identity, filters)
+    const monthParameter = `$${scope.parameters.length + 1}`
+    const result = await this.poolProvider().query<{ dia: string; tipo: string; total: number }>(
+      `SELECT to_char(r.created_at AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD') AS dia,
+              r.tipo, count(*)::int AS total
+         FROM public.service_requests r
+         ${scope.where}
+          AND to_char(r.created_at AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM') = ${monthParameter}
+        GROUP BY 1, 2
+        ORDER BY 1`,
+      [...scope.parameters, month],
+    )
+    const moduleOfType = Object.fromEntries(Object.entries(moduleTypes).map(([module, type]) => [type, module]))
+    const [year, number] = month.split('-').map(Number)
+    const lastOfMonth = new Date(Date.UTC(year, number, 0)).getUTCDate()
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+    const lastDay = today.startsWith(month) ? Number(today.slice(8, 10)) : lastOfMonth
+    const days = new Map<string, { day: string; total: number; byModule: Record<string, number> }>()
+    for (let day = 1; day <= lastDay; day += 1) {
+      const key = `${month}-${String(day).padStart(2, '0')}`
+      days.set(key, { day: key, total: 0, byModule: {} })
+    }
+    for (const row of result.rows) {
+      const entry = days.get(row.dia) ?? { day: row.dia, total: 0, byModule: {} }
+      const module = moduleOfType[row.tipo] ?? row.tipo
+      entry.total += row.total
+      entry.byModule[module] = (entry.byModule[module] ?? 0) + row.total
+      days.set(row.dia, entry)
+    }
+    return [...days.values()].sort((a, b) => a.day.localeCompare(b.day))
+  }
+
   async bySector(identity: AuthenticatedIdentity, filters: InsightFilters) {
     const scope = buildScope(identity, filters)
     const result = await this.poolProvider().query<{ setor: string | null; total: number }>(

@@ -61,7 +61,9 @@ router.get('/dashboard/summary', async (request, response) => {
       insights.recent(identity, filters),
       insights.byPeriod(identity, filters),
     ])
-    response.json({ success: true, ...summary, recent, byPeriod })
+    // Um mês só de dados: as linhas mostram dia a dia (14/11/2026).
+    const byDay = byPeriod.length === 1 ? await insights.byDay(identity, filters, byPeriod[0].month) : null
+    response.json({ success: true, ...summary, recent, byPeriod, byDay })
   } catch (error) {
     sendModuleError(response, error)
   }
