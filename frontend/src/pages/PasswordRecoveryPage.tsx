@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { PASSWORD_MIN_LENGTH } from '../auth/passwordPolicy'
 import logoJucesp from '../assets/logoJucespNovo.png'
 import { requestPasswordRecovery, resetPassword, resetPasswordWithLink } from '../auth/auth'
 import '../App.css'
@@ -141,8 +142,8 @@ function PasswordRecoveryPage({ onBackToLogin, linkToken = null }: PasswordRecov
               autoComplete="new-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="Mínimo de 12 caracteres"
-              minLength={12}
+              placeholder={`Mínimo de ${PASSWORD_MIN_LENGTH} caracteres`}
+              minLength={PASSWORD_MIN_LENGTH}
               maxLength={512}
               required
               disabled={loading || resetCompleted}
@@ -155,7 +156,7 @@ function PasswordRecoveryPage({ onBackToLogin, linkToken = null }: PasswordRecov
               value={passwordConfirmation}
               onChange={(event) => setPasswordConfirmation(event.target.value)}
               placeholder="Digite a senha novamente"
-              minLength={12}
+              minLength={PASSWORD_MIN_LENGTH}
               maxLength={512}
               required
               disabled={loading || resetCompleted}

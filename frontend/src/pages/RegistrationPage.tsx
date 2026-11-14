@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { PASSWORD_MIN_LENGTH } from '../auth/passwordPolicy'
 import { getPublicRegistrationForm } from '../api/configApi'
 import type { FormContent } from '../api/configApi'
 import { isManagedFieldVisible } from '../app/requestForm'
@@ -55,8 +56,8 @@ function RegistrationPage({ onBackToLogin, onBack }: RegistrationPageProps) {
       return
     }
 
-    if (password.length < 12) {
-      setError('A senha deve ter pelo menos 12 caracteres.')
+    if (password.length < PASSWORD_MIN_LENGTH) {
+      setError(`A senha deve ter pelo menos ${PASSWORD_MIN_LENGTH} caracteres.`)
       return
     }
 
@@ -205,8 +206,8 @@ function RegistrationPage({ onBackToLogin, onBack }: RegistrationPageProps) {
               autoComplete="new-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="Mínimo de 12 caracteres"
-              minLength={12}
+              placeholder={`Mínimo de ${PASSWORD_MIN_LENGTH} caracteres`}
+              minLength={PASSWORD_MIN_LENGTH}
               maxLength={512}
               required
               disabled={loading}
@@ -223,7 +224,7 @@ function RegistrationPage({ onBackToLogin, onBack }: RegistrationPageProps) {
                 setPasswordConfirmation(event.target.value)
               }
               placeholder="Digite a senha novamente"
-              minLength={12}
+              minLength={PASSWORD_MIN_LENGTH}
               maxLength={512}
               required
               disabled={loading}

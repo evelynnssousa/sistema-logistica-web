@@ -1,5 +1,6 @@
 
 import { createHash } from 'node:crypto'
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '../auth/passwordPolicy.js'
 import { Router } from 'express'
 import type { Request, Response } from 'express'
 import {
@@ -83,8 +84,8 @@ authRouter.post('/auth/register', async (request, response) => {
     sector.trim().length < 2 ||
     sector.trim().length > 120 ||
     typeof password !== 'string' ||
-    password.length < 12 ||
-    password.length > 512 ||
+    password.length < PASSWORD_MIN_LENGTH ||
+    password.length > PASSWORD_MAX_LENGTH ||
     typeof passwordConfirmation !== 'string' ||
     password !== passwordConfirmation
   ) {
@@ -92,7 +93,7 @@ authRouter.post('/auth/register', async (request, response) => {
       success: false,
       message: password !== passwordConfirmation
         ? 'A confirmação de senha não corresponde.'
-        : 'Confira os dados informados e use uma senha com ao menos 12 caracteres.',
+        : `Confira os dados informados e use uma senha com ao menos ${PASSWORD_MIN_LENGTH} caracteres.`,
     })
     return
   }
@@ -443,8 +444,8 @@ authRouter.post('/auth/password-recovery/reset', async (request, response) => {
     typeof code !== 'string' ||
     !/^\d{6}$/.test(code) ||
     typeof password !== 'string' ||
-    password.length < 12 ||
-    password.length > 512 ||
+    password.length < PASSWORD_MIN_LENGTH ||
+    password.length > PASSWORD_MAX_LENGTH ||
     typeof passwordConfirmation !== 'string' ||
     password !== passwordConfirmation
   ) {
@@ -452,7 +453,7 @@ authRouter.post('/auth/password-recovery/reset', async (request, response) => {
       success: false,
       message: password !== passwordConfirmation
         ? 'A confirmação de senha não corresponde.'
-        : 'Confira o e-mail, o código e a nova senha. A senha deve ter ao menos 12 caracteres.',
+        : `Confira o e-mail, o código e a nova senha. A senha deve ter ao menos ${PASSWORD_MIN_LENGTH} caracteres.`,
     })
     return
   }
@@ -510,15 +511,15 @@ authRouter.post('/auth/password-recovery/reset-link', async (request, response) 
   if (
     !isPasswordRecoveryToken(token) ||
     typeof password !== 'string' ||
-    password.length < 12 ||
-    password.length > 512 ||
+    password.length < PASSWORD_MIN_LENGTH ||
+    password.length > PASSWORD_MAX_LENGTH ||
     password !== passwordConfirmation
   ) {
     response.status(400).json({
       success: false,
       message: password !== passwordConfirmation
         ? 'A confirmação de senha não corresponde.'
-        : 'Link inválido, ou senha com menos de 12 caracteres.',
+        : `Link inválido, ou senha com menos de ${PASSWORD_MIN_LENGTH} caracteres.`,
     })
     return
   }
