@@ -712,7 +712,8 @@ export const getDashboard = (filters: InsightFilters) =>
 export const getReport = (filters: InsightFilters) =>
   apiRequest<
     SummaryResponse & {
-      byPeriod: { month: string; total: number }[]
+      byPeriod: { month: string; total: number; byModule?: Record<string, number> }[]
+      byDay?: { day: string; total: number; byModule: Record<string, number> }[] | null
       bySector: { sector: string; total: number }[]
       materials: { material: string; unit: string; requested: number; fulfilled: number }[]
     }
