@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { downloadTestDataCopy, getTestDataInfo, purgeTestData } from '../api/configApi'
 import type { TestDataInfo } from '../api/configApi'
 import { errorMessage } from '../api/modulesApi'
+import DemoDataCard from './DemoDataCard'
 import { Alert, Loading } from './ui/Feedback'
 import Icon from './ui/Icon'
 
@@ -179,6 +180,7 @@ function TestDataSection() {
         {error && <Alert tone="error">{error}</Alert>}
         {done && <Alert tone="success">{done}</Alert>}
       </div>
+      <DemoDataCard environment={info.environment} />
     </section>
   )
 }

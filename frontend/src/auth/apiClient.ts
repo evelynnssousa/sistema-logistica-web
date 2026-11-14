@@ -13,7 +13,7 @@ export class ApiError extends Error {
   }
 }
 
-type ApiResponse = {
+export type ApiResponse = {
   success?: boolean
   message?: string
   code?: string

@@ -263,6 +263,7 @@ export const routeAccessMap: readonly RouteAccess[] = [
   { method: 'GET', path: '/warehouse/robot/weekly-summary', access: 'permission', requires: ['warehouse:manage'] },
 
   // Limpeza dos dados de teste: só o Administrador, com a permissão de alterar configurações.
+  { method: 'POST', path: '/admin/test-data/demo/:kind', access: 'permission', requires: ['settings:manage'], administratorOnly: true },
   { method: 'GET', path: '/admin/test-data', access: 'permission', requires: ['settings:manage'], administratorOnly: true },
   { method: 'GET', path: '/admin/test-data/copy', access: 'permission', requires: ['settings:manage'], administratorOnly: true },
   { method: 'POST', path: '/admin/test-data/purge', access: 'permission', requires: ['settings:manage'], administratorOnly: true },

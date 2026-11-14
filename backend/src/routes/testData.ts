@@ -18,7 +18,14 @@ import { getDatabasePool } from '../database/pool.js'
 import { requireAuthorization } from '../middleware/requireAuthorization.js'
 import { requireCsrf } from '../middleware/requireCsrf.js'
 import { requirePermission } from '../middleware/requirePermission.js'
-import { asBody, RequestValidationError } from '../requests/validation.js'
+import { asBody, optionalText, optionalUuid, requiredUuid, RequestValidationError } from '../requests/validation.js'
+import { forbidden } from '../database/moduleErrors.js'
+import { DemandRepository } from '../database/demandRepository.js'
+import { loadDemandContextData } from '../database/demandConfigRepository.js'
+import { InstrumentRepository } from '../database/instrumentRepository.js'
+import { readDemandInput, readSubtask } from '../demands/demandValidation.js'
+import type { DemandContext } from '../demands/demandPolicy.js'
+import { day, decimal, readInstrument, readInstrumentItem } from './instruments.js'
 
 /**
  * Limpeza dos dados de teste. Só o Administrador, com a permissão de alterar configurações.
@@ -161,6 +168,64 @@ router.post(
       storage ? (key) => storage.remove(key) : null,
     )
     response.json({ success: true, ...result })
+  }),
+)
+
+// ---------------------------------------------------------------------------
+// Dados de demonstração (14/11/2026): demandas, etapas e atas fictícias, criadas pelo botão
+// "Criar dados de demonstração". O Administrador só consulta o Controle de Demandas; aqui ele cria
+// como a Diretoria, com as mesmas validações da tela. Nunca no banco principal.
+// ---------------------------------------------------------------------------
+const demoDemands = new DemandRepository()
+const demoInstruments = new InstrumentRepository()
+
+router.post(
+  '/admin/test-data/demo/:kind',
+  guarded(async (request, response) => {
+    if (databaseEnvironment() === 'principal') throw forbidden()
+    const identity = response.locals.authenticatedUser as AuthenticatedIdentity
+    const body = asBody(request.body)
+    const context: DemandContext = {
+      userId: identity.userId,
+      administrator: false,
+      directorate: true,
+      memberships: (await loadDemandContextData(getDatabasePool(), identity.userId)).memberships,
+    }
+    const kind = String(request.params.kind)
+    if (kind === 'demand') {
+      const created = await demoDemands.create(identity, context, readDemandInput(body))
+      response.status(201).json({ success: true, ...created })
+      return
+    }
+    if (kind === 'subtask') {
+      const id = await demoDemands.addSubtask(identity, requiredUuid(body.demandId, 'a demanda'), readSubtask(asBody(body.subtask)))
+      response.status(201).json({ success: true, id })
+      return
+    }
+    if (kind === 'instrument') {
+      const id = await demoInstruments.create(identity, readInstrument(body))
+      response.status(201).json({ success: true, id })
+      return
+    }
+    if (kind === 'instrument-item') {
+      const id = await demoInstruments.saveItem(identity, requiredUuid(body.instrumentId, 'a ata'), null, readInstrumentItem(asBody(body.item)))
+      response.status(201).json({ success: true, id })
+      return
+    }
+    if (kind === 'instrument-usage') {
+      const usage = asBody(body.usage)
+      const id = await demoInstruments.addUsage(identity, requiredUuid(body.instrumentId, 'a ata'), {
+        itemId: requiredUuid(usage.itemId, 'o item'),
+        quantity: decimal(usage.quantity, 'a quantidade', { positive: true })!,
+        date: day(usage.date, 'a data', true)!,
+        document: optionalText(usage.document, 'Documento', 120),
+        note: optionalText(usage.note, 'Observação', 2000),
+        demandId: optionalUuid(usage.demandId, 'Demanda'),
+      })
+      response.status(201).json({ success: true, id })
+      return
+    }
+    throw notFound()
   }),
 )
 
