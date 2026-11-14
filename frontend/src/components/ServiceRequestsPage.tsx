@@ -29,12 +29,25 @@ type ServiceRequestsPageProps = {
   columns: readonly Column[]
   className?: string
   createPermission: string
-  extraAction?: { to: string; label: string; icon: IconName; permission: string }
-  secondExtraAction?: { to: string; label: string; icon: IconName; permission: string }
+  /** Atalhos do cabeçalho (Veículos, Motoristas, Resumo do mês...), cada um com a sua permissão. */
+  extraActions?: readonly ExtraAction[]
   /** Filtro próprio do módulo, enviado à API. */
   tripTypeOptions?: { value: string; label: string }[]
   /** Conteúdo próprio do módulo, abaixo da lista (ex.: a planilha da Frota). */
   footer?: ReactNode
+}
+
+type ExtraAction = { to: string; label: string; icon: IconName; permission: string }
+
+function ExtraActionLink({ action }: { action: ExtraAction }) {
+  const allowed = useHasPermission(action.permission)
+  if (!allowed) return null
+  return (
+    <Link className="maintenance-secondary-button" to={action.to}>
+      <Icon name={action.icon} size={18} />
+      {action.label}
+    </Link>
+  )
 }
 
 function ServiceRequestsPage({
@@ -47,14 +60,11 @@ function ServiceRequestsPage({
   columns,
   className = 'maintenance-page',
   createPermission,
-  extraAction,
-  secondExtraAction,
+  extraActions = [],
   tripTypeOptions,
   footer,
 }: ServiceRequestsPageProps) {
   const canCreate = useHasPermission(createPermission)
-  const canSeeExtra = useHasPermission(extraAction?.permission ?? '')
-  const canSeeSecondExtra = useHasPermission(secondExtraAction?.permission ?? '')
   const period = usePeriodFilter()
   const [searchTerm, setSearchTerm] = useState('')
   const [appliedSearch, setAppliedSearch] = useState('')
@@ -106,18 +116,9 @@ function ServiceRequestsPage({
         description={pageDescription}
         actions={
           <>
-            {extraAction && canSeeExtra && (
-              <Link className="maintenance-secondary-button" to={extraAction.to}>
-                <Icon name={extraAction.icon} size={18} />
-                {extraAction.label}
-              </Link>
-            )}
-            {secondExtraAction && canSeeSecondExtra && (
-              <Link className="maintenance-secondary-button" to={secondExtraAction.to}>
-                <Icon name={secondExtraAction.icon} size={18} />
-                {secondExtraAction.label}
-              </Link>
-            )}
+            {extraActions.map((action) => (
+              <ExtraActionLink key={action.to} action={action} />
+            ))}
             {canCreate && (
               <Link className="maintenance-primary-button" to={`${basePath}/nova`}>
                 <Icon name="add" size={20} />

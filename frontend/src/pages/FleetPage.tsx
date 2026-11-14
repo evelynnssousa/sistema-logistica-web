@@ -36,8 +36,11 @@ function FleetPage() {
         ...(seesDriver ? [{ label: 'Motorista', render: (request: ServiceRequest) => request.driverName ?? '—' }] : []),
       ]}
       createPermission="fleet:create"
-      extraAction={{ to: '/frota/veiculos', label: 'Veículos', icon: 'vehicle', permission: 'fleet:update' }}
-      secondExtraAction={{ to: '/frota/motoristas', label: 'Motoristas', icon: 'users', permission: 'fleet:manage' }}
+      extraActions={[
+        { to: '/frota/resumo-do-mes', label: 'Resumo do mês', icon: 'reports', permission: 'fleet:update' },
+        { to: '/frota/veiculos', label: 'Veículos', icon: 'vehicle', permission: 'fleet:update' },
+        { to: '/frota/motoristas', label: 'Motoristas', icon: 'users', permission: 'fleet:manage' },
+      ]}
       footer={
         canDownload && (
           <SpreadsheetDownload

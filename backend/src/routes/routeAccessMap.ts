@@ -226,6 +226,7 @@ export const routeAccessMap: readonly RouteAccess[] = [
   // Cada categoria aplica as permissões de quem pesquisa, no próprio SQL.
   { method: 'GET', path: '/search', access: 'session' },
 
+  { method: 'GET', path: '/fleet/monthly-summary', access: 'permission', requires: ['fleet:read', 'fleet:update'] },
   { method: 'GET', path: '/fleet/vehicles', access: 'permission', requires: ['fleet:read', 'fleet:update'] },
   { method: 'POST', path: '/fleet/vehicles', access: 'permission', requires: ['fleet:manage'] },
   { method: 'GET', path: '/fleet/vehicles/:vehicleId', access: 'permission', requires: ['fleet:read', 'fleet:update'] },

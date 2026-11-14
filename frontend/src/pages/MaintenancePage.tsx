@@ -29,7 +29,7 @@ function MaintenancePage() {
         { label: 'Setor', render: (request) => request.sector ?? '—' },
         { label: 'Data da solicitação', sortKey: 'criacao', render: (request) => formatDateTime(request.createdAt) },
       ]}
-      extraAction={{ to: '/manutencao/equipamentos', label: 'Equipamentos', icon: 'maintenance', permission: 'maintenance:update' }}
+      extraActions={[{ to: '/manutencao/equipamentos', label: 'Equipamentos', icon: 'maintenance', permission: 'maintenance:update' }]}
       createPermission="maintenance:create"
       footer={
         canDownload && (
