@@ -487,6 +487,65 @@ test('planilha da Frota: viagens com quilometragem e carga horária estimada, co
   assert.equal(audit.rows[0].total, 2)
 })
 
+test('resumo do mês: km por carro (portal + diário de bordo) e horas a mais e a menos por motorista', async () => {
+  await save('driverExecution', { startFields: ['vehicle', 'odometer'], finishFields: ['odometer'] })
+  await save('driverJourney', { ...wholeDay })
+  const vehicle = await pool.query<{ id: string }>(
+    `INSERT INTO public.vehicles (placa, modelo) VALUES ('RES-1M23', 'Spin Resumo') RETURNING id::text AS id`,
+  )
+  const long = await scheduledTrip()
+  assert.equal((await post(`/driver/trips/${long}/start`, driver, { hodometro: 100, veiculo: 'Spin res1m23' })).status, 200)
+  assert.equal((await post(`/driver/trips/${long}/finish`, driver, { hodometro: 160 })).status, 200)
+  const short = await scheduledTrip()
+  assert.equal((await post(`/driver/trips/${short}/start`, driver, { hodometro: 10, veiculo: 'Carro alugado' })).status, 200)
+  assert.equal((await post(`/driver/trips/${short}/finish`, driver, { hodometro: 22 })).status, 200)
+  // Segunda, 2/8/2032: 8h–20h. Terça, 3/8: 9h–13h.
+  await pool.query(
+    `UPDATE public.service_requests SET execucao_inicio = '2032-08-02T11:00:00Z', execucao_fim = '2032-08-02T23:00:00Z' WHERE id = $1`,
+    [long],
+  )
+  await pool.query(
+    `UPDATE public.service_requests SET execucao_inicio = '2032-08-03T12:00:00Z', execucao_fim = '2032-08-03T16:00:00Z' WHERE id = $1`,
+    [short],
+  )
+  const adminId = (await pool.query<{ id: string }>(`SELECT id::text AS id FROM public.auth_users WHERE email = 'portal-config-admin@example.gov.br'`)).rows[0].id
+  await pool.query(
+    `INSERT INTO public.vehicle_logs (vehicle_id, tipo, data_registro, km_inicial, km_final, descricao, registrado_por)
+     VALUES ($1, 'utilizacao', '2032-08-15T13:00:00Z', 160, 200, 'Uso registrado na ficha', $2),
+            ($1, 'utilizacao', '2032-09-01T13:00:00Z', 200, 900, 'Mês seguinte', $2)`,
+    [vehicle.rows[0].id, adminId],
+  )
+  await save('driverJourney', { start: '08:00', end: '17:00', weekdays: [1, 2, 3, 4, 5], breakMinutes: 60, expectedMinutes: null })
+
+  const summary = await get('/fleet/monthly-summary?month=2032-08', admin)
+  assert.equal(summary.status, 200, summary.text)
+  const spin = summary.body.vehicles.find((row: { vehicle: string }) => row.vehicle === 'RES-1M23')
+  assert.deepEqual(
+    { trips: spin.trips, tripKm: spin.tripKm, logKm: spin.logKm, totalKm: spin.totalKm, registered: spin.registered },
+    { trips: 1, tripKm: 60, logKm: 40, totalKm: 100, registered: true },
+  )
+  const rented = summary.body.vehicles.find((row: { vehicle: string }) => row.vehicle === 'Carro alugado')
+  assert.equal(rented.totalKm, 12)
+  assert.equal(rented.registered, false)
+
+  const hours = summary.body.drivers.find((row: { driverName: string }) => row.driverName === 'Motorista Config')
+  assert.equal(hours.days, 2)
+  // Segunda: 12 h em viagem (a jornada nunca é menor que o tempo em viagem): 4 h a mais. Terça: 4 h, 4 h a menos.
+  assert.equal(hours.extraMinutes, 240)
+  assert.equal(hours.missingMinutes, 240)
+  assert.equal(hours.balanceMinutes, 0)
+  assert.equal(summary.body.journey.dailyMinutes, 480)
+
+  // Quem cuida dos veículos vê os km, mas não as horas dos motoristas.
+  const fleetStaff = await staff('portal-config-veiculos@example.gov.br', ['fleet:read', 'fleet:update'])
+  const partial = await get('/fleet/monthly-summary?month=2032-08', fleetStaff)
+  assert.equal(partial.status, 200, partial.text)
+  assert.equal(partial.body.drivers, null)
+  assert.ok(partial.body.vehicles.some((row: { vehicle: string }) => row.vehicle === 'RES-1M23'))
+  assert.equal((await get('/fleet/monthly-summary?month=2032-08', requester)).status, 403)
+  assert.equal((await get('/fleet/monthly-summary?month=junho', admin)).status, 400)
+})
+
 test('situações exibidas: a oculta some do portal, e a viagem em andamento nunca some', async () => {
   const cancelled = await scheduledTrip()
   assert.equal((await post(`/fleet/requests/${cancelled}/cancel`, admin, { motivoCodigo: 'outro', motivo: 'Audiência desmarcada' })).status, 200)

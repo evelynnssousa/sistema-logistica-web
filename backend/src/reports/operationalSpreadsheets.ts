@@ -76,7 +76,7 @@ export function periodSheet(title: string, period: SpreadsheetPeriod, generatedB
   }
 }
 
-export async function tableExists(pool: Pool, table: string) {
+export async function tableExists(pool: Pick<Pool, 'query'>, table: string) {
   const result = await pool.query<{ present: boolean }>(`SELECT to_regclass($1) IS NOT NULL AS present`, [`public.${table}`])
   return result.rows[0].present
 }
@@ -286,13 +286,8 @@ type ExecutionRecord = {
   fim?: { hodometro?: number }
 }
 
-export async function fleetWorkbook(
-  identity: AuthenticatedIdentity,
-  period: SpreadsheetPeriod,
-  generatedBy: string,
-  poolProvider: () => Pool = getDatabasePool,
-): Promise<Sheet[]> {
-  const pool = poolProvider()
+/** Viagens da Frota no período, no alcance de quem consulta, com km e duração de cada uma. */
+export async function loadFleetTrips(identity: AuthenticatedIdentity, period: SpreadsheetPeriod, pool: Pick<Pool, 'query'>) {
   const hasDrivers = await tableExists(pool, 'fleet_drivers')
   const seesAll = holdsPermission(identity, 'requests:read_all')
   const parameters: unknown[] = [period.from, period.to]
@@ -341,6 +336,18 @@ export async function fleetWorkbook(
         : null
     return { row, start, end, kilometers, minutes }
   })
+
+  return { hasDrivers, tripRows }
+}
+
+export async function fleetWorkbook(
+  identity: AuthenticatedIdentity,
+  period: SpreadsheetPeriod,
+  generatedBy: string,
+  poolProvider: () => Pool = getDatabasePool,
+): Promise<Sheet[]> {
+  const pool = poolProvider()
+  const { hasDrivers, tripRows } = await loadFleetTrips(identity, period, pool)
 
   // Diário de bordo dos veículos (migração 009): uso, abastecimento e manutenção, com a quilometragem.
   const vehicles = (await tableExists(pool, 'vehicle_logs')) && holdsPermission(identity, 'fleet:update')

@@ -12,6 +12,7 @@ import { notFound, sendModuleError } from '../database/moduleErrors.js'
 import { ServiceRequestRepository } from '../database/serviceRequestRepository.js'
 import { WarehouseFinanceRepository } from '../database/warehouseFinanceRepository.js'
 import { requirePermission } from '../middleware/requirePermission.js'
+import { fleetMonthlySummary, monthPeriod } from '../reports/fleetMonthly.js'
 import {
   asBody,
   isUuid,
@@ -120,6 +121,18 @@ function readVehicle(raw: unknown): VehicleInput {
 
 const fleetRead = all('fleet:read', 'fleet:update')
 const fleetManage = all('fleet:manage')
+
+// Resumo do mês: km por carro e, para quem administra a Frota, horas a mais e a menos por motorista.
+router.get(
+  '/fleet/monthly-summary',
+  ...fleetRead,
+  guarded(async (request, response) => {
+    const month = asBody(request.query).month
+    const period = typeof month === 'string' ? monthPeriod(month) : null
+    if (typeof month !== 'string' || !period) throw new RequestValidationError('Informe o mês (AAAA-MM).')
+    response.json({ success: true, ...(await fleetMonthlySummary(identityOf(response), month, period)) })
+  }),
+)
 
 router.get(
   '/fleet/vehicles',

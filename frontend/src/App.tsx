@@ -50,6 +50,7 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const DriverPortalPage = lazy(() => import('./pages/DriverPortalPage'))
 const DriversPage = lazy(() => import('./pages/DriversPage'))
 const FleetPage = lazy(() => import('./pages/FleetPage'))
+const FleetMonthlyPage = lazy(() => import('./pages/FleetMonthlyPage'))
 const FleetRequestPage = lazy(() => import('./pages/FleetRequestPage'))
 const AccountPage = lazy(() => import('./pages/AccountPage'))
 const InventoryCheckPage = lazy(() => import('./pages/InventoryCheckPage'))
@@ -150,6 +151,7 @@ function App() {
           <Route path="manutencao/nova" element={guarded(['maintenance:create'], <MaintenanceRequestPage />)} />
           <Route path="manutencao/:requestId" element={guarded(['maintenance:read'], <RequestDetailPage module="maintenance" />)} />
           <Route path="frota" element={guarded(['fleet:read'], <FleetPage />)} />
+          <Route path="frota/resumo-do-mes" element={guarded(['fleet:read', 'fleet:update'], <FleetMonthlyPage />)} />
           <Route path="frota/veiculos" element={guarded(['fleet:update'], <VehiclesPage />)} />
           <Route path="frota/veiculos/:vehicleId" element={guarded(['fleet:update'], <VehicleDetailPage />)} />
           <Route path="frota/motoristas" element={guarded(['fleet:manage'], <DriversPage />)} />

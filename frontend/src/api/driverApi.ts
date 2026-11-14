@@ -200,3 +200,40 @@ export function formatDuration(minutes: number | null | undefined) {
   const rest = minutes % 60
   return hours > 0 ? `${hours}h${String(rest).padStart(2, '0')}` : `${rest} min`
 }
+
+/** Resumo do mês da Frota: km por carro e, para quem administra a Frota, horas a mais e a menos. */
+export type VehicleKilometers = {
+  vehicle: string
+  model: string | null
+  registered: boolean
+  trips: number
+  tripsWithoutOdometer: number
+  tripKm: number
+  logUses: number
+  logKm: number
+  totalKm: number
+}
+
+export type DriverMonthHours = {
+  driverId: string
+  driverName: string
+  days: number
+  trips: number
+  tripMinutes: number
+  outsideJourneyMinutes: number
+  workedMinutes: number
+  expectedMinutes: number
+  extraMinutes: number
+  missingMinutes: number
+  balanceMinutes: number
+}
+
+export type FleetMonthlySummary = {
+  month: string
+  vehicles: VehicleKilometers[]
+  drivers: DriverMonthHours[] | null
+  journey: { weekdays: number[]; start: string; end: string; breakMinutes: number; dailyMinutes: number } | null
+}
+
+export const fetchFleetMonthlySummary = (month: string) =>
+  apiRequest<Envelope & FleetMonthlySummary>(`/fleet/monthly-summary?month=${encodeURIComponent(month)}`)
