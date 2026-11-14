@@ -34,6 +34,12 @@ export function BarChart({ rows, unit = '', showPercent = false }: { rows: Chart
   )
 }
 
+/** Dia no formato 14/11. */
+function dayLabel(day: string) {
+  const [, month, date] = day.split('-')
+  return `${date}/${month}`
+}
+
 function monthLabel(month: string) {
   const [year, number] = month.split('-').map(Number)
   return new Date(year, number - 1, 1).toLocaleDateString('pt-BR', {
@@ -71,7 +77,10 @@ export type LineSeries = { key: string; label: string; color: string; values: nu
  * linha vertical e valores ao passar o mouse ou focar com o teclado, e a mesma informação em
  * tabela. Um só eixo. Cores na ordem fixa da paleta validada (azul, laranja, verde-água).
  */
-export function LineChart({ months, series }: { months: string[]; series: LineSeries[] }) {
+export function LineChart({ months, series, granularity = 'month' }: { months: string[]; series: LineSeries[]; granularity?: 'month' | 'day' }) {
+  // Mês a mês ou, com um mês só de dados, dia a dia (14/11/2026).
+  const labelOf = granularity === 'day' ? dayLabel : monthLabel
+  const unit = granularity === 'day' ? 'dia' : 'mês'
   const [active, setActive] = useState<number | null>(null)
   const width = 640
   const height = 240
@@ -105,7 +114,7 @@ export function LineChart({ months, series }: { months: string[]; series: LineSe
         ))}
       </ul>
       <div className="ui-line-plot">
-        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Solicitações por mês e por módulo, de ${monthLabel(months[0])} a ${monthLabel(months[months.length - 1])}. Os valores estão na tabela abaixo.`}>
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Solicitações por ${unit} e por módulo, de ${labelOf(months[0])} a ${labelOf(months[months.length - 1])}. Os valores estão na tabela abaixo.`}>
           {ticks.map((tick) => (
             <g key={tick}>
               <line className="ui-line-grid" x1={pad.left} x2={pad.left + plotWidth} y1={y(tick)} y2={y(tick)} />
@@ -117,7 +126,7 @@ export function LineChart({ months, series }: { months: string[]; series: LineSe
           {months.map((month, index) =>
             index % labelEvery === 0 ? (
               <text key={month} className="ui-line-axis" x={x(index)} y={height - 8} textAnchor="middle">
-                {monthLabel(month)}
+                {labelOf(month)}
               </text>
             ) : null,
           )}
@@ -153,7 +162,7 @@ export function LineChart({ months, series }: { months: string[]; series: LineSe
               width={plotWidth / Math.max(1, months.length - 1)}
               height={plotHeight}
               tabIndex={0}
-              aria-label={`${monthLabel(month)}: ${series.map((line) => `${line.label} ${line.values[index]}`).join(', ')}`}
+              aria-label={`${labelOf(month)}: ${series.map((line) => `${line.label} ${line.values[index]}`).join(', ')}`}
               onMouseEnter={() => setActive(index)}
               onMouseLeave={() => setActive(null)}
               onFocus={() => setActive(index)}
@@ -164,10 +173,14 @@ export function LineChart({ months, series }: { months: string[]; series: LineSe
         {active !== null && (
           <div
             className="ui-line-tooltip"
-            style={{ left: `${(x(active) / width) * 100}%` }}
+            // Perto da borda direita, a caixa abre para a esquerda, sem cobrir os nomes das linhas.
+            style={{
+              left: `${(x(active) / width) * 100}%`,
+              transform: x(active) / width > 0.6 ? 'translateX(calc(-100% - 12px))' : 'translateX(-50%)',
+            }}
             role="status"
           >
-            <strong>{monthLabel(months[active])}</strong>
+            <strong>{labelOf(months[active])}</strong>
             {series.map((line) => (
               <span key={line.key}>
                 <span className="ui-legend-swatch" style={{ background: line.color }} aria-hidden="true" />
@@ -183,7 +196,7 @@ export function LineChart({ months, series }: { months: string[]; series: LineSe
           <table className="data-table">
             <thead>
               <tr>
-                <th>Mês</th>
+                <th>{granularity === 'day' ? 'Dia' : 'Mês'}</th>
                 {series.map((line) => (
                   <th key={line.key}>{line.label}</th>
                 ))}
@@ -192,7 +205,7 @@ export function LineChart({ months, series }: { months: string[]; series: LineSe
             <tbody>
               {months.map((month, index) => (
                 <tr key={month}>
-                  <td>{monthLabel(month)}</td>
+                  <td>{labelOf(month)}</td>
                   {series.map((line) => (
                     <td key={line.key}>{line.values[index]}</td>
                   ))}

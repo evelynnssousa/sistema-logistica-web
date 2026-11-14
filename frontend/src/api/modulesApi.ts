@@ -700,6 +700,8 @@ export type InsightFilters = {
 export type DashboardResponse = SummaryResponse & {
   recent: RecentRequest[]
   byPeriod: { month: string; total: number; byModule?: Record<string, number> }[]
+  /** Com um mês só de dados, a evolução dia a dia (14/11/2026). */
+  byDay?: { day: string; total: number; byModule: Record<string, number> }[] | null
 }
 
 export const getDashboard = (filters: InsightFilters) =>
