@@ -14,7 +14,8 @@ import { useHasPermission } from '../auth/UserContext'
 import { usePeriodFilter } from '../app/period'
 import { useCatalog } from '../app/useCatalog'
 import StatCard from '../components/StatCard'
-import { BarChart } from '../components/ui/Charts'
+import { statusColor, statusLegend } from '../app/chartColors'
+import { BarChart, ChartLegend } from '../components/ui/Charts'
 import RequestsTrendChart from '../components/RequestsTrendChart'
 import type { ChartRow } from '../components/ui/Charts'
 import { Alert, EmptyState, Loading } from '../components/ui/Feedback'
@@ -28,15 +29,15 @@ function Bars({ rows }: { rows: ChartRow[] }) {
   return rows.length === 0 ? (
     <EmptyState icon="reports" title="Sem dados para exibir" />
   ) : (
-    <BarChart rows={rows} />
+    <BarChart rows={rows} sorted />
   )
 }
 
 function statusRows(report: Report) {
-  const rows: { module: string; status: string; total: number }[] = []
+  const rows: { module: string; status: string; total: number; color: string }[] = []
   for (const [module, statuses] of Object.entries(report.byModule)) {
     for (const [status, total] of Object.entries(statuses)) {
-      rows.push({ module: moduleLabels[module], status: statusLabels[status] ?? status, total })
+      rows.push({ module: moduleLabels[module], status: statusLabels[status] ?? status, total, color: statusColor(status) })
     }
   }
   for (const [status, total] of Object.entries(report.warehouse ?? {})) {
@@ -44,6 +45,7 @@ function statusRows(report: Report) {
       module: moduleLabels.warehouse,
       status: warehouseStatusLabels[status] ?? status,
       total,
+      color: statusColor(status),
     })
   }
   return rows
@@ -98,7 +100,7 @@ function PerformanceSection({ data }: { data: PerformanceReport }) {
       {data.byCategory.length > 0 && (
         <>
           <h3>Manutenção por categoria</h3>
-          <BarChart rows={data.byCategory.map((row) => ({ label: row.category, value: row.total }))} />
+          <BarChart rows={data.byCategory.map((row) => ({ label: row.category, value: row.total }))} sorted />
         </>
       )}
       {data.monthly.length > 0 && (
@@ -346,7 +348,8 @@ function ReportsPage() {
             </section>
             <section className="ui-card reports-chart" aria-labelledby="report-status">
               <h2 id="report-status">Distribuição por situação</h2>
-              <Bars rows={rows.map((row) => ({ label: `${row.module}: ${row.status}`, value: row.total }))} />
+              {rows.length > 0 && <div className="ui-bars-legend"><ChartLegend items={statusLegend} /></div>}
+              <Bars rows={rows.map((row) => ({ label: `${row.module}: ${row.status}`, value: row.total, color: row.color }))} />
             </section>
             <section className="ui-card reports-chart" aria-labelledby="report-sector">
               <h2 id="report-sector">Solicitações por setor</h2>

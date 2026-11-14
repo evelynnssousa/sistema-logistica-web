@@ -12,7 +12,8 @@ import { formatMoney, getWarehouseFinance } from '../api/operationsApi'
 import { usePeriodFilter } from '../app/period'
 import { useAuthenticatedUser } from '../auth/UserContext'
 import StatCard from '../components/StatCard'
-import { BarChart } from '../components/ui/Charts'
+import { moduleColors, statusColor, statusLegend } from '../app/chartColors'
+import { BarChart, ChartLegend } from '../components/ui/Charts'
 import RequestsTrendChart from '../components/RequestsTrendChart'
 import { Alert, EmptyState, Loading } from '../components/ui/Feedback'
 import { FilterBar, FilterSelect, PeriodFields } from '../components/ui/Filters'
@@ -111,18 +112,19 @@ function DashboardPage() {
         ...Object.entries(data.byModule).map(([key, statuses]) => ({
           label: moduleLabels[key],
           value: sum(statuses),
+          color: moduleColors[key],
         })),
-        ...(data.warehouse ? [{ label: moduleLabels.warehouse, value: sum(data.warehouse) }] : []),
+        ...(data.warehouse ? [{ label: moduleLabels.warehouse, value: sum(data.warehouse), color: moduleColors.warehouse }] : []),
       ]
     : []
 
   const byStatus = data
     ? Object.values(
-        Object.values(data.byModule).reduce<Record<string, { label: string; value: number }>>(
+        Object.values(data.byModule).reduce<Record<string, { label: string; value: number; color: string }>>(
           (rows, statuses) => {
             for (const [status, total] of Object.entries(statuses)) {
               const label = statusLabels[status] ?? status
-              rows[label] = { label, value: (rows[label]?.value ?? 0) + total }
+              rows[label] = { label, value: (rows[label]?.value ?? 0) + total, color: statusColor(status) }
             }
             return rows
           },
@@ -134,6 +136,7 @@ function DashboardPage() {
   const warehouseRows = Object.entries(data?.warehouse ?? {}).map(([status, value]) => ({
     label: warehouseStatusLabels[status] ?? status,
     value,
+    color: statusColor(status),
   }))
 
   const hasData = byModule.some((row) => row.value > 0)
@@ -273,23 +276,30 @@ function DashboardPage() {
             <div className="ui-grid-2">
               {data.byPeriod.length > 0 && (
                 <section className="ui-card" aria-labelledby="chart-period">
-                  <RequestsTrendChart headingId="chart-period" byPeriod={data.byPeriod} byDay={data.byDay} />
+                  <RequestsTrendChart
+                    headingId="chart-period"
+                    byPeriod={data.byPeriod}
+                    byDay={data.byDay}
+                    previousTotal={previous ? previous.byPeriod.reduce((total, row) => total + row.total, 0) : null}
+                  />
                 </section>
               )}
               <section className="ui-card" aria-labelledby="chart-module">
                 <h2 id="chart-module">Solicitações por módulo</h2>
-                <BarChart rows={byModule} showPercent />
+                <BarChart rows={byModule} showPercent sorted />
               </section>
               {byStatus.length > 0 && (
                 <section className="ui-card" aria-labelledby="chart-status">
                   <h2 id="chart-status">Situação dos atendimentos</h2>
-                  <BarChart rows={byStatus} showPercent />
+                  <div className="ui-bars-legend"><ChartLegend items={statusLegend} /></div>
+                  <BarChart rows={byStatus} showPercent sorted />
                 </section>
               )}
               {warehouseRows.length > 0 && (
                 <section className="ui-card" aria-labelledby="chart-warehouse">
                   <h2 id="chart-warehouse">Pedidos do Almoxarifado</h2>
-                  <BarChart rows={warehouseRows} showPercent />
+                  <div className="ui-bars-legend"><ChartLegend items={statusLegend} /></div>
+                  <BarChart rows={warehouseRows} showPercent sorted />
                 </section>
               )}
             </div>

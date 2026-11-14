@@ -1,24 +1,44 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 /**
  * Gráficos sem biblioteca, com uma só série e uma só cor: identidade e valores vêm do texto.
  * Cada valor fica visível ou aparece ao passar o mouse ou focar com o teclado.
  */
 
-export type ChartRow = { label: string; value: number }
+export type ChartRow = {
+  label: string
+  value: number
+  /** Cor do módulo ou da situação (app/chartColors.ts). Sem cor, a cor padrão. */
+  color?: string
+}
 
-export function BarChart({ rows, unit = '', showPercent = false }: { rows: ChartRow[]; unit?: string; showPercent?: boolean }) {
+export function BarChart({
+  rows,
+  unit = '',
+  showPercent = false,
+  sorted = false,
+}: {
+  rows: ChartRow[]
+  unit?: string
+  showPercent?: boolean
+  /** Da maior para a menor. */
+  sorted?: boolean
+}) {
   const maximum = Math.max(1, ...rows.map((row) => row.value))
   const total = rows.reduce((sum, row) => sum + row.value, 0)
+  const shown = sorted ? [...rows].sort((a, b) => b.value - a.value) : rows
   return (
     <ul className="report-bars ui-bars">
-      {rows.map((row) => (
+      {shown.map((row) => (
         <li className="report-bar" key={row.label}>
           <span className="ui-bar-label">{row.label}</span>
           <span className="report-bar-track" aria-hidden="true">
             <span
               className="report-bar-fill"
-              style={{ width: `${Math.max((row.value / maximum) * 100, row.value > 0 ? 1.5 : 0)}%` }}
+              style={{
+                width: `${Math.max((row.value / maximum) * 100, row.value > 0 ? 1.5 : 0)}%`,
+                ...(row.color ? { background: row.color } : {}),
+              }}
             />
           </span>
           <strong>
@@ -72,63 +92,88 @@ export function MonthlyChart({ rows }: { rows: { month: string; total: number }[
 
 export type LineSeries = { key: string; label: string; color: string; values: number[] }
 
+/** Retângulo com os cantos de cima arredondados: o topo da coluna (a base fica reta, no eixo). */
+function topRounded(x: number, y: number, width: number, height: number, radius: number) {
+  const r = Math.min(radius, width / 2, height)
+  return `M${x},${y + height} V${y + r} Q${x},${y} ${x + r},${y} H${x + width - r} Q${x + width},${y} ${x + width},${y + r} V${y + height} Z`
+}
+
 /**
- * Linhas por mês (13/11/2026): uma linha por módulo, com legenda, nome no fim de cada linha,
- * linha vertical e valores ao passar o mouse ou focar com o teclado, e a mesma informação em
- * tabela. Um só eixo. Cores na ordem fixa da paleta validada (azul, laranja, verde-água).
+ * Colunas empilhadas por módulo (14/11/2026), no lugar das linhas: a altura é o total do mês ou do
+ * dia, e cada cor é um módulo. Nada se esconde atrás de nada, como acontecia com linhas iguais.
+ * Legenda, valores ao passar o mouse ou com as setas do teclado, total escrito na coluna mais alta
+ * e a mesma informação em tabela.
  */
-export function LineChart({ months, series, granularity = 'month' }: { months: string[]; series: LineSeries[]; granularity?: 'month' | 'day' }) {
-  // Mês a mês ou, com um mês só de dados, dia a dia (14/11/2026).
+export function StackedColumnChart({
+  periods,
+  series,
+  granularity = 'month',
+}: {
+  periods: string[]
+  series: LineSeries[]
+  granularity?: 'month' | 'day'
+}) {
   const labelOf = granularity === 'day' ? dayLabel : monthLabel
   const unit = granularity === 'day' ? 'dia' : 'mês'
   const [active, setActive] = useState<number | null>(null)
-  const width = 640
-  const height = 240
-  const pad = { top: 16, right: 96, bottom: 28, left: 36 }
+  // Desenhado na largura real do cartão: no celular as letras não encolhem junto com o gráfico.
+  const plot = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState(560)
+  useEffect(() => {
+    const element = plot.current
+    if (!element || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(([entry]) => {
+      const measured = Math.round(entry.contentRect.width)
+      if (measured > 0) setWidth(measured)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+  const height = width < 480 ? 200 : 240
+  const pad = { top: 22, right: 8, bottom: 28, left: 32 }
   const plotWidth = width - pad.left - pad.right
   const plotHeight = height - pad.top - pad.bottom
-  const maximum = Math.max(1, ...series.flatMap((line) => line.values))
+  const totals = periods.map((_, index) => series.reduce((sum, line) => sum + (line.values[index] ?? 0), 0))
+  const maximum = Math.max(1, ...totals)
   const step = niceStep(maximum)
   const top = Math.ceil(maximum / step) * step
-  const x = (index: number) => pad.left + (months.length === 1 ? plotWidth / 2 : (index / (months.length - 1)) * plotWidth)
+  const band = plotWidth / Math.max(1, periods.length)
+  const columnWidth = Math.max(3, Math.min(48, band * 0.62))
+  const x = (index: number) => pad.left + band * index + (band - columnWidth) / 2
   const y = (value: number) => pad.top + plotHeight - (value / top) * plotHeight
   const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, index) => index * step)
-  const labelEvery = Math.max(1, Math.ceil(months.length / 8))
-
-  // Nomes no fim das linhas, afastados para não se sobreporem.
-  const ends = series
-    .map((line) => ({ line, y: y(line.values[line.values.length - 1] ?? 0) }))
-    .sort((a, b) => a.y - b.y)
-  for (let index = 1; index < ends.length; index += 1) {
-    if (ends[index].y - ends[index - 1].y < 14) ends[index].y = ends[index - 1].y + 14
-  }
+  // Um rótulo a cada ~52 px, para as datas não se encostarem.
+  const labelEvery = Math.max(1, Math.ceil(periods.length / Math.max(2, Math.floor(plotWidth / 52))))
+  const peak = totals.indexOf(Math.max(...totals))
+  const gap = 2
 
   return (
-    <div className="ui-line-chart">
-      <ul className="ui-legend" aria-label="Legenda">
-        {series.map((line) => (
-          <li key={line.key}>
-            <span className="ui-legend-swatch" style={{ background: line.color }} aria-hidden="true" />
-            {line.label}
-          </li>
-        ))}
-      </ul>
-      <div className="ui-line-plot">
-        {/* Um só ponto de foco: as setas do teclado andam pelos meses ou dias (alvos grandes no toque). */}
+    <div className="ui-line-chart ui-stacked-chart">
+      {series.length > 1 && (
+        <ul className="ui-legend" aria-label="Legenda">
+          {series.map((line) => (
+            <li key={line.key}>
+              <span className="ui-legend-swatch ui-legend-block" style={{ background: line.color }} aria-hidden="true" />
+              {line.label}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="ui-line-plot" ref={plot}>
         <svg
           viewBox={`0 0 ${width} ${height}`}
           role="img"
           tabIndex={0}
           className="ui-line-svg"
-          aria-label={`Solicitações por ${unit} e por módulo, de ${labelOf(months[0])} a ${labelOf(months[months.length - 1])}. Use as setas para ver cada ${unit}. Os valores também estão na tabela abaixo.`}
-          onFocus={() => setActive((current) => current ?? months.length - 1)}
+          aria-label={`Solicitações por ${unit} e por módulo, de ${labelOf(periods[0])} a ${labelOf(periods[periods.length - 1])}. Use as setas para ver cada ${unit}. Os valores também estão na tabela abaixo.`}
+          onFocus={() => setActive((current) => current ?? periods.length - 1)}
           onBlur={() => setActive(null)}
           onKeyDown={(event) => {
             if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
             event.preventDefault()
             setActive((current) => {
-              const start = current ?? months.length - 1
-              return Math.min(months.length - 1, Math.max(0, start + (event.key === 'ArrowRight' ? 1 : -1)))
+              const start = current ?? periods.length - 1
+              return Math.min(periods.length - 1, Math.max(0, start + (event.key === 'ArrowRight' ? 1 : -1)))
             })
           }}
         >
@@ -140,43 +185,46 @@ export function LineChart({ months, series, granularity = 'month' }: { months: s
               </text>
             </g>
           ))}
-          {months.map((month, index) =>
+          {periods.map((period, index) =>
             index % labelEvery === 0 ? (
-              <text key={month} className="ui-line-axis" x={x(index)} y={height - 8} textAnchor="middle">
-                {labelOf(month)}
+              <text key={period} className="ui-line-axis" x={x(index) + columnWidth / 2} y={height - 8} textAnchor="middle">
+                {labelOf(period)}
               </text>
             ) : null,
           )}
-          {active !== null && <line className="ui-line-crosshair" x1={x(active)} x2={x(active)} y1={pad.top} y2={pad.top + plotHeight} />}
-          {series.map((line) => (
-            <g key={line.key}>
-              <polyline
-                fill="none"
-                stroke={line.color}
-                strokeWidth={2}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                points={line.values.map((value, index) => `${x(index)},${y(value)}`).join(' ')}
-              />
-              {line.values.map((value, index) =>
-                active === index || line.values.length === 1 ? (
-                  <circle key={index} cx={x(index)} cy={y(value)} r={4.5} fill={line.color} stroke="var(--surface)" strokeWidth={2} />
-                ) : null,
-              )}
-            </g>
-          ))}
-          {ends.map(({ line, y: labelY }) => (
-            <text key={line.key} className="ui-line-end" x={x(months.length - 1) + 8} y={labelY + 4}>
-              {line.label}
+          {periods.map((period, index) => {
+            let base = 0
+            const filled = series.filter((line) => (line.values[index] ?? 0) > 0)
+            return (
+              <g key={period} className={active !== null && active !== index ? 'ui-stack-dim' : undefined}>
+                {filled.map((line, position) => {
+                  const value = line.values[index]
+                  const bottom = y(base)
+                  const topY = y(base + value)
+                  base += value
+                  // 2 px de fundo entre os pedaços; o de cima tem os cantos arredondados.
+                  const segment = Math.max(1, bottom - topY - (position > 0 ? gap : 0))
+                  return position === filled.length - 1 ? (
+                    <path key={line.key} d={topRounded(x(index), topY, columnWidth, segment, 4)} fill={line.color} />
+                  ) : (
+                    <rect key={line.key} x={x(index)} y={topY} width={columnWidth} height={segment} fill={line.color} />
+                  )
+                })}
+              </g>
+            )
+          })}
+          {totals[peak] > 0 && (active === null || active === peak) && (
+            <text className="ui-line-end" x={x(peak) + columnWidth / 2} y={y(totals[peak]) - 6} textAnchor="middle">
+              {totals[peak]}
             </text>
-          ))}
-          {months.map((month, index) => (
+          )}
+          {periods.map((period, index) => (
             <rect
-              key={month}
+              key={period}
               className="ui-line-hit"
-              x={x(index) - plotWidth / Math.max(1, months.length - 1) / 2}
+              x={pad.left + band * index}
               y={pad.top}
-              width={plotWidth / Math.max(1, months.length - 1)}
+              width={band}
               height={plotHeight}
               aria-hidden="true"
               onMouseEnter={() => setActive(index)}
@@ -187,18 +235,19 @@ export function LineChart({ months, series, granularity = 'month' }: { months: s
         {active !== null && (
           <div
             className="ui-line-tooltip"
-            // Perto da borda direita, a caixa abre para a esquerda, sem cobrir os nomes das linhas.
             style={{
-              left: `${(x(active) / width) * 100}%`,
-              transform: x(active) / width > 0.6 ? 'translateX(calc(-100% - 12px))' : 'translateX(-50%)',
+              left: `${((x(active) + columnWidth / 2) / width) * 100}%`,
+              transform: (x(active) + columnWidth / 2) / width > 0.6 ? 'translateX(calc(-100% - 12px))' : 'translateX(-50%)',
             }}
             role="status"
           >
-            <strong>{labelOf(months[active])}</strong>
-            {series.map((line) => (
+            <strong>
+              {labelOf(periods[active])}: {totals[active]} {totals[active] === 1 ? 'solicitação' : 'solicitações'}
+            </strong>
+            {[...series].reverse().map((line) => (
               <span key={line.key}>
-                <span className="ui-legend-swatch" style={{ background: line.color }} aria-hidden="true" />
-                {line.label}: <b>{line.values[active]}</b>
+                <span className="ui-legend-swatch ui-legend-block" style={{ background: line.color }} aria-hidden="true" />
+                {line.label}: <b>{line.values[active] ?? 0}</b>
               </span>
             ))}
           </div>
@@ -214,15 +263,17 @@ export function LineChart({ months, series, granularity = 'month' }: { months: s
                 {series.map((line) => (
                   <th key={line.key}>{line.label}</th>
                 ))}
+                <th>Total</th>
               </tr>
             </thead>
             <tbody>
-              {months.map((month, index) => (
-                <tr key={month}>
-                  <td>{labelOf(month)}</td>
+              {periods.map((period, index) => (
+                <tr key={period}>
+                  <td>{labelOf(period)}</td>
                   {series.map((line) => (
-                    <td key={line.key}>{line.values[index]}</td>
+                    <td key={line.key}>{line.values[index] ?? 0}</td>
                   ))}
+                  <td>{totals[index]}</td>
                 </tr>
               ))}
             </tbody>
@@ -230,6 +281,20 @@ export function LineChart({ months, series, granularity = 'month' }: { months: s
         </div>
       </details>
     </div>
+  )
+}
+
+/** Legenda solta, para as barras coloridas pela situação. */
+export function ChartLegend({ items }: { items: { label: string; color: string }[] }) {
+  return (
+    <ul className="ui-legend" aria-label="Legenda das cores">
+      {items.map((item) => (
+        <li key={item.label}>
+          <span className="ui-legend-swatch ui-legend-block" style={{ background: item.color }} aria-hidden="true" />
+          {item.label}
+        </li>
+      ))}
+    </ul>
   )
 }
 
