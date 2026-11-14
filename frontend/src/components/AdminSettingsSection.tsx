@@ -7,6 +7,8 @@ import { refreshSystemInfo } from '../app/useSystemInfo'
 import { Alert } from './ui/Feedback'
 import Icon from './ui/Icon'
 import { PublicPageCard } from './PublicPageSettings'
+import { listDemandSectors } from '../api/demandsApi'
+import type { DemandSector } from '../api/demandsApi'
 
 /**
  * Administração do sistema (13/11/2026): o que antes dependia da TI ou do código e agora a
@@ -225,6 +227,58 @@ function ContractsCard({ value, canManage }: { value: SystemSettings['contracts'
   )
 }
 
+/**
+ * Guarda dos dados (LGPD, 14/11/2026): por quanto tempo os registros ficam guardados e o setor que
+ * recebe a demanda para imprimir os relatórios antes do fim do prazo.
+ */
+function RetentionCard({ value, canManage }: { value: SystemSettings['retention']; canManage: boolean }) {
+  const [months, setMonths] = useState(String(value?.months ?? 12))
+  const [days, setDays] = useState(String(value?.noticeDays ?? 30))
+  const [sectorId, setSectorId] = useState(value?.sectorId ?? '')
+  const [sectors, setSectors] = useState<DemandSector[]>([])
+  useEffect(() => {
+    let active = true
+    listDemandSectors()
+      .then((result) => {
+        if (active) setSectors(result.sectors.filter((sector) => sector.active))
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [])
+  return (
+    <Card
+      title="Guarda dos dados (LGPD)"
+      description="Solicitações, CPFs de passageiros, anexos e registros de auditoria ficam guardados pelo prazo abaixo. Antes de cada mês de registros completar o prazo, o sistema abre uma demanda no setor escolhido para imprimir ou salvar os relatórios e as planilhas daquele mês. Nada é apagado automaticamente."
+      canManage={canManage}
+      onSave={() => saveParameters('retention', { months: Number(months), noticeDays: Number(days), sectorId: sectorId || null })}
+    >
+      <div className="form-grid">
+        <label className="maintenance-form-field">
+          <span>Prazo de guarda (meses)</span>
+          <input type="number" min="1" max="120" required value={months} onChange={(event) => setMonths(event.target.value)} />
+        </label>
+        <label className="maintenance-form-field">
+          <span>Abrir a demanda com antecedência de (dias)</span>
+          <input type="number" min="1" max="180" required value={days} onChange={(event) => setDays(event.target.value)} />
+        </label>
+        <label className="maintenance-form-field">
+          <span>Setor que recebe a demanda</span>
+          <select value={sectorId} onChange={(event) => setSectorId(event.target.value)}>
+            <option value="">Nenhum (sem aviso)</option>
+            {sectors.map((sector) => (
+              <option key={sector.id} value={sector.id}>
+                {sector.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </Card>
+  )
+}
+
 function TextsCard({ value, canManage }: { value: SystemSettings['texts']; canManage: boolean }) {
   const [form, setForm] = useState(value)
   return (
@@ -353,7 +407,7 @@ function AdminSettingsSection({ canManage }: { canManage: boolean }) {
         </span>
         <div>
           <h2 id="settings-admin">Administração do sistema</h2>
-          <p>Cadastro, feriados, aviso geral, módulos, atas e contratos, textos e permissões padrão.</p>
+          <p>Cadastro, feriados, aviso geral, módulos, atas e contratos, guarda dos dados, textos e permissões padrão.</p>
         </div>
       </header>
       {error && <Alert tone="error">{error}</Alert>}
@@ -364,6 +418,7 @@ function AdminSettingsSection({ canManage }: { canManage: boolean }) {
           <DomainsCard value={data.settings.registration} canManage={canManage} />
           <ModulesCard value={data.settings.modules} canManage={canManage} />
           <ContractsCard value={data.settings.contracts} canManage={canManage} />
+          <RetentionCard value={data.settings.retention} canManage={canManage} />
           <TextsCard value={data.settings.texts} canManage={canManage} />
           <PublicPageCard value={data.settings.publicPage} canManage={canManage} />
           {data.options.profileDefaults && (

@@ -2,6 +2,7 @@ import { publishDeadlineAlerts } from '../database/demandInsightsRepository.js'
 import { generateDueOccurrences } from '../database/demandSeriesRepository.js'
 import { openRenewalDemands } from '../database/instrumentRepository.js'
 import { getDatabasePool } from '../database/pool.js'
+import { openRetentionDemands } from '../database/retentionRepository.js'
 import { recordTechnicalEvent } from '../monitoring/technicalEvents.js'
 
 /**
@@ -29,12 +30,14 @@ async function isMigrated() {
 }
 
 export async function runDemandCycle({ withAlerts = true } = {}) {
-  if (!(await isMigrated())) return { generated: 0, alerts: 0, renewals: 0 }
+  if (!(await isMigrated())) return { generated: 0, alerts: 0, renewals: 0, retention: 0 }
   const generated = await generateDueOccurrences()
   const alerts = withAlerts ? await publishDeadlineAlerts() : 0
   // Atas e contratos (021): demanda de renovação ao entrar no prazo de aviso. Sem a 021, nada.
   const renewals = withAlerts ? await openRenewalDemands() : 0
-  return { generated, alerts, renewals }
+  // Guarda dos dados (LGPD): demanda para imprimir os relatórios antes do fim do prazo. Sem setor, nada.
+  const retention = withAlerts ? await openRetentionDemands() : 0
+  return { generated, alerts, renewals, retention }
 }
 
 export function startDemandWorker(intervalMs = defaultIntervalMs) {

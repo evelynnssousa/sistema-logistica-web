@@ -129,6 +129,7 @@ export const historyLabels: Record<string, string> = {
   vinculo_removido: 'Vínculo com outro módulo removido',
   ocorrencia_gerada: 'Ocorrência gerada automaticamente',
   renovacao_gerada: 'Aberta automaticamente para renovar ata ou contrato',
+  guarda_dados_gerada: 'Aberta automaticamente: prazo de guarda dos dados (LGPD)',
   instrumento_vinculado: 'Ata ou contrato vinculado',
   instrumento_desvinculado: 'Ata ou contrato desvinculado',
   ocorrencia_pulada: 'Ocorrência pulada',

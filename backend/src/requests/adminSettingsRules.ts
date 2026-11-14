@@ -33,6 +33,9 @@ export const defaultAdminSettings = {
   announcement: { active: false, text: '', tone: 'info' as 'info' | 'warning', until: null as string | null },
   modules: { maintenance: true, fleet: true, flights: true, warehouse: true, demands: true } as Record<SystemModule, boolean>,
   contracts: { defaultNoticeDays: 90, lowBalancePercent: 20 },
+  // Guarda dos dados (LGPD, 14/11/2026): decisão da instituição de guardar tudo por 1 ano. Antes do
+  // fim do prazo, o sistema abre uma demanda no setor escolhido para imprimir relatórios e planilhas.
+  retention: { months: 12, noticeDays: 30, sectorId: null as string | null },
   texts: { loginMessage: '', homeMessage: '' },
   // Página inicial pública e Ajuda (13/11/2026). Textos em rascunho, para a equipe revisar.
   publicPage: {
@@ -142,6 +145,16 @@ export function validateAdminSettings(section: AdminSettingsSection, body: Recor
   if (section === 'modules') {
     const modules = Object.fromEntries(systemModules.map((key) => [key, body[key] !== false])) as Record<SystemModule, boolean>
     return modules
+  }
+
+  if (section === 'retention') {
+    const sector = body.sectorId === null || body.sectorId === undefined || body.sectorId === '' ? null : String(body.sectorId)
+    if (sector !== null && !/^[0-9a-f-]{36}$/i.test(sector)) fail('Escolha um setor válido.')
+    return {
+      months: integer(body.months, 'O prazo de guarda (meses)', 1, 120),
+      noticeDays: integer(body.noticeDays, 'A antecedência do aviso (dias)', 1, 180),
+      sectorId: sector,
+    }
   }
 
   if (section === 'contracts') {
