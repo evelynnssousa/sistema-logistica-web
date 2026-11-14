@@ -2,7 +2,16 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createPasswordRecoveryMailer, isEmailConfigured } from '../auth/email.js'
 import { quotaEnforcedFor } from './emailQuota.js'
-import { brevoEndpoint, createBrevoClient, emailCredentials, emailProviderName, parseSender } from './emailProvider.js'
+import {
+  brevoEndpoint,
+  createBrevoClient,
+  createMicrosoftClient,
+  emailCredentials,
+  emailProviderName,
+  graphSendMailUrl,
+  microsoftCredentials,
+  parseSender,
+} from './emailProvider.js'
 import { restrictionEnforcedFor } from './recipientAllowlist.js'
 import { createResendTransport } from './transports.js'
 
@@ -75,4 +84,69 @@ test('Brevo: a cota diária e a lista de destinatários permitidos valem como no
   assert.equal(restrictionEnforcedFor('brevo', {}), true)
   assert.equal(restrictionEnforcedFor('brevo', { EMAIL_RECIPIENT_RESTRICTION: 'off' }), false)
   assert.equal(quotaEnforcedFor('simulado', {}), false)
+})
+
+// Microsoft 365 simulado: o token vem de uma fonte falsa, e o Graph é uma função local.
+function fakeGraph(status = 202, tokenFails: false | 'definitivo' | 'temporario' = false) {
+  const calls: { url: string; headers: Headers; body: Record<string, any> }[] = [] // eslint-disable-line @typescript-eslint/no-explicit-any
+  let invalidated = 0
+  const tokens = {
+    async token() {
+      if (tokenFails) throw Object.assign(new Error('falha'), { retryable: tokenFails === 'temporario' })
+      return 'token-de-teste'
+    },
+    invalidate() {
+      invalidated += 1
+    },
+  }
+  const fetcher = async (url: string, init?: RequestInit) => {
+    calls.push({ url, headers: new Headers(init?.headers), body: JSON.parse(String(init?.body)) })
+    return new Response(status === 202 ? null : JSON.stringify({ error: { message: 'detalhe com endereco@b.gov.br' } }), { status })
+  }
+  const credentials = { kind: 'secret' as const, tenantId: 'jucesp.sp.gov.br', clientId: '00000000-0000-0000-0000-000000000001', clientSecret: 'segredo' }
+  return { calls, client: createMicrosoftClient(credentials, fetcher, tokens), invalidated: () => invalidated }
+}
+
+test('Microsoft 365: escolha por EMAIL_PROVIDER, com o aplicativo completo', () => {
+  const app = { EMAIL_PROVIDER: 'microsoft', GRAPH_TENANT_ID: 'jucesp.sp.gov.br', GRAPH_CLIENT_ID: 'app', EMAIL_FROM: 'SLM <slm@jucesp.sp.gov.br>' }
+  assert.equal(emailProviderName(app), 'microsoft')
+  assert.equal(isEmailConfigured(app), false, 'sem segredo nem certificado')
+  assert.equal(isEmailConfigured({ ...app, GRAPH_CLIENT_SECRET: 's' }), true)
+  assert.equal(microsoftCredentials({ ...app, GRAPH_CLIENT_SECRET: 's', GRAPH_CERTIFICATE_PRIVATE_KEY: 'x' }), null, 'segredo e certificado juntos: ambíguo')
+  assert.equal(quotaEnforcedFor('microsoft', {}), true)
+  assert.equal(restrictionEnforcedFor('microsoft', {}), true)
+})
+
+test('Microsoft 365: envia pela caixa do remetente, com cópia, anexo e cópia em Itens Enviados', async () => {
+  const { calls, client } = fakeGraph()
+  const transport = createResendTransport(client, 'SLM JUCESP <slm@jucesp.sp.gov.br>', () => [], 'microsoft')
+  await transport.send({
+    idempotencyKey: 'k', to: 'esilva@jucesp.sp.gov.br', cc: ['slm@jucesp.sp.gov.br'], subject: 'Sua passagem aérea', text: 't', html: '<p>t</p>',
+    attachments: [{ filename: 'bilhete.pdf', content: Buffer.from('PDF') }],
+  })
+  assert.equal(calls[0].url, graphSendMailUrl('slm@jucesp.sp.gov.br'))
+  assert.equal(calls[0].headers.get('authorization'), 'Bearer token-de-teste')
+  assert.equal(calls[0].body.saveToSentItems, true)
+  assert.deepEqual(calls[0].body.message.toRecipients, [{ emailAddress: { address: 'esilva@jucesp.sp.gov.br' } }])
+  assert.deepEqual(calls[0].body.message.ccRecipients, [{ emailAddress: { address: 'slm@jucesp.sp.gov.br' } }])
+  assert.equal(calls[0].body.message.body.contentType, 'HTML')
+  assert.equal(calls[0].body.message.attachments[0].contentBytes, Buffer.from('PDF').toString('base64'))
+})
+
+test('Microsoft 365: recusas viram código sem detalhes; token vencido é descartado', async () => {
+  const send = (client: ReturnType<typeof fakeGraph>['client']) =>
+    createResendTransport(client, 'slm@jucesp.sp.gov.br', () => [], 'microsoft').send({ idempotencyKey: 'k', to: 'a@b.gov.br', cc: [], subject: 's', text: 't', html: '<p>t</p>' })
+
+  await assert.rejects(send(fakeGraph(403).client), (error: Error & { code?: string; retryable?: boolean }) => {
+    assert.equal(error.code, 'MICROSOFT_403')
+    assert.equal(error.retryable, false)
+    assert.ok(!error.message.includes('endereco@'))
+    return true
+  })
+  const expired = fakeGraph(401)
+  await assert.rejects(send(expired.client), (error: Error & { code?: string }) => error.code === 'MICROSOFT_401')
+  assert.equal(expired.invalidated(), 1)
+  await assert.rejects(send(fakeGraph(202, 'definitivo').client), (error: Error & { code?: string }) => error.code === 'MICROSOFT_401')
+  await assert.rejects(send(fakeGraph(202, 'temporario').client), (error: Error & { code?: string; retryable?: boolean }) => error.code === 'NETWORK' && error.retryable === true)
+  await assert.rejects(send(fakeGraph(503).client), (error: Error & { code?: string; retryable?: boolean }) => error.code === 'MICROSOFT_503' && error.retryable === true)
 })

@@ -310,6 +310,22 @@ Para a homologação sem domínio próprio. O Brevo aceita um **remetente confir
 
 As demais (`NOTIFICATION_EMAILS_ENABLED`, `EMAIL_RECIPIENT_ALLOWLIST`, `EMAIL_DAILY_LIMIT`...) seguem as mesmas regras. Os códigos de falha passam a começar por `BREVO_` (por exemplo `BREVO_401`, chave recusada). Limite: como o domínio do remetente não é verificado, parte das mensagens pode cair no spam ou ser recusada pelo destino, conforme a política do domínio do remetente. Para produção, prefira o Resend com domínio verificado (ou o subdomínio institucional).
 
+## Microsoft 365, envio pela caixa institucional (14/11/2026)
+
+O e-mail sai da própria caixa do SLM (`EMAIL_FROM`, por exemplo `slm@jucesp.sp.gov.br`), pelo Microsoft Graph (`sendMail`), e fica em **Itens Enviados**. Não depende de serviço externo nem de DNS, e as mensagens não caem no lixo eletrônico da JUCESP por remetente não autenticado.
+
+| Variável | Valor |
+|---|---|
+| `EMAIL_PROVIDER` | `microsoft` |
+| `EMAIL_FROM` | `SLM JUCESP <slm@jucesp.sp.gov.br>`, a caixa liberada para o aplicativo |
+| `GRAPH_TENANT_ID` | ID do locatário (ou o domínio) |
+| `GRAPH_CLIENT_ID` | ID do aplicativo |
+| `GRAPH_CLIENT_SECRET` | segredo do aplicativo, **ou** `GRAPH_CERTIFICATE_PRIVATE_KEY` e `GRAPH_CERTIFICATE_THUMBPRINT` |
+
+O que a TI faz no Microsoft 365: (1) registra um aplicativo no Entra ID; (2) concede a permissão de aplicativo **Mail.Send** do Microsoft Graph, com consentimento do administrador; (3) restringe o aplicativo à caixa do SLM no Exchange Online (política de acesso de aplicativo ou RBAC para aplicativos), para que ele não envie em nome de outras caixas; (4) entrega os três valores, que vão direto no Render. O mesmo aplicativo pode servir também aos anexos no SharePoint (`docs/ARMAZENAMENTO_SHAREPOINT.md`), com as permissões de cada um.
+
+Mesmas regras dos demais provedores: lista de destinatários permitidos, cota diária e recuperação de senha. Códigos de falha começam por `MICROSOFT_` (`MICROSOFT_401`: aplicativo recusado; `MICROSOFT_403`: caixa não liberada para o aplicativo; `MICROSOFT_413`: anexos acima do limite do pedido, cerca de 3 MB no total). O Exchange Online também tem limites próprios de envio por caixa e por minuto.
+
 ## O que a TI precisa fornecer
 
 | Item | Variável | Sem isso |

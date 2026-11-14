@@ -1,6 +1,7 @@
 import { accessSync, constants, statSync } from 'node:fs'
 import { graphStorageSettings } from '../attachments/graphDriveStorage.js'
 import { supabaseStorageSettings } from '../attachments/supabaseStorage.js'
+import { emailProviderName, microsoftCredentials } from '../integrations/emailProvider.js'
 import { proxySecretProblem } from '../security/trustedProxy.js'
 import { passwordResetPepperProblem } from '../auth/passwordRecovery.js'
 import { quotaSettings, quotaSettingsProblems } from '../integrations/emailQuota.js'
@@ -171,18 +172,22 @@ export function checkEnvironment(
 
   findings.push(...checkAttachmentStorage(environment, root))
 
-  // Provedor de e-mail (14/11/2026): Resend (padrão) ou Brevo, por EMAIL_PROVIDER.
-  const provider = value(environment, 'EMAIL_PROVIDER').toLowerCase() === 'brevo' ? 'brevo' : 'resend'
+  // Provedor de e-mail (14/11/2026): Resend (padrão), Brevo ou Microsoft 365, por EMAIL_PROVIDER.
+  const provider = emailProviderName(environment)
   const rawProvider = value(environment, 'EMAIL_PROVIDER')
-  if (rawProvider && !['resend', 'brevo'].includes(rawProvider.toLowerCase())) {
-    add('EMAIL_PROVIDER', 'erro', 'Valor desconhecido: use "resend" ou "brevo". Valendo o Resend.')
+  if (rawProvider && !['resend', 'brevo', 'microsoft'].includes(rawProvider.toLowerCase())) {
+    add('EMAIL_PROVIDER', 'erro', 'Valor desconhecido: use "resend", "brevo" ou "microsoft". Valendo o Resend.')
   }
-  const keyName = provider === 'brevo' ? 'BREVO_API_KEY' : 'RESEND_API_KEY'
-  const resendKey = value(environment, keyName)
+  const keyName = provider === 'brevo' ? 'BREVO_API_KEY' : provider === 'microsoft' ? 'GRAPH_TENANT_ID / GRAPH_CLIENT_ID / segredo ou certificado' : 'RESEND_API_KEY'
+  // Microsoft 365: a "chave" é o conjunto do aplicativo (locatário, aplicativo e segredo ou certificado).
+  const resendKey = provider === 'microsoft' ? (microsoftCredentials(environment) ? 'ok' : '') : value(environment, keyName)
+  if (provider === 'microsoft' && !resendKey) {
+    add('GRAPH_TENANT_ID / GRAPH_CLIENT_ID', 'erro', 'EMAIL_PROVIDER=microsoft sem o aplicativo completo: informe GRAPH_TENANT_ID, GRAPH_CLIENT_ID e GRAPH_CLIENT_SECRET (ou o certificado).')
+  }
   const resendFrom = value(environment, 'EMAIL_FROM') || value(environment, 'RESEND_FROM')
   const fromName = value(environment, 'EMAIL_FROM') ? 'EMAIL_FROM' : 'RESEND_FROM'
   if (!resendKey || !resendFrom) {
-    add(provider === 'resend' ? 'RESEND_API_KEY / RESEND_FROM' : 'BREVO_API_KEY / EMAIL_FROM', 'aviso', 'Ausentes: nenhum e-mail sai, nem o de recuperação de senha.')
+    add(provider === 'resend' ? 'RESEND_API_KEY / RESEND_FROM' : provider === 'brevo' ? 'BREVO_API_KEY / EMAIL_FROM' : 'GRAPH_* / EMAIL_FROM', 'aviso', 'Ausentes: nenhum e-mail sai, nem o de recuperação de senha.')
   } else if (!emailAddress.test(senderAddress(resendFrom))) {
     add(fromName, 'erro', 'Remetente fora do formato "endereco@dominio" ou "Nome <endereco@dominio>".')
   } else if (provider === 'resend' && !resendKey.startsWith('re_')) {
@@ -195,7 +200,9 @@ export function checkEnvironment(
       'ok',
       provider === 'brevo'
         ? 'Brevo: presentes. O remetente precisa estar confirmado no Brevo (Senders). O envio real só é comprovado pelo roteiro de homologação.'
-        : 'Presentes. O envio real só é comprovado pelo roteiro de homologação.',
+        : provider === 'microsoft'
+          ? 'Microsoft 365: aplicativo completo. O remetente (EMAIL_FROM) precisa ser a caixa liberada pela TI para o aplicativo (Mail.Send). O envio real só é comprovado no teste.'
+          : 'Presentes. O envio real só é comprovado pelo roteiro de homologação.',
     )
   }
 
