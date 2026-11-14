@@ -58,6 +58,8 @@ export const defaultAdminSettings = {
     ] as { question: string; answer: string }[],
     team: [] as { name: string; role: string; photoId: string | null }[],
     news: [] as { date: string; title: string; text: string }[],
+    /** Manuais em PDF para baixar na página inicial (14/11/2026). O arquivo fica no armazenamento de anexos. */
+    manuals: [] as { title: string; audience: string; fileId: string; fileName: string; sizeBytes: number }[],
   },
   profileDefaults: {
     requester: { add: [], remove: [] },
@@ -200,6 +202,14 @@ export function validateAdminSettings(section: AdminSettingsSection, body: Recor
           return { date: day(item.date, 'A data da novidade'), title, text: text(item.text, 'O texto da novidade', 1500) }
         })
         .sort((a, b) => b.date.localeCompare(a.date)),
+      // O nome e o tamanho do arquivo são conferidos pelo servidor ao salvar (routes/publicPage.ts).
+      manuals: list(body.manuals, 12, 'Manuais').map((item) => {
+        const title = text(item.title, 'O título do manual', 120)
+        if (!title) fail('Informe o título de cada manual.')
+        const fileId = String(item.fileId ?? '')
+        if (!/^[0-9a-f-]{36}$/.test(fileId)) fail(`Envie o arquivo PDF do manual "${title}".`)
+        return { title, audience: text(item.audience, 'Para quem é o manual', 80), fileId, fileName: '', sizeBytes: 0 }
+      }),
     }
   }
 

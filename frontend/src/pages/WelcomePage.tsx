@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { getPublicHome } from '../api/configApi'
 import type { PublicHome } from '../api/configApi'
 import logoJucesp from '../assets/logoJucespNovo.png'
-import { ContactBlock, FaqList, NewsList, TeamList } from '../components/PublicContent'
+import { ContactBlock, FaqList, ManualList, NewsList, TeamList } from '../components/PublicContent'
 import Icon from '../components/ui/Icon'
 import type { IconName } from '../components/ui/Icon'
 
@@ -65,6 +65,7 @@ function WelcomePage({ onLogin, onRegister }: { onLogin: () => void; onRegister:
         <nav className="public-links" aria-label="Seções da página">
           <a href="#servicos">Serviços</a>
           <a href="#como-funciona">Como funciona</a>
+          {page?.manuals && page.manuals.length > 0 && <a href="#manuais">Manuais</a>}
           {page && page.faq.length > 0 && <a href="#duvidas">Dúvidas</a>}
           {hasContact && <a href="#contato">Contato</a>}
         </nav>
@@ -176,6 +177,17 @@ function WelcomePage({ onLogin, onRegister }: { onLogin: () => void; onRegister:
             </ol>
           </div>
         </section>
+
+        {page?.manuals && page.manuals.length > 0 && (
+          <section className="public-section" id="manuais" aria-labelledby="public-manuals">
+            <header className="public-section-head">
+              <p className="public-kicker">Manuais</p>
+              <h2 id="public-manuals">Aprenda a usar o sistema</h2>
+              <p>Escolha o manual do seu perfil. Ele abre em PDF, para ler ou salvar.</p>
+            </header>
+            <ManualList items={page.manuals} />
+          </section>
+        )}
 
         {page && page.faq.length > 0 && (
           <section className="public-section public-faq-layout" id="duvidas" aria-labelledby="public-faq">

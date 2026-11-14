@@ -69,6 +69,8 @@ export const routeAccessMap: readonly RouteAccess[] = [
   { method: 'GET', path: '/public/home', access: 'public', reason: 'Página inicial: textos, perguntas, equipe e contato definidos em Configurações' },
   { method: 'GET', path: '/public/team-photos/:photoId', access: 'public', reason: 'Fotos da equipe na página inicial, publicadas em Configurações' },
   { method: 'POST', path: '/settings/public-page/photos', access: 'permission', requires: ['settings:manage'] },
+  { method: 'GET', path: '/public/manuals/:fileId', access: 'public', reason: 'Manuais em PDF na página inicial, publicados em Configurações' },
+  { method: 'POST', path: '/settings/public-page/manuals', access: 'permission', requires: ['settings:manage'] },
   { method: 'GET', path: '/public/forms/registration', access: 'public', reason: 'Textos do formulário de cadastro, que abre sem sessão' },
   { method: 'POST', path: '/auth/register', access: 'public', reason: 'Pedido de acesso, limitado por IP' },
   { method: 'POST', path: '/auth/login', access: 'public', reason: 'Entrada, com limite de tentativas' },

@@ -64,6 +64,33 @@ export function TeamList({ members }: { members: PublicHome['page']['team'] }) {
   )
 }
 
+const size = (bytes: number) =>
+  bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
+
+/** Manuais em PDF publicados em Configurações → Página inicial. Abrem numa nova aba. */
+export function ManualList({ items }: { items: PublicHome['page']['manuals'] }) {
+  if (!items || items.length === 0) return null
+  return (
+    <ul className="public-manuals">
+      {items.map((manual) => (
+        <li key={manual.url}>
+          <a href={manual.url} target="_blank" rel="noreferrer">
+            <span className="public-manual-icon" aria-hidden="true">
+              <Icon name="download" size={22} />
+            </span>
+            <span className="public-manual-text">
+              <strong>{manual.title}</strong>
+              <small>
+                {manual.audience ? `${manual.audience} · ` : ''}PDF, {size(manual.sizeBytes)}
+              </small>
+            </span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export function ContactBlock({ page }: { page: PublicHome['page'] }) {
   if (!page.contactEmail && !page.serviceHours && !page.location) return null
   const rows: { icon: IconName; label: string; value: React.ReactNode }[] = []

@@ -75,6 +75,8 @@ test('as rotas públicas são só as de entrada, recuperação, saúde e textos 
     '/public/forms/registration',
     // Página inicial (13/11/2026): textos, perguntas, equipe e contato definidos em Configurações.
     '/public/home',
+    // Manuais em PDF publicados na página inicial (14/11/2026).
+    '/public/manuals/:fileId',
     // Mensagem da tela de entrada e aviso geral (Configurações, 13/11/2026): só textos, nenhum dado.
     '/public/screen',
     // Fotos da equipe publicadas na página inicial.

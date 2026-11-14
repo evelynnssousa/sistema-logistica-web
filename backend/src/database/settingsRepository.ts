@@ -21,7 +21,7 @@ export async function readSystemSettings(queryable: Queryable): Promise<SystemSe
 
   const result = await queryable.query<{ secao: string; valor: unknown }>(
     // As fotos da página inicial ficam na mesma tabela, mas só são lidas pela rota da foto.
-    `SELECT secao, valor FROM public.system_settings WHERE secao NOT LIKE 'foto\\_equipe:%'`,
+    `SELECT secao, valor FROM public.system_settings WHERE secao NOT LIKE 'foto\\_equipe:%' AND secao NOT LIKE 'manual\\_pdf:%'`,
   )
   return mergeSettings(result.rows)
 }

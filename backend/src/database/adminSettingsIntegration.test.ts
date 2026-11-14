@@ -15,6 +15,8 @@ import { requireDisposableDatabaseUrl } from './databaseSafety.js'
 import { setDatabasePoolForTests } from './pool.js'
 import { setProfileAdjustments } from '../auth/permissions.js'
 import { lastDueMonth, openRetentionDemands, retentionDeadline } from './retentionRepository.js'
+import { Readable } from 'node:stream'
+import { setAttachmentStorageForTests } from '../attachments/storage.js'
 
 // Administração do sistema em Configurações (13/11/2026). API real, PostgreSQL descartável, 001 a 022.
 
@@ -289,6 +291,72 @@ test('página inicial: rascunho público, fotos só de imagem, e foto sem uso sa
   assert.equal((await fetch(`${baseUrl}/api/public/team-photos/${first.body.photoId}`)).status, 200)
 })
 
+
+test('manuais: só PDF, só quem administra envia, e só o publicado abre na página inicial', async () => {
+  // Armazenamento em memória no lugar do Supabase.
+  const files = new Map<string, Buffer>()
+  setAttachmentStorageForTests({
+    save: async (key, content) => void files.set(key, content),
+    open: async (key) => {
+      const content = files.get(key)
+      if (!content) throw Object.assign(new Error('ausente'), { code: 'ENOENT' })
+      return Readable.from(content)
+    },
+    remove: async (key) => void files.delete(key),
+    check: async () => undefined,
+  })
+  try {
+    const draft = ((await (await fetch(`${baseUrl}/api/public/home`)).json()) as { page: Record<string, unknown> }).page
+    const send = async (session: Session, content: Buffer, name = 'Manual do Solicitante.pdf') => {
+      const response = await fetch(`${baseUrl}/api/settings/public-page/manuals?nome=${encodeURIComponent(name)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/octet-stream', cookie: session.cookie, 'x-csrf-token': csrfTokens.get(session.cookie) ?? '' },
+        body: new Uint8Array(content),
+      })
+      return { status: response.status, body: (await response.json()) as Record<string, string | number> }
+    }
+    const pdf = Buffer.from('%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n')
+    assert.equal((await send(requester, pdf)).status, 403)
+    assert.equal((await send(admin, Buffer.from('não é pdf'))).status, 400)
+    assert.equal((await send(admin, Buffer.from('%PDF-1.4\n<< /OpenAction << /S /JavaScript >> >>'))).status, 400, 'PDF com script')
+    const sent = await send(admin, pdf)
+    assert.equal(sent.status, 201, JSON.stringify(sent.body))
+    assert.equal(sent.body.fileName, 'Manual do Solicitante.pdf')
+    const fileId = String(sent.body.fileId)
+
+    // Antes de salvar a página, o arquivo não abre.
+    assert.equal((await fetch(`${baseUrl}/api/public/manuals/${fileId}`)).status, 404)
+    // Arquivo inexistente ou sem arquivo: recusado.
+    const missing = await put('/settings/parameters/publicPage', admin, { ...draft, manuals: [{ title: 'Sem arquivo', audience: '', fileId: '00000000-0000-4000-8000-000000000000' }] })
+    assert.equal(missing.status, 400)
+    assert.equal((await put('/settings/parameters/publicPage', admin, { ...draft, manuals: [{ title: 'Sem arquivo', audience: '', fileId: '' }] })).status, 400)
+
+    // O nome e o tamanho vêm do servidor, não do que a tela mandou.
+    const saved = await put('/settings/parameters/publicPage', admin, {
+      ...draft,
+      manuals: [{ title: 'Manual do Solicitante', audience: 'Solicitante', fileId, fileName: 'outro.exe', sizeBytes: 1 }],
+    })
+    assert.equal(saved.status, 200, saved.text)
+    const home = (await (await fetch(`${baseUrl}/api/public/home`)).json()) as { page: { manuals: { title: string; audience: string; fileName: string; sizeBytes: number; url: string }[] } }
+    assert.deepEqual(home.page.manuals, [
+      { title: 'Manual do Solicitante', audience: 'Solicitante', fileName: 'Manual do Solicitante.pdf', sizeBytes: pdf.length, url: `/api/public/manuals/${fileId}` },
+    ])
+    const opened = await fetch(`${baseUrl}${home.page.manuals[0].url}`)
+    assert.equal(opened.status, 200)
+    assert.equal(opened.headers.get('content-type'), 'application/pdf')
+    assert.match(opened.headers.get('content-disposition') ?? '', /^inline; filename\*=UTF-8''Manual%20do%20Solicitante\.pdf$/)
+    assert.deepEqual(Buffer.from(await opened.arrayBuffer()), pdf)
+
+    // Tirado da página: deixa de abrir e, passado um dia, sai do armazenamento.
+    await put('/settings/parameters/publicPage', admin, { ...draft, manuals: [] })
+    assert.equal((await fetch(`${baseUrl}/api/public/manuals/${fileId}`)).status, 404)
+    await pool.query(`SET session_replication_role = replica; UPDATE public.system_settings SET updated_at = now() - interval '2 days' WHERE secao LIKE 'manual%'; SET session_replication_role = origin;`)
+    await put('/settings/parameters/publicPage', admin, { ...draft, manuals: [] })
+    assert.equal(files.has(fileId), false)
+  } finally {
+    setAttachmentStorageForTests(undefined)
+  }
+})
 
 test('guarda dos dados: demanda para imprimir os relatórios antes do prazo, uma por mês', async () => {
   assert.equal(retentionDeadline('2025-11', 12), '2026-11-01')

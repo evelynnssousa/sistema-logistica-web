@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { errorMessage } from '../api/modulesApi'
 import { getPublicHome } from '../api/configApi'
 import type { PublicHome } from '../api/configApi'
-import { ContactBlock, FaqList, NewsList, TeamList } from '../components/PublicContent'
+import { ContactBlock, FaqList, ManualList, NewsList, TeamList } from '../components/PublicContent'
 import { Alert, EmptyState, Loading } from '../components/ui/Feedback'
 import PageHeader from '../components/ui/PageHeader'
 
@@ -28,12 +28,19 @@ function HelpPage() {
   if (error) return <Alert tone="error">{error}</Alert>
   if (!home) return <Loading label="Carregando a ajuda..." />
   const { page } = home
-  const empty = page.faq.length === 0 && page.news.length === 0 && page.team.length === 0 && !page.contactEmail
+  const manuals = page.manuals ?? []
+  const empty = manuals.length === 0 && page.faq.length === 0 && page.news.length === 0 && page.team.length === 0 && !page.contactEmail
 
   return (
     <div className="admin-module-page help-page">
-      <PageHeader title="Ajuda" description="Perguntas frequentes, novidades do sistema e como falar com a SLM." />
+      <PageHeader title="Ajuda" description="Manuais, perguntas frequentes, novidades do sistema e como falar com a SLM." />
       {empty && <EmptyState title="Ainda não há conteúdo de ajuda">A equipe da SLM publica as perguntas e o contato em Configurações.</EmptyState>}
+      {manuals.length > 0 && (
+        <section className="ui-card ui-stacked">
+          <h2>Manuais</h2>
+          <ManualList items={manuals} />
+        </section>
+      )}
       {page.news.length > 0 && (
         <section className="ui-card ui-stacked">
           <h2>Novidades</h2>

@@ -186,8 +186,10 @@ export type PublicPageContent = {
   news: { date: string; title: string; text: string }[]
 }
 
+export type PublicManual = { title: string; audience: string; fileName: string; sizeBytes: number; url: string }
+
 export type PublicHome = {
-  page: PublicPageContent & { team: { name: string; role: string; photoUrl: string | null }[] }
+  page: PublicPageContent & { team: { name: string; role: string; photoUrl: string | null }[]; manuals?: PublicManual[] }
   modules: Record<string, boolean>
   loginMessage: string
   announcement: { text: string; tone: 'info' | 'warning'; until: string | null } | null
@@ -201,6 +203,13 @@ export const uploadTeamPhoto = (photo: Blob) =>
     body: photo,
     headers: { 'Content-Type': 'application/octet-stream' },
   })
+
+/** Envia o PDF de um manual. Ele só fica público quando a página inicial é salva com ele. */
+export const uploadManual = (file: File) =>
+  apiRequest<Envelope & { fileId: string; fileName: string; sizeBytes: number }>(
+    `/settings/public-page/manuals?nome=${encodeURIComponent(file.name)}`,
+    { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream' } },
+  )
 
 // ---------------------------------------------------------------------------
 // Limpeza dos dados de teste (só Administrador)
