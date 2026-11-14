@@ -174,3 +174,54 @@ export const linkDemandInstrument = (demandId: string, instrumentId: string | nu
 export const formatBRL = (value: number | null | undefined) =>
   value === null || value === undefined ? '—' : value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 export const formatDay = (value: string | null | undefined) => (value ? value.split('-').reverse().join('/') : '—')
+
+// ---------------------------------------------------------------------------
+// Robô de atas pelo Excel (14/11/2026)
+// ---------------------------------------------------------------------------
+export type ImportedItem = {
+  row: number
+  itemNumber: string | null
+  description: string
+  unit: string
+  registered: number
+  unitPrice: number
+}
+
+export type ImportedSheet = {
+  fields: {
+    type: 'ata' | 'contrato' | null
+    number: string | null
+    subject: string | null
+    category: string | null
+    supplier: string | null
+    process: string | null
+    total: number | null
+    validFrom: string | null
+    validUntil: string | null
+    sectorName: string | null
+    noticeDays: number | null
+  }
+  items: ImportedItem[]
+  itemsTotal: number
+  warnings: string[]
+}
+
+export const instrumentTemplateUrl = '/api/demand-instruments/template'
+
+export const previewInstrumentSheet = (file: File) =>
+  apiRequest<Envelope & ImportedSheet>('/demand-instruments/import/preview', {
+    method: 'POST',
+    body: file,
+    headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) },
+  })
+
+export const addInstrumentItems = (id: string, items: readonly ImportedItem[]) =>
+  send<Envelope & { created: number }>(`/demand-instruments/${id}/items/bulk`, 'POST', {
+    items: items.map((item) => ({
+      itemNumber: item.itemNumber ?? '',
+      description: item.description,
+      unit: item.unit,
+      registered: String(item.registered),
+      unitPrice: String(item.unitPrice),
+    })),
+  })

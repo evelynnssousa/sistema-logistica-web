@@ -465,6 +465,26 @@ export class InstrumentRepository {
     })
   }
 
+  /** Itens em lote (robô de atas pelo Excel): todos na mesma transação, com um só registro na auditoria. */
+  async addItems(actor: AuthenticatedIdentity, instrumentId: string, items: readonly ItemInput[]) {
+    await this.requireSchema()
+    return withTransaction(this.poolProvider(), async (client) => {
+      const exists = await client.query(`SELECT 1 FROM public.contract_instruments WHERE id = $1 FOR UPDATE`, [instrumentId])
+      if (!exists.rowCount) throw notFound()
+      for (const input of items) {
+        await client.query(
+          `INSERT INTO public.contract_instrument_items
+             (instrument_id, numero_item, descricao, unidade, quantidade_registrada, valor_unitario, ativo)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [instrumentId, input.itemNumber, input.description, input.unit, input.registered, input.unitPrice, input.active],
+        )
+      }
+      await client.query(`UPDATE public.contract_instruments SET updated_at = now() WHERE id = $1`, [instrumentId])
+      await audit(client, actor, instrumentId, { action: 'items_imported', count: String(items.length) })
+      return items.length
+    })
+  }
+
   /** Utilização de um item: nunca acima do saldo. O valor é quantidade × valor unitário. */
   async addUsage(
     actor: AuthenticatedIdentity,

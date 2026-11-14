@@ -6,7 +6,9 @@ import { Link, useParams } from 'react-router-dom'
 import { demandStatusLabels } from '../../api/demandsApi'
 import {
   addInstrumentAmendment,
+  addInstrumentItems,
   addInstrumentUsage,
+  previewInstrumentSheet,
   amendmentTypeLabels,
   fetchInstrument,
   formatBRL,
@@ -25,6 +27,8 @@ import { Alert, EmptyState, Loading } from '../../components/ui/Feedback'
 import Icon from '../../components/ui/Icon'
 import Modal from '../../components/ui/Modal'
 import { SituationFlag } from './InstrumentList'
+import type { ImportedSheet } from '../../api/instrumentsApi'
+import ImportedItemsPreview from './ImportedItemsPreview'
 
 type Loaded = Awaited<ReturnType<typeof fetchInstrument>>
 
@@ -46,6 +50,7 @@ export function InstrumentDetail() {
   const [amendmentFile, setAmendmentFile] = useState<File | null>(null)
   const [dialogError, setDialogError] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [importedItems, setImportedItems] = useState<ImportedSheet | null>(null)
   const { contracts } = useSystemInfo()
 
   const load = useCallback(async () => {
@@ -90,6 +95,20 @@ export function InstrumentDetail() {
       await load()
     } catch (err) {
       setDialogError(errorMessage(err, 'Não foi possível salvar.'))
+    }
+  }
+
+  // Robô de atas: itens lidos de uma planilha, conferidos na tela antes de gravar.
+  async function readItemsSheet(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setError('')
+    try {
+      setDialogError('')
+      setImportedItems(await previewInstrumentSheet(file))
+    } catch (err) {
+      setError(errorMessage(err, 'Não foi possível ler a planilha.'))
     }
   }
 
@@ -216,6 +235,11 @@ export function InstrumentDetail() {
                   Registrar utilização
                 </button>
               )}
+              <label className="maintenance-secondary-button">
+                <Icon name="robot" size={18} />
+                Importar itens do Excel
+                <input type="file" className="visually-hidden" accept=".xlsx,.ods,.csv,.xls" onChange={(event) => void readItemsSheet(event)} />
+              </label>
               <button type="button" className="maintenance-secondary-button" onClick={() => editItem(null)}>
                 <Icon name="add" size={18} />
                 Novo item
@@ -493,6 +517,30 @@ export function InstrumentDetail() {
             {dialogError && <Alert tone="error">{dialogError}</Alert>}
             <button type="submit" className="maintenance-primary-button">Salvar</button>
           </form>
+        </Modal>
+      )}
+
+      {importedItems && (
+        <Modal title="Importar itens do Excel" onClose={() => setImportedItems(null)}>
+          <div className="ui-stacked">
+            <ImportedItemsPreview items={importedItems.items} warnings={importedItems.warnings} total={importedItems.itemsTotal} />
+            {dialogError && <Alert tone="error">{dialogError}</Alert>}
+            {importedItems.items.length > 0 && (
+              <button
+                type="button"
+                className="maintenance-primary-button"
+                onClick={() =>
+                  void run(
+                    () => addInstrumentItems(instrument.id, importedItems.items),
+                    `${importedItems.items.length} ${importedItems.items.length === 1 ? 'item cadastrado' : 'itens cadastrados'}.`,
+                    () => setImportedItems(null),
+                  )
+                }
+              >
+                Cadastrar {importedItems.items.length} {importedItems.items.length === 1 ? 'item' : 'itens'}
+              </button>
+            )}
+          </div>
         </Modal>
       )}
 
