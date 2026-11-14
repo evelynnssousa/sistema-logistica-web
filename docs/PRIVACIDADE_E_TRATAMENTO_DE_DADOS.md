@@ -74,7 +74,9 @@ Campos adicionais criados no editor de formulários são texto livre e não entr
 
 ## Retenção e descarte
 
-**Nada é apagado automaticamente, e nenhum prazo foi definido.** Isso vale para solicitações, passageiros, histórico, auditoria, eventos, fila de e-mails e notificações. A migração 005 impede apagar histórico e auditoria, e a 006, eventos e tentativas: quando houver política aprovada, será preciso um procedimento próprio.
+**Decisão da instituição (14/11/2026): guarda de 1 ano** para solicitações, CPFs de passageiros, anexos e registros de auditoria. Antes de cada mês de registros completar o prazo, o sistema abre uma demanda no setor escolhido para imprimir ou salvar os relatórios e as planilhas do mês (Configurações → Sistema → Guarda dos dados: prazo, antecedência e setor). O que fazer depois do prazo (apagar ou anonimizar) ainda não foi decidido.
+
+**Nada é apagado automaticamente.** Isso vale para solicitações, passageiros, histórico, auditoria, eventos, fila de e-mails e notificações. A migração 005 impede apagar histórico e auditoria, e a 006, eventos e tentativas: quando houver política aprovada, será preciso um procedimento próprio.
 
 Pontos para a política:
 
@@ -91,8 +93,8 @@ Pontos para a política:
 | Validar o texto dos avisos | Área institucional competente |
 | Definir a base legal de cada tratamento e a eventual necessidade de consentimento | Área institucional competente |
 | Identificar controlador e encarregado, e o canal do titular | Instituição |
-| Aprovar prazos de guarda e descarte | Instituição |
-| Avaliar o compartilhamento com o Resend | Área institucional competente e TI |
+| Prazo de guarda: aprovado, 1 ano (14/11/2026). Falta decidir o descarte depois do prazo | Instituição |
+| Avaliar o compartilhamento com o provedor de e-mail (Resend, Brevo ou Microsoft 365) | Área institucional competente e TI |
 | Revisão de segurança | Área responsável |
 
 ## Anexos, pesquisa e registros técnicos (Supercomando 04)

@@ -14,6 +14,7 @@ import { resetAccessSchemaCacheForTests } from './accessSchema.js'
 import { requireDisposableDatabaseUrl } from './databaseSafety.js'
 import { setDatabasePoolForTests } from './pool.js'
 import { setProfileAdjustments } from '../auth/permissions.js'
+import { lastDueMonth, openRetentionDemands, retentionDeadline } from './retentionRepository.js'
 
 // Administração do sistema em Configurações (13/11/2026). API real, PostgreSQL descartável, 001 a 022.
 
@@ -286,4 +287,42 @@ test('página inicial: rascunho público, fotos só de imagem, e foto sem uso sa
   await put('/settings/parameters/publicPage', admin, { ...draft.page, team: [{ name: 'Pessoa da Equipe', role: 'Coordenação', photoId: first.body.photoId }] })
   assert.equal((await fetch(`${baseUrl}/api/public/team-photos/${unused.body.photoId}`)).status, 404)
   assert.equal((await fetch(`${baseUrl}/api/public/team-photos/${first.body.photoId}`)).status, 200)
+})
+
+
+test('guarda dos dados: demanda para imprimir os relatórios antes do prazo, uma por mês', async () => {
+  assert.equal(retentionDeadline('2025-11', 12), '2026-11-01')
+  assert.equal(lastDueMonth('2026-11-14', 12, 30), '2025-12')
+  assert.equal(lastDueMonth('2026-11-14', 12, 10), '2025-11')
+
+  const adminId = (await pool.query<{ id: string }>(`SELECT id::text AS id FROM public.auth_users WHERE email = 'admin-config@example.gov.br'`)).rows[0].id
+  const sector = await pool.query<{ id: string }>(`INSERT INTO public.demand_sectors (nome) VALUES ('Guarda SLM') RETURNING id::text AS id`)
+  await pool.query(`INSERT INTO public.demand_categories (nome) VALUES ('Acompanhamento de processos') ON CONFLICT DO NOTHING`)
+  // Pedidos de materiais de novembro e de dezembro de 2025, e um de agora.
+  for (const at of ['2025-11-10T12:00:00Z', '2025-11-20T12:00:00Z', '2025-12-05T12:00:00Z']) {
+    await pool.query(
+      `INSERT INTO public.material_requests (origem, status, solicitante_id, registrado_por, created_at) VALUES ('interna', 'pendente', $1, $1, $2)`,
+      [adminId, at],
+    )
+  }
+
+  // Sem setor escolhido, nada é aberto.
+  assert.equal(await openRetentionDemands('2026-11-14'), 0)
+  assert.equal((await put('/settings/parameters/retention', admin, { months: 12, noticeDays: 30, sectorId: 'x' })).status, 400)
+  const saved = await put('/settings/parameters/retention', admin, { months: 12, noticeDays: 30, sectorId: sector.rows[0].id })
+  assert.equal(saved.status, 200, saved.text)
+
+  // Em 25/10/2026, a menos de 30 dias de 01/11/2026: só novembro de 2025 entra; repetir não duplica.
+  assert.equal(await openRetentionDemands('2026-10-25'), 1)
+  assert.equal(await openRetentionDemands('2026-10-25'), 0)
+  const opened = await pool.query<{ titulo: string; prazo: string; descricao: string }>(
+    `SELECT titulo, to_char(prazo, 'YYYY-MM-DD') AS prazo, descricao FROM public.demands WHERE titulo LIKE 'Guarda de dados%' ORDER BY numero`,
+  )
+  assert.deepEqual(opened.rows.map((row) => [row.titulo, row.prazo]), [['Guarda de dados (LGPD): imprimir os relatórios de novembro de 2025', '2026-11-01']])
+  assert.match(opened.rows[0].descricao, /Pedidos de materiais: 2/)
+  assert.match(opened.rows[0].descricao, /01\/11\/2025 a 30\/11\/2025/)
+
+  // Mais tarde, dezembro de 2025 também entra.
+  assert.equal(await openRetentionDemands('2026-11-14'), 1)
+  assert.equal((await pool.query(`SELECT 1 FROM public.demands WHERE titulo LIKE 'Guarda de dados%'`)).rowCount, 2)
 })
